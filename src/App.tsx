@@ -11,6 +11,7 @@ import {
   canMoveRealtimeTask,
   canOutsourceTaskWork,
   createRealtimeState,
+  falloutWarningForTask,
   formatGameTime,
   isWorkColumn,
   moveRealtimeTask,
@@ -23,6 +24,7 @@ import {
   type RtCharacter,
   type RtColumn,
   type RtEvent,
+  type RtFalloutWarning,
   type RtGameState,
   type RtMorningReport,
   type RtReadinessReport,
@@ -784,6 +786,7 @@ function MorningReportPage({
     .map((taskId) => game.tasks[taskId])
     .filter((task): task is RtTask => Boolean(task));
   const canContinue = game.status === "running";
+  const summary = report.daySummary;
 
   return (
     <section className="morning-report-page">
@@ -793,8 +796,8 @@ function MorningReportPage({
           <h1>Morning Briefing</h1>
           <p>
             {report.empty
-              ? "Nothing shipped yesterday. Today's work starts from the existing backlog."
-              : `${report.shippedTaskIds.length} task(s) shipped yesterday. Today's backlog reflects the consequences.`}
+              ? "Nothing shipped or expired yesterday. Today's work starts from the existing backlog."
+              : `${report.shippedTaskIds.length} shipped, ${report.missedTaskIds.length} missed. Today's backlog reflects the consequences.`}
           </p>
         </div>
         <button
@@ -841,10 +844,19 @@ function MorningReportPage({
         />
       </div>
 
+      <div className="morning-flow-strip">
+        <span>Clean {summary.releasedClean}</span>
+        <span>Risky {summary.releasedRisky}</span>
+        <span>Dirty {summary.releasedDirty}</span>
+        <span>Missed {summary.missedBacklog + summary.missedInProgress}</span>
+        <span>Fallout +{summary.falloutCreated}</span>
+        <span>Unresolved {summary.unresolvedFallout}</span>
+      </div>
+
       <section className="morning-report-section">
         <h2>Consequences</h2>
         {report.consequences.length === 0 ? (
-          <p className="empty">No visible release fallout hit the team this morning.</p>
+          <p className="empty">No visible release or missed-work fallout hit the team this morning.</p>
         ) : (
           <div className="morning-consequence-list">
             {report.consequences.map((consequence) => (
@@ -854,12 +866,13 @@ function MorningReportPage({
                     <span>{consequence.sourceTaskId}</span>
                     <strong>{consequence.symptom}</strong>
                   </div>
-                  <b>{consequence.generatedTaskId ?? "blocked"}</b>
+                  <b>
+                    {consequence.terminal
+                      ? "terminal"
+                      : consequence.generatedTaskId ?? consequenceFallbackLabel(consequence)}
+                  </b>
                 </header>
-                <p>
-                  Because yesterday&apos;s {consequence.sourceTaskId} shipped with{" "}
-                  {consequenceCauseLabel(consequence.cause)}.
-                </p>
+                <p>{consequenceText(consequence)}</p>
                 <div className="release-effect-strip">
                   {consequence.effects.map((effect) => (
                     <span className={`release-effect ${effectTone(effect)}`} key={effect}>
@@ -991,6 +1004,7 @@ function TaskCard({
   const doneSubtaskCount = revealedSubtasks.filter((subtask) => subtask.done).length;
   const hasHiddenWork = task.subtasks.some((subtask) => !subtask.revealed && !subtask.done);
   const readiness = releaseReadiness(task);
+  const falloutWarning = falloutWarningForTask(task);
   const urgent = !task.released && task.column !== "done" && deadlineRatio <= 0.18;
   const locked =
     Boolean(task.assignedCharacterId) ||
@@ -1049,6 +1063,7 @@ function TaskCard({
         <span>Blast {task.blastRadius}</span>
       </div>
       <ReadinessBadge report={readiness} compact />
+      {falloutWarning ? <FalloutWarning warning={falloutWarning} compact /> : null}
       <div className="subtask-summary">
         <span>Known work</span>
         <strong>{doneSubtaskCount}/{revealedSubtasks.length}</strong>
@@ -1097,6 +1112,7 @@ function TaskInspector({
   task: RtTask;
 }) {
   const readiness = releaseReadiness(task);
+  const falloutWarning = falloutWarningForTask(task);
   return (
     <div className="task-inspector">
       <strong>{task.title}</strong>
@@ -1112,6 +1128,7 @@ function TaskInspector({
         <span>Blast {task.blastRadius}</span>
       </div>
       <ReadinessBadge report={readiness} />
+      {falloutWarning ? <FalloutWarning warning={falloutWarning} /> : null}
       <SubtaskList task={task} />
       {task.column === "done" && !task.released ? (
         <p>Queued for release. Reopening costs Trust -{DONE_REWORK_TRUST_COST}.</p>
@@ -1229,6 +1246,23 @@ function ReadinessBadge({
   );
 }
 
+function FalloutWarning({
+  compact = false,
+  warning,
+}: {
+  compact?: boolean;
+  warning: RtFalloutWarning;
+}) {
+  return (
+    <div className={`fallout-warning ${warning.level} ${compact ? "compact" : ""}`}>
+      <strong>{warning.label}</strong>
+      {!compact && warning.reasons.length > 0 ? (
+        <span>{warning.reasons.slice(0, 3).join(" / ")}</span>
+      ) : null}
+    </div>
+  );
+}
+
 function effectTone(effect: string): "positive" | "negative" | "neutral" {
   if (effect.startsWith("debt +")) return "negative";
   if (effect.startsWith("debt -")) return "positive";
@@ -1275,6 +1309,30 @@ function riskReasonLabel(reason: RtRiskReason): string {
   }
 }
 
+function consequenceText(
+  consequence: RtMorningReport["consequences"][number],
+): string {
+  if (consequence.source === "release") {
+    return `Because yesterday's ${consequence.sourceTaskId} shipped with ${consequenceCauseLabel(
+      consequence.cause,
+    )}.`;
+  }
+  if (consequence.source === "missed_backlog") {
+    return `Because ${consequence.sourceTaskId} was left in Backlog past its deadline.`;
+  }
+  if (consequence.source === "missed_in_progress") {
+    return `Because ${consequence.sourceTaskId} was still in progress when the day closed.`;
+  }
+  return `Because the fallout chain from ${consequence.rootCauseTaskId} reached its cap.`;
+}
+
+function consequenceFallbackLabel(
+  consequence: RtMorningReport["consequences"][number],
+): string {
+  if (consequence.effects.includes("minor hit")) return "hit";
+  return "blocked";
+}
+
 function consequenceCauseLabel(
   cause: RtMorningReport["consequences"][number]["cause"],
 ): string {
@@ -1295,6 +1353,12 @@ function consequenceCauseLabel(
       return "low clarity";
     case "deadline_pressure":
       return "deadline pressure";
+    case "ignored_work":
+      return "ignored work";
+    case "missed_deadline":
+      return "missed deadline";
+    case "terminal_chain":
+      return "terminal fallout";
   }
 }
 
@@ -1497,6 +1561,12 @@ function summarizeTask(task: RtTask | undefined) {
     stageComplete: task.stageComplete,
     assignedCharacterId: task.assignedCharacterId,
     released: task.released,
+    rootCauseTaskId: task.rootCauseTaskId,
+    sourceTaskId: task.sourceTaskId,
+    chainDepth: task.chainDepth,
+    resolved: task.resolved,
+    resolution: task.resolution,
+    resolutionDay: task.resolutionDay,
     releaseScore: task.releaseScore,
     queuedDeadlineMs: task.queuedDeadlineMs,
     postmortem: task.postmortem,
@@ -1552,6 +1622,7 @@ function buildBackendSnapshot(snapshot: ReturnType<typeof buildDebugSnapshot>) {
     time: snapshot.time,
     resources: snapshot.resources,
     morningReport: snapshot.morningReport,
+    daySummary: snapshot.morningReport?.daySummary ?? null,
     quarter: snapshot.quarter,
     spawn: snapshot.spawn,
     taskCount: snapshot.taskCount,
@@ -1579,6 +1650,10 @@ function buildBackendSnapshot(snapshot: ReturnType<typeof buildDebugSnapshot>) {
           kind: task?.kind,
           blastRadius: task?.blastRadius,
           releaseReadiness: task?.releaseReadiness,
+          rootCauseTaskId: task?.rootCauseTaskId,
+          chainDepth: task?.chainDepth,
+          resolved: task?.resolved,
+          resolution: task?.resolution,
           deadlineMs: task?.deadlineMs,
           stageProgress: task?.stageProgress,
           assignedCharacterId: task?.assignedCharacterId,

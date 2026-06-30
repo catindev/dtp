@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "check": "tsc --noEmit",
     "debug": "tsx src/debug/run.ts",
-    "debug:rt": "tsx src/debug/realtime.ts"
+    "debug:rt": "tsx src/debug/realtime.ts",
+    "debug:ab": "tsx src/debug/ab.ts"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",

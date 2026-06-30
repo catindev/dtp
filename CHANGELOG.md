@@ -16,6 +16,8 @@
 - суточный release train в 18:00;
 - Morning Briefing после суточного релиза;
 - source-linked последствия релиза и fallout-задачи;
+- missed-work consequences для просроченных невыпущенных задач;
+- terminal cap для цепочек fallout;
 - `Team Budget` и `Outsource`;
 - autosave текущей игровой сессии в браузере;
 - debug snapshots и JSON-логи по отдельным session-файлам;
@@ -460,6 +462,7 @@ SRE получил понятную функцию:
 - envelope сохранения с `schemaVersion` и `appCommit`;
 - `SAVE_SCHEMA_VERSION` как ручной рубильник для критичных изменений state;
 - после перехода на `morningReport` schema поднята до `rt-board-v2`;
+- после добавления missed-work/chain-depth schema поднята до `rt-board-v3`;
 - `normalizeRealtimeState` используется для совместимых миграций;
 - несовместимый или поврежденный autosave очищается перед запуском;
 - Vite inject текущего git commit в frontend;
@@ -504,6 +507,18 @@ Morning Briefing показывает:
 - event log/backend получают событие `release_consequence_spawned`;
 - debug snapshot содержит `morningReport`.
 
+Позже P0-слой расширил Morning Briefing:
+
+- просроченные невыпущенные задачи разрешаются как missed work;
+- missed backlog создает ignored-work consequence;
+- missed in-progress создает более мягкий missed-deadline consequence с переносом части контекста;
+- мелкая missed-задача дает дешевый capped hit без новой карточки;
+- fallout-цепочки получили `rootCauseTaskId`, `sourceTaskId`, `chainDepth` и terminal cap;
+- если backlog full или chain cap достигнут, consequence не исчезает молча, а закрывается resource hit;
+- `day_summary` пишет clean/risky/dirty, missed, fallout created/resolved/unresolved и terminal counts;
+- UI показывает предупреждение `May create follow-up tomorrow` / `Likely follow-up tomorrow`;
+- добавлен `npm run debug:ab` для anti-dominance проверки clean / mild dirty / heavy dirty.
+
 Цель изменения:
 
 ```txt
@@ -522,6 +537,7 @@ npm run dev
 npm run check
 npm run build
 npm run debug:rt
+npm run debug:ab
 ```
 
 Актуальные команды backend:

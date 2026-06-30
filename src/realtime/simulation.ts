@@ -21,6 +21,8 @@ const BURST_INTERVAL_MIN_MS = 420000;
 const BURST_INTERVAL_MAX_MS = 660000;
 const WORK_SPEED_MULTIPLIER = 0.38;
 const ANALYSIS_SPEED_MULTIPLIER = 0.24;
+const BACKLOG_LIMIT = 5;
+const MAX_FALLOUT_CHAIN_DEPTH = 2;
 
 export const RT_COLUMNS = ["backlog", "inProgress", "done", "released"] as const;
 export type RtColumn = (typeof RT_COLUMNS)[number];
@@ -108,16 +110,50 @@ export type RtReleaseConsequenceCause =
   | "critical_open"
   | "important_open"
   | "low_clarity"
-  | "deadline_pressure";
+  | "deadline_pressure"
+  | "ignored_work"
+  | "missed_deadline"
+  | "terminal_chain";
+
+export type RtConsequenceSource =
+  | "release"
+  | "missed_backlog"
+  | "missed_in_progress"
+  | "terminal";
+
+export type RtTaskResolution =
+  | "missed_minor"
+  | "missed_tail"
+  | "missed_terminal";
 
 export interface RtReleaseConsequence {
   id: string;
+  source: RtConsequenceSource;
   sourceTaskId: string;
   sourceTitle: string;
+  rootCauseTaskId: string;
+  chainDepth: number;
   cause: RtReleaseConsequenceCause;
   symptom: string;
   generatedTaskId: string | null;
+  terminal: boolean;
+  resourceDelta: Partial<RtResources>;
   effects: string[];
+}
+
+export interface RtDaySummary {
+  day: number;
+  shipped: number;
+  releasedClean: number;
+  releasedRisky: number;
+  releasedDirty: number;
+  missedBacklog: number;
+  missedInProgress: number;
+  missedMinor: number;
+  falloutCreated: number;
+  falloutResolved: number;
+  unresolvedFallout: number;
+  terminalConsequences: number;
 }
 
 export interface RtMorningReport {
@@ -132,7 +168,9 @@ export interface RtMorningReport {
   resourceDelta: RtResources;
   empty: boolean;
   effects: string[];
+  missedTaskIds: string[];
   consequences: RtReleaseConsequence[];
+  daySummary: RtDaySummary;
 }
 
 export interface RtTask {
@@ -164,6 +202,12 @@ export interface RtTask {
   assignedCharacterId: string | null;
   outsourcing: RtOutsourcingWork | null;
   released: boolean;
+  rootCauseTaskId: string | null;
+  sourceTaskId: string | null;
+  chainDepth: number;
+  resolved: boolean;
+  resolution: RtTaskResolution | null;
+  resolutionDay: number | null;
   releaseScore: number | null;
   queuedDeadlineMs: number | null;
   lastNote: string;
@@ -195,6 +239,12 @@ export interface RtEvent {
   title: string;
   body: string;
   effects: string[];
+}
+
+export interface RtFalloutWarning {
+  level: "possible" | "likely";
+  label: string;
+  reasons: string[];
 }
 
 interface RtAssignmentPlan {
@@ -442,9 +492,52 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
       ...legacyState.releaseReview,
       previousDay: legacyState.releaseReview.previousDay ?? legacyState.releaseReview.day,
       at: "08:00",
+      missedTaskIds: legacyState.releaseReview.missedTaskIds ?? [],
       consequences: legacyState.releaseReview.consequences ?? [],
+      daySummary:
+        legacyState.releaseReview.daySummary ??
+        emptyDaySummary(legacyState.releaseReview.day ?? state.day),
     };
     changed = true;
+  }
+  if (state.morningReport) {
+    if (!Array.isArray(state.morningReport.missedTaskIds)) {
+      state.morningReport.missedTaskIds = [];
+      changed = true;
+    }
+    if (!state.morningReport.daySummary) {
+      state.morningReport.daySummary = emptyDaySummary(state.morningReport.previousDay);
+      changed = true;
+    }
+    for (const consequence of state.morningReport.consequences) {
+      const legacyConsequence = consequence as RtReleaseConsequence & {
+        source?: RtConsequenceSource;
+        terminal?: boolean;
+        resourceDelta?: Partial<RtResources>;
+        rootCauseTaskId?: string;
+        chainDepth?: number;
+      };
+      if (!legacyConsequence.source) {
+        consequence.source = "release";
+        changed = true;
+      }
+      if (typeof legacyConsequence.terminal !== "boolean") {
+        consequence.terminal = false;
+        changed = true;
+      }
+      if (!legacyConsequence.resourceDelta) {
+        consequence.resourceDelta = {};
+        changed = true;
+      }
+      if (!legacyConsequence.rootCauseTaskId) {
+        consequence.rootCauseTaskId = consequence.sourceTaskId;
+        changed = true;
+      }
+      if (typeof legacyConsequence.chainDepth !== "number") {
+        consequence.chainDepth = 0;
+        changed = true;
+      }
+    }
   }
   if (state.morningReport) {
     if (!state.paused) {
@@ -491,6 +584,14 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
     const queueFields = task as RtTask & { queuedDeadlineMs?: number | null };
     const taskWithBlast = task as RtTask & { blastRadius?: RtBlastRadius };
     const taskWithOutsourcing = task as RtTask & { outsourcing?: RtOutsourcingWork | null };
+    const taskWithChain = task as RtTask & {
+      rootCauseTaskId?: string | null;
+      sourceTaskId?: string | null;
+      chainDepth?: number;
+      resolved?: boolean;
+      resolution?: RtTaskResolution | null;
+      resolutionDay?: number | null;
+    };
     if (!taskWithBlast.blastRadius) {
       task.blastRadius = inferBlastRadius(task);
       changed = true;
@@ -506,6 +607,30 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
     if (!("queuedDeadlineMs" in queueFields)) {
       task.queuedDeadlineMs =
         task.column === "done" || task.released ? Math.max(0, task.deadlineMs) : null;
+      changed = true;
+    }
+    if (!("rootCauseTaskId" in taskWithChain)) {
+      task.rootCauseTaskId = null;
+      changed = true;
+    }
+    if (!("sourceTaskId" in taskWithChain)) {
+      task.sourceTaskId = null;
+      changed = true;
+    }
+    if (typeof taskWithChain.chainDepth !== "number") {
+      task.chainDepth = 0;
+      changed = true;
+    }
+    if (typeof taskWithChain.resolved !== "boolean") {
+      task.resolved = false;
+      changed = true;
+    }
+    if (!("resolution" in taskWithChain)) {
+      task.resolution = null;
+      changed = true;
+    }
+    if (!("resolutionDay" in taskWithChain)) {
+      task.resolutionDay = null;
       changed = true;
     }
     if (legacyColumn === "analysis" || legacyColumn === "todo" || legacyColumn === "test") {
@@ -557,6 +682,10 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
   }
 
   for (const task of Object.values(state.tasks)) {
+    if (task.resolved) {
+      removeTaskFromBoard(state, task.id);
+      continue;
+    }
     for (const [column, taskIds] of Object.entries(board)) {
       if (!Array.isArray(taskIds) || column === task.column) continue;
       const nextIds = taskIds.filter((taskId) => taskId !== task.id);
@@ -917,12 +1046,20 @@ function openMorningReport(state: RtGameState): void {
   const releaseDay = state.day;
   const resourceBefore = copyResources(state.resources);
   const shippedTaskIds = runDailyReleaseTrain(state);
+  const missedTaskIds = collectMissedTaskIds(state);
   advanceDay(state);
   state.gameMinuteOfDay = GAME_DAY_START_MINUTE;
-  const consequences = generateMorningConsequences(state, shippedTaskIds);
+  const consequences = generateMorningConsequences(state, shippedTaskIds, missedTaskIds);
   const resourceAfter = copyResources(state.resources);
   const resourceDelta = diffResources(resourceBefore, resourceAfter);
   const effects = morningReportEffects(resourceDelta);
+  const daySummary = buildDaySummary(
+    state,
+    releaseDay,
+    shippedTaskIds,
+    missedTaskIds,
+    consequences,
+  );
 
   state.morningReport = {
     id: `morning-${releaseQuarter}-${releaseDay}-${state.elapsedRealMs}`,
@@ -934,21 +1071,42 @@ function openMorningReport(state: RtGameState): void {
     resourceBefore,
     resourceAfter,
     resourceDelta,
-    empty: shippedTaskIds.length === 0,
+    empty: shippedTaskIds.length === 0 && missedTaskIds.length === 0,
     effects,
+    missedTaskIds,
     consequences,
+    daySummary,
   };
   state.paused = true;
 
   pushEvent(state, {
+    type: "day_summary",
+    title: `Day ${releaseDay} summary`,
+    body: `${daySummary.shipped} shipped, ${daySummary.missedBacklog + daySummary.missedInProgress} missed, ${daySummary.unresolvedFallout} unresolved fallout.`,
+    effects: [
+      `clean ${daySummary.releasedClean}`,
+      `risky ${daySummary.releasedRisky}`,
+      `dirty ${daySummary.releasedDirty}`,
+      `missed backlog ${daySummary.missedBacklog}`,
+      `missed progress ${daySummary.missedInProgress}`,
+      `fallout +${daySummary.falloutCreated}`,
+      `resolved ${daySummary.falloutResolved}`,
+      `unresolved ${daySummary.unresolvedFallout}`,
+      `terminal ${daySummary.terminalConsequences}`,
+    ],
+  });
+
+  pushEvent(state, {
     type: "morning_report_opened",
     title: `Morning briefing Day ${state.day}`,
-    body: shippedTaskIds.length > 0
-      ? `${shippedTaskIds.length} task(s) shipped yesterday. ${consequences.length} consequence(s) shaped today's backlog.`
-      : "No tasks shipped yesterday. The team starts with the existing backlog.",
+    body:
+      shippedTaskIds.length > 0 || missedTaskIds.length > 0
+        ? `${shippedTaskIds.length} shipped, ${missedTaskIds.length} missed. ${consequences.length} consequence(s) shaped today's backlog.`
+        : "No tasks shipped or expired yesterday. The team starts with the existing backlog.",
     effects: [
       ...effects,
-      ...(consequences.length > 0 ? [`consequences ${consequences.length}`] : ["no release fallout"]),
+      ...(consequences.length > 0 ? [`consequences ${consequences.length}`] : ["no fallout"]),
+      `unresolved fallout ${daySummary.unresolvedFallout}`,
     ],
   });
 }
@@ -980,9 +1138,23 @@ function morningReportEffects(delta: RtResources): string[] {
   return effects.length > 0 ? effects : ["no business effects"];
 }
 
+function collectMissedTaskIds(state: RtGameState): string[] {
+  return [...state.board.backlog, ...state.board.inProgress].filter((taskId) => {
+    const task = state.tasks[taskId];
+    return Boolean(
+      task &&
+        !task.released &&
+        !task.resolved &&
+        task.column !== "done" &&
+        task.deadlineMs <= 0,
+    );
+  });
+}
+
 function generateMorningConsequences(
   state: RtGameState,
   shippedTaskIds: string[],
+  missedTaskIds: string[],
 ): RtReleaseConsequence[] {
   const consequences: RtReleaseConsequence[] = [];
   for (const taskId of shippedTaskIds) {
@@ -993,53 +1165,219 @@ function generateMorningConsequences(
     if (!shouldCreateReleaseConsequence(state, readiness.readiness, score)) continue;
 
     const cause = primaryConsequenceCause(readiness.reasons);
-    const symptom = releaseConsequenceSymptom(task, cause);
-    const followUp = generateTask(state, consequenceTaskKind(cause, score));
-    const originalFollowUpId = followUp.id;
-    const sequence = originalFollowUpId.match(/\d+$/)?.[0] ?? String(state.nextTaskId - 1).padStart(3, "0");
-    followUp.domain = task.domain;
-    followUp.id = `${domainPrefixes[task.domain] ?? "INC"}-${sequence}`;
-    followUp.title = `${followUp.id}: ${symptom}`;
-    for (const subtask of followUp.subtasks) {
-      subtask.id = subtask.id.replace(originalFollowUpId, followUp.id);
-    }
-    followUp.pressure = clamp(task.pressure + 1, 1, 6);
-    followUp.complexity = clamp(Math.ceil((task.complexity + 2) / 2), 1, 6);
-    followUp.value = Math.max(4, Math.round(task.value * 0.35));
-    followUp.clarity = clamp(72 - consequences.length * 4, 45, 92);
-    followUp.quality = Math.max(8, Math.round(followUp.clarity * 0.22));
-    followUp.blastRadius = task.blastRadius === "high" ? "high" : "medium";
-    followUp.lastNote = `Caused by yesterday's ${task.id}: ${consequenceCauseText(cause)}.`;
-    followUp.postmortem = [`Source release: ${task.id}.`, `Cause: ${consequenceCauseText(cause)}.`];
+    consequences.push(
+      createTailConsequence(state, {
+        cause,
+        consequenceIndex: consequences.length,
+        source: "release",
+        sourceTask: task,
+        symptom: releaseConsequenceSymptom(task, cause),
+      }),
+    );
+  }
 
-    const added = addTask(state, followUp);
-    const generatedTaskId = added ? followUp.id : null;
+  for (const taskId of missedTaskIds) {
+    const task = state.tasks[taskId];
+    if (!task || task.released || task.resolved) continue;
+    consequences.push(resolveMissedTask(state, task, consequences.length));
+  }
+
+  return consequences;
+}
+
+function createTailConsequence(
+  state: RtGameState,
+  {
+    cause,
+    consequenceIndex,
+    source,
+    sourceTask,
+    symptom,
+  }: {
+    cause: RtReleaseConsequenceCause;
+    consequenceIndex: number;
+    source: RtConsequenceSource;
+    sourceTask: RtTask;
+    symptom: string;
+  },
+): RtReleaseConsequence {
+  const rootCauseTaskId = sourceTask.rootCauseTaskId ?? sourceTask.id;
+  const nextDepth = sourceTask.chainDepth + 1;
+  const shouldTerminate = nextDepth > MAX_FALLOUT_CHAIN_DEPTH;
+
+  if (shouldTerminate) {
+    const resourceDelta = applyResourceDelta(state, terminalResourceDelta(sourceTask));
+    const effects = [
+      `source ${sourceTask.id}`,
+      `cause ${consequenceCauseText(cause)}`,
+      "chain terminated",
+      ...resourceDeltaEffects(resourceDelta),
+    ];
+    const consequence: RtReleaseConsequence = {
+      id: `${sourceTask.id}-terminal-${state.day}-${consequenceIndex + 1}`,
+      source: "terminal",
+      sourceTaskId: sourceTask.id,
+      sourceTitle: sourceTask.title,
+      rootCauseTaskId,
+      chainDepth: nextDepth,
+      cause: "terminal_chain",
+      symptom,
+      generatedTaskId: null,
+      terminal: true,
+      resourceDelta,
+      effects,
+    };
+
+    pushEvent(state, {
+      type: "tail_chain_terminated",
+      title: `${sourceTask.id} chain closed`,
+      body: `${symptom}. The fallout chain reached its cap and resolved as business damage.`,
+      effects,
+    });
+    return consequence;
+  }
+
+  const followUp = generateTask(state, consequenceTaskKind(cause, sourceTask.releaseScore ?? 50));
+  const originalFollowUpId = followUp.id;
+  const sequence =
+    originalFollowUpId.match(/\d+$/)?.[0] ?? String(state.nextTaskId - 1).padStart(3, "0");
+  followUp.domain = sourceTask.domain;
+  followUp.id = `${domainPrefixes[sourceTask.domain] ?? "INC"}-${sequence}`;
+  followUp.title = `${followUp.id}: ${symptom}`;
+  for (const subtask of followUp.subtasks) {
+    subtask.id = subtask.id.replace(originalFollowUpId, followUp.id);
+  }
+  followUp.rootCauseTaskId = rootCauseTaskId;
+  followUp.sourceTaskId = sourceTask.id;
+  followUp.chainDepth = nextDepth;
+  followUp.pressure = clamp(sourceTask.pressure + 1, 1, 6);
+  followUp.complexity =
+    source === "missed_in_progress"
+      ? clamp(Math.ceil((sourceTask.complexity + 1) / 2), 1, 6)
+      : clamp(Math.ceil((sourceTask.complexity + 2) / 2), 1, 6);
+  followUp.value = Math.max(4, Math.round(sourceTask.value * 0.35));
+  followUp.clarity = clamp(
+    source === "missed_in_progress"
+      ? Math.max(55, Math.round(sourceTask.clarity * 0.75))
+      : 72 - consequenceIndex * 4,
+    45,
+    92,
+  );
+  followUp.quality =
+    source === "missed_in_progress"
+      ? clamp(Math.round(sourceTask.quality * 0.6), 8, 72)
+      : Math.max(8, Math.round(followUp.clarity * 0.22));
+  followUp.testCoverage =
+    source === "missed_in_progress" ? Math.min(sourceTask.testCoverage, 35) : 0;
+  followUp.blastRadius = sourceTask.blastRadius === "high" ? "high" : "medium";
+  followUp.lastNote = `Caused by yesterday's ${sourceTask.id}: ${consequenceCauseText(cause)}.`;
+  followUp.postmortem = [
+    `Source task: ${sourceTask.id}.`,
+    `Root cause: ${rootCauseTaskId}.`,
+    `Cause: ${consequenceCauseText(cause)}.`,
+    ...(source === "missed_in_progress" ? ["Some prior work carried forward as context."] : []),
+  ];
+
+  const added = addTask(state, followUp);
+  const generatedTaskId = added ? followUp.id : null;
+  const resourceDelta = added ? {} : applyResourceDelta(state, blockedTailResourceDelta(sourceTask));
+  const effects = [
+    `source ${sourceTask.id}`,
+    `root ${rootCauseTaskId}`,
+    `cause ${consequenceCauseText(cause)}`,
+    `depth ${nextDepth}/${MAX_FALLOUT_CHAIN_DEPTH}`,
+    ...(generatedTaskId ? [`created ${generatedTaskId}`] : ["backlog full", ...resourceDeltaEffects(resourceDelta)]),
+  ];
+
+  const consequence: RtReleaseConsequence = {
+    id: `${sourceTask.id}-fallout-${state.day}-${consequenceIndex + 1}`,
+    source,
+    sourceTaskId: sourceTask.id,
+    sourceTitle: sourceTask.title,
+    rootCauseTaskId,
+    chainDepth: nextDepth,
+    cause,
+    symptom,
+    generatedTaskId,
+    terminal: false,
+    resourceDelta,
+    effects,
+  };
+
+  pushEvent(state, {
+    type:
+      source === "release"
+        ? "release_consequence_spawned"
+        : generatedTaskId
+          ? "missed_tail_spawned"
+          : "missed_tail_blocked",
+    title: generatedTaskId
+      ? `${sourceTask.id} caused ${generatedTaskId}`
+      : `${sourceTask.id} fallout delayed`,
+    body: `${symptom} because yesterday's ${sourceTask.id} had ${consequenceCauseText(cause)}.`,
+    effects,
+  });
+
+  return consequence;
+}
+
+function resolveMissedTask(
+  state: RtGameState,
+  task: RtTask,
+  consequenceIndex: number,
+): RtReleaseConsequence {
+  const source: RtConsequenceSource =
+    task.column === "backlog" ? "missed_backlog" : "missed_in_progress";
+  const cause: RtReleaseConsequenceCause =
+    source === "missed_backlog" ? "ignored_work" : "missed_deadline";
+
+  if (missedTaskIsMinor(task)) {
+    const resourceDelta = applyResourceDelta(state, missedMinorResourceDelta(task));
     const effects = [
       `source ${task.id}`,
       `cause ${consequenceCauseText(cause)}`,
-      ...(generatedTaskId ? [`created ${generatedTaskId}`] : ["backlog full"]),
+      "minor hit",
+      ...resourceDeltaEffects(resourceDelta),
     ];
-
-    consequences.push({
-      id: `${task.id}-fallout-${state.day}-${consequences.length + 1}`,
+    markTaskResolved(state, task, "missed_minor");
+    const consequence: RtReleaseConsequence = {
+      id: `${task.id}-minor-${state.day}-${consequenceIndex + 1}`,
+      source,
       sourceTaskId: task.id,
       sourceTitle: task.title,
+      rootCauseTaskId: task.rootCauseTaskId ?? task.id,
+      chainDepth: task.chainDepth,
       cause,
-      symptom,
-      generatedTaskId,
+      symptom: missedConsequenceSymptom(task, source, false),
+      generatedTaskId: null,
+      terminal: false,
+      resourceDelta,
       effects,
-    });
-
+    };
     pushEvent(state, {
-      type: "release_consequence_spawned",
-      title: generatedTaskId
-        ? `${task.id} caused ${generatedTaskId}`
-        : `${task.id} fallout delayed`,
-      body: `${symptom} because yesterday's ${task.id} shipped with ${consequenceCauseText(cause)}.`,
+      type: "missed_minor_hit",
+      title: `${task.id} missed`,
+      body: `${task.title} missed the day and resolved as a small operational hit.`,
       effects,
     });
+    return consequence;
   }
-  return consequences;
+
+  const consequence = createTailConsequence(state, {
+    cause,
+    consequenceIndex,
+    source,
+    sourceTask: task,
+    symptom: missedConsequenceSymptom(task, source, true),
+  });
+  markTaskResolved(state, task, consequence.terminal ? "missed_terminal" : "missed_tail");
+  pushEvent(state, {
+    type: "missed_task_resolved",
+    title: `${task.id} missed`,
+    body: `${task.title} missed the daily release window and left the board.`,
+    effects: consequence.effects,
+  });
+  return consequence;
 }
 
 function shouldCreateReleaseConsequence(
@@ -1050,6 +1388,92 @@ function shouldCreateReleaseConsequence(
   if (score < 55 || readiness === "dirty") return true;
   if (score < 70 || readiness === "risky") return chance(state, 0.55);
   return false;
+}
+
+function missedTaskIsMinor(task: RtTask): boolean {
+  if (task.rootCauseTaskId) return false;
+  if (task.kind === "integration" || task.kind === "incident" || task.kind === "compliance") {
+    return false;
+  }
+  if (task.kind === "performance" && task.pressure >= 3) return false;
+  if (task.blastRadius === "high") return false;
+  if (task.pressure >= 4 || task.value >= 34) return false;
+  return task.kind === "bug" || task.kind === "techDebt" || task.pressure <= 2;
+}
+
+function missedMinorResourceDelta(task: RtTask): Partial<RtResources> {
+  if (task.kind === "techDebt" || task.kind === "bug" || task.kind === "performance") {
+    return { debt: 1 };
+  }
+  return { trust: -1 };
+}
+
+function terminalResourceDelta(task: RtTask): Partial<RtResources> {
+  const blast = task.blastRadius === "high" ? 2 : task.blastRadius === "medium" ? 1 : 0;
+  return {
+    trust: -(3 + blast),
+    clients: task.kind === "incident" || task.blastRadius === "high" ? -2 : -1,
+    debt: 3 + blast,
+  };
+}
+
+function blockedTailResourceDelta(task: RtTask): Partial<RtResources> {
+  return {
+    trust: task.blastRadius === "high" ? -3 : -2,
+    debt: task.kind === "techDebt" ? 3 : 2,
+  };
+}
+
+function applyResourceDelta(
+  state: RtGameState,
+  delta: Partial<RtResources>,
+): Partial<RtResources> {
+  const applied: Partial<RtResources> = {};
+  for (const key of ["trust", "clients", "debt", "value", "budget", "processBoost"] as const) {
+    const value = delta[key];
+    if (!value) continue;
+    const before = state.resources[key];
+    const after =
+      key === "value" || key === "budget"
+        ? Math.max(0, before + value)
+        : clamp(before + value, 0, key === "processBoost" ? 25 : 100);
+    state.resources[key] = after;
+    const actual = after - before;
+    if (actual !== 0) applied[key] = actual;
+  }
+  return applied;
+}
+
+function resourceDeltaEffects(delta: Partial<RtResources>): string[] {
+  return (["trust", "clients", "debt", "value", "budget", "processBoost"] as const)
+    .map((key) => {
+      const value = delta[key];
+      if (!value) return null;
+      const label = key === "processBoost" ? "boost" : key;
+      return `${label} ${formatDelta(value)}`;
+    })
+    .filter((effect): effect is string => Boolean(effect));
+}
+
+function markTaskResolved(
+  state: RtGameState,
+  task: RtTask,
+  resolution: RtTaskResolution,
+): void {
+  const characterId = task.assignedCharacterId;
+  if (characterId && state.characters[characterId]) {
+    state.characters[characterId].assignedTaskId = null;
+  }
+  task.assignedCharacterId = null;
+  task.outsourcing = null;
+  task.currentSubtaskId = null;
+  task.stageProgress = 0;
+  task.stageComplete = false;
+  task.resolved = true;
+  task.resolution = resolution;
+  task.resolutionDay = state.day;
+  task.lastNote = `Missed work resolved as ${resolution.replace("_", " ")}.`;
+  removeTaskFromBoard(state, task.id);
 }
 
 function primaryConsequenceCause(reasons: RtRiskReason[]): RtReleaseConsequenceCause {
@@ -1069,6 +1493,9 @@ function consequenceTaskKind(
   score: number,
 ): RtTaskKind {
   if (cause === "known_bug" || cause === "changed_after_qa") return "bug";
+  if (cause === "ignored_work") return score < 45 ? "incident" : "integration";
+  if (cause === "missed_deadline") return "incident";
+  if (cause === "terminal_chain") return "incident";
   if (cause === "no_sre" || score < 45) return "incident";
   if (cause === "low_clarity") return "feature";
   return "incident";
@@ -1105,6 +1532,30 @@ function releaseConsequenceSymptom(
   return `${area}: ${failure} after ${task.id}`;
 }
 
+function missedConsequenceSymptom(
+  task: RtTask,
+  source: RtConsequenceSource,
+  createsWork: boolean,
+): string {
+  const area =
+    task.domain === "payments"
+      ? "Partner commitment"
+      : task.domain === "auth"
+        ? "Login commitment"
+        : task.domain === "admin"
+          ? "Admin team request"
+          : task.domain === "search"
+            ? "Search request"
+            : task.domain === "reports"
+              ? "Reporting request"
+              : "Notification request";
+  if (!createsWork) return `${area}: small slip after ${task.id}`;
+  if (source === "missed_in_progress") {
+    return `${area}: escalation after unfinished work on ${task.id}`;
+  }
+  return `${area}: escalation after ${task.id} missed release`;
+}
+
 function consequenceCauseText(cause: RtReleaseConsequenceCause): string {
   switch (cause) {
     case "known_bug":
@@ -1123,7 +1574,104 @@ function consequenceCauseText(cause: RtReleaseConsequenceCause): string {
       return "low clarity";
     case "deadline_pressure":
       return "deadline pressure";
+    case "ignored_work":
+      return "ignored work";
+    case "missed_deadline":
+      return "missed deadline";
+    case "terminal_chain":
+      return "terminal fallout";
   }
+}
+
+function emptyDaySummary(day: number): RtDaySummary {
+  return {
+    day,
+    shipped: 0,
+    releasedClean: 0,
+    releasedRisky: 0,
+    releasedDirty: 0,
+    missedBacklog: 0,
+    missedInProgress: 0,
+    missedMinor: 0,
+    falloutCreated: 0,
+    falloutResolved: 0,
+    unresolvedFallout: 0,
+    terminalConsequences: 0,
+  };
+}
+
+function buildDaySummary(
+  state: RtGameState,
+  day: number,
+  shippedTaskIds: string[],
+  missedTaskIds: string[],
+  consequences: RtReleaseConsequence[],
+): RtDaySummary {
+  const shippedReports = shippedTaskIds
+    .map((taskId) => state.tasks[taskId])
+    .filter((task): task is RtTask => Boolean(task))
+    .map((task) => releaseReadiness(task).readiness);
+  const missedTasks = missedTaskIds
+    .map((taskId) => state.tasks[taskId])
+    .filter((task): task is RtTask => Boolean(task));
+
+  return {
+    day,
+    shipped: shippedTaskIds.length,
+    releasedClean: shippedReports.filter((readiness) => readiness === "clean").length,
+    releasedRisky: shippedReports.filter((readiness) => readiness === "risky").length,
+    releasedDirty: shippedReports.filter((readiness) => readiness === "dirty").length,
+    missedBacklog: consequences.filter((consequence) => consequence.source === "missed_backlog").length,
+    missedInProgress: consequences.filter((consequence) => consequence.source === "missed_in_progress").length,
+    missedMinor: missedTasks.filter((task) => task.resolution === "missed_minor").length,
+    falloutCreated: consequences.filter((consequence) => consequence.generatedTaskId).length,
+    falloutResolved:
+      shippedTaskIds.filter((taskId) => Boolean(state.tasks[taskId]?.rootCauseTaskId)).length +
+      missedTasks.filter((task) => Boolean(task.rootCauseTaskId)).length,
+    unresolvedFallout: Object.values(state.tasks).filter(
+      (task) => Boolean(task.rootCauseTaskId) && !task.released && !task.resolved,
+    ).length,
+    terminalConsequences: consequences.filter((consequence) => consequence.terminal).length,
+  };
+}
+
+export function falloutWarningForTask(task: RtTask): RtFalloutWarning | null {
+  if (task.released || task.resolved) return null;
+  const readiness = releaseReadiness(task);
+  const reasons = readiness.reasons.slice(0, 3).map(formatRiskReason);
+  if (task.column === "done") {
+    if (readiness.readiness === "dirty") {
+      return {
+        level: "likely",
+        label: "Likely follow-up tomorrow",
+        reasons,
+      };
+    }
+    if (readiness.readiness === "risky") {
+      return {
+        level: "possible",
+        label: "May create follow-up tomorrow",
+        reasons,
+      };
+    }
+  }
+  if (task.column === "backlog" || task.column === "inProgress") {
+    if (task.deadlineMs <= 0) {
+      return {
+        level: "likely",
+        label: "Will resolve as missed work",
+        reasons: ["missed deadline"],
+      };
+    }
+    if (taskDeadlineRatio(task) <= 0.18) {
+      return {
+        level: "possible",
+        label: "Can become missed work",
+        reasons: ["deadline pressure"],
+      };
+    }
+  }
+  return null;
 }
 
 export function formatGameTime(state: RtGameState): string {
@@ -1291,6 +1839,12 @@ function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTask {
     assignedCharacterId: null,
     outsourcing: null,
     released: false,
+    rootCauseTaskId: null,
+    sourceTaskId: null,
+    chainDepth: 0,
+    resolved: false,
+    resolution: null,
+    resolutionDay: null,
     releaseScore: null,
     queuedDeadlineMs: null,
     lastNote: "Waiting in backlog.",
@@ -1389,7 +1943,7 @@ function revealInitialSubtasks(
 }
 
 function addTask(state: RtGameState, task: RtTask): boolean {
-  if (state.board.backlog.length >= 5) return false;
+  if (state.board.backlog.length >= BACKLOG_LIMIT) return false;
   state.tasks[task.id] = task;
   state.board.backlog.unshift(task.id);
   pushEvent(state, {
@@ -2080,7 +2634,7 @@ function buildReleasePostmortem(task: RtTask): string[] {
 }
 
 function updateSpawner(state: RtGameState, tickMs: number): void {
-  if (state.board.backlog.length >= 5) return;
+  if (state.board.backlog.length >= BACKLOG_LIMIT) return;
 
   state.spawn.nextInMs -= tickMs;
   state.spawn.nextBurstInMs -= tickMs;
@@ -2280,7 +2834,19 @@ function buildLossReport(
   reason: string,
   primaryMetric: RtLossReport["primaryMetric"],
 ): RtLossReport {
-  const lastMissedTasks: RtLossReport["lastMissedTasks"] = [];
+  const lastMissedTasks = state.log
+    .filter(
+      (event) =>
+        event.type === "missed_task_resolved" ||
+        event.type === "missed_minor_hit" ||
+        event.type === "missed_tail_blocked",
+    )
+    .slice(0, 5)
+    .map((event) => ({
+      at: event.at,
+      title: event.title,
+      effects: event.effects,
+    }));
   const lastBadReleases = state.log
     .filter(
       (event) =>
