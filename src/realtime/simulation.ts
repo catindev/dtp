@@ -11,14 +11,16 @@ export const OUTSOURCE_COST_BY_IMPORTANCE: Record<RtSubtaskImportance, number> =
   critical: 6,
 };
 const DAY_REST_STAMINA_BOOST = 35;
-const FIRST_SPAWN_MIN_MS = 110000;
-const FIRST_SPAWN_MAX_MS = 160000;
-const SPAWN_INTERVAL_MIN_MS = 135000;
-const SPAWN_INTERVAL_MAX_MS = 215000;
-const BURST_INTERVAL_MIN_MS = 600000;
-const BURST_INTERVAL_MAX_MS = 840000;
+const FIRST_SPAWN_MIN_MS = 80000;
+const FIRST_SPAWN_MAX_MS = 120000;
+const SPAWN_INTERVAL_MIN_MS = 90000;
+const SPAWN_INTERVAL_MAX_MS = 150000;
+const LOW_WORK_SPAWN_MIN_MS = 25000;
+const LOW_WORK_SPAWN_MAX_MS = 45000;
+const BURST_INTERVAL_MIN_MS = 420000;
+const BURST_INTERVAL_MAX_MS = 660000;
 const WORK_SPEED_MULTIPLIER = 0.38;
-const ANALYSIS_SPEED_MULTIPLIER = 0.46;
+const ANALYSIS_SPEED_MULTIPLIER = 0.24;
 
 export const RT_COLUMNS = ["backlog", "inProgress", "done", "released"] as const;
 export type RtColumn = (typeof RT_COLUMNS)[number];
@@ -38,6 +40,44 @@ export type RtWorkColumn = Extract<RtColumn, "inProgress">;
 export type RtRunStatus = "running" | "won" | "lost";
 export type RtSubtaskRole = "backend" | "frontend" | "design" | "qa" | "sre" | "bugfix";
 export type RtSubtaskImportance = "critical" | "important" | "optional";
+export type RtBlastRadius = "low" | "medium" | "high";
+export type RtReleaseReadiness = "clean" | "risky" | "dirty";
+export type RtRiskReason =
+  | "no_qa"
+  | "no_sre"
+  | "known_bug"
+  | "low_clarity"
+  | "critical_open"
+  | "important_open"
+  | "deadline_pressure"
+  | "blast_radius_high"
+  | "blast_radius_uncovered"
+  | "changed_after_qa"
+  | "not_implemented";
+
+export interface RtReadinessReport {
+  readiness: RtReleaseReadiness;
+  reasons: RtRiskReason[];
+  blastRadius: RtBlastRadius;
+  knownCriticalOpen: number;
+  knownImportantOpen: number;
+  qaCovered: boolean;
+  sreCovered: boolean;
+}
+
+export type RtMoveBlockReason =
+  | "task_missing"
+  | "task_released"
+  | "task_busy"
+  | "released_locked"
+  | "same_column"
+  | "done_reopen_only_to_work"
+  | "backlog_to_done_forbidden";
+
+export interface RtMoveCheck {
+  allowed: boolean;
+  reason?: RtMoveBlockReason;
+}
 
 export interface RtSubtask {
   id: string;
@@ -60,11 +100,47 @@ export interface RtResources {
   processBoost: number;
 }
 
+export type RtReleaseConsequenceCause =
+  | "known_bug"
+  | "changed_after_qa"
+  | "no_qa"
+  | "no_sre"
+  | "critical_open"
+  | "important_open"
+  | "low_clarity"
+  | "deadline_pressure";
+
+export interface RtReleaseConsequence {
+  id: string;
+  sourceTaskId: string;
+  sourceTitle: string;
+  cause: RtReleaseConsequenceCause;
+  symptom: string;
+  generatedTaskId: string | null;
+  effects: string[];
+}
+
+export interface RtMorningReport {
+  id: string;
+  quarter: number;
+  day: number;
+  previousDay: number;
+  at: string;
+  shippedTaskIds: string[];
+  resourceBefore: RtResources;
+  resourceAfter: RtResources;
+  resourceDelta: RtResources;
+  empty: boolean;
+  effects: string[];
+  consequences: RtReleaseConsequence[];
+}
+
 export interface RtTask {
   id: string;
   title: string;
   kind: RtTaskKind;
   domain: string;
+  blastRadius: RtBlastRadius;
   column: RtColumn;
   pressure: number;
   complexity: number;
@@ -73,6 +149,7 @@ export interface RtTask {
   quality: number;
   testCoverage: number;
   bugs: number;
+  changedAfterQa: boolean;
   workDone: boolean;
   subtasks: RtSubtask[];
   currentSubtaskId: string | null;
@@ -85,10 +162,17 @@ export interface RtTask {
   stageProgress: number;
   stageComplete: boolean;
   assignedCharacterId: string | null;
+  outsourcing: RtOutsourcingWork | null;
   released: boolean;
   releaseScore: number | null;
   queuedDeadlineMs: number | null;
   lastNote: string;
+}
+
+export interface RtOutsourcingWork {
+  subtaskId: string;
+  cost: number;
+  progress: number;
 }
 
 export interface RtCharacter {
@@ -102,6 +186,7 @@ export interface RtCharacter {
   burnout: number;
   assignedTaskId: string | null;
   shockGameMinutes: number;
+  exhaustedToday: boolean;
 }
 
 export interface RtEvent {
@@ -171,6 +256,7 @@ export interface RtGameState {
   resources: RtResources;
   quarterGoal: RtQuarterGoal;
   quarterValue: number;
+  morningReport: RtMorningReport | null;
   board: Record<RtColumn, string[]>;
   tasks: Record<string, RtTask>;
   characters: Record<string, RtCharacter>;
@@ -299,6 +385,7 @@ export function createRealtimeState(seed = Date.now()): RtGameState {
       rewardBudget: 2,
     },
     quarterValue: 0,
+    morningReport: null,
     board: createBoard(),
     tasks: {},
     characters: {},
@@ -341,6 +428,34 @@ export function createRealtimeState(seed = Date.now()): RtGameState {
 export function normalizeRealtimeState(state: RtGameState): boolean {
   let changed = false;
   const board = state.board as Record<string, string[] | undefined>;
+  const legacyState = state as RtGameState & {
+    releaseReview?: RtMorningReport | null;
+    morningReport?: RtMorningReport | null;
+  };
+
+  if (!("morningReport" in legacyState)) {
+    state.morningReport = null;
+    changed = true;
+  }
+  if (legacyState.releaseReview && !state.morningReport) {
+    state.morningReport = {
+      ...legacyState.releaseReview,
+      previousDay: legacyState.releaseReview.previousDay ?? legacyState.releaseReview.day,
+      at: "08:00",
+      consequences: legacyState.releaseReview.consequences ?? [],
+    };
+    changed = true;
+  }
+  if (state.morningReport) {
+    if (!state.paused) {
+      state.paused = true;
+      changed = true;
+    }
+    if (state.gameMinuteOfDay !== GAME_DAY_START_MINUTE) {
+      state.gameMinuteOfDay = GAME_DAY_START_MINUTE;
+      changed = true;
+    }
+  }
 
   for (const column of RT_COLUMNS) {
     if (!board[column]) {
@@ -374,6 +489,20 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
   for (const task of Object.values(state.tasks)) {
     const legacyColumn = (task as unknown as { column: string }).column;
     const queueFields = task as RtTask & { queuedDeadlineMs?: number | null };
+    const taskWithBlast = task as RtTask & { blastRadius?: RtBlastRadius };
+    const taskWithOutsourcing = task as RtTask & { outsourcing?: RtOutsourcingWork | null };
+    if (!taskWithBlast.blastRadius) {
+      task.blastRadius = inferBlastRadius(task);
+      changed = true;
+    }
+    if (!("outsourcing" in taskWithOutsourcing)) {
+      task.outsourcing = null;
+      changed = true;
+    }
+    if (typeof (task as RtTask & { changedAfterQa?: boolean }).changedAfterQa !== "boolean") {
+      task.changedAfterQa = false;
+      changed = true;
+    }
     if (!("queuedDeadlineMs" in queueFields)) {
       task.queuedDeadlineMs =
         task.column === "done" || task.released ? Math.max(0, task.deadlineMs) : null;
@@ -399,14 +528,25 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
     if (!task.released && task.bugs > 0 && ensureBugReviewSubtask(task)) {
       changed = true;
     }
+    if (!task.released && task.changedAfterQa && ensureQaRecheckSubtask(task)) {
+      changed = true;
+    }
   }
 
   for (const character of Object.values(state.characters)) {
-    const legacy = character as RtCharacter & { fatigue?: number; morale?: number };
+    const legacy = character as RtCharacter & {
+      exhaustedToday?: boolean;
+      fatigue?: number;
+      morale?: number;
+    };
     if (typeof character.stamina !== "number") {
       const fatigue = typeof legacy.fatigue === "number" ? legacy.fatigue : 0;
       const morale = typeof legacy.morale === "number" ? legacy.morale : 75;
       character.stamina = clamp(100 - fatigue * 0.7 + (morale - 75) * 0.25, 0, 100);
+      changed = true;
+    }
+    if (typeof legacy.exhaustedToday !== "boolean") {
+      character.exhaustedToday = false;
       changed = true;
     }
   }
@@ -436,7 +576,7 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
 
 export function tickRealtime(state: RtGameState, tickMs = TICK_MS): void {
   normalizeRealtimeState(state);
-  if (state.paused || state.status !== "running") return;
+  if (state.morningReport || state.paused || state.status !== "running") return;
 
   state.elapsedRealMs += tickMs;
   const gameMinutes = (tickMs / 1000) * GAME_MINUTES_PER_REAL_SECOND;
@@ -445,16 +585,27 @@ export function tickRealtime(state: RtGameState, tickMs = TICK_MS): void {
   state.gameMinuteOfDay += gameMinutes;
 
   if (crossedReleaseTrain(previousGameMinuteOfDay, state.gameMinuteOfDay)) {
-    runDailyReleaseTrain(state);
-    state.gameMinuteOfDay = GAME_DAY_START_MINUTE;
-    advanceDay(state);
+    openMorningReport(state);
+    checkRunState(state);
+    return;
   }
 
   updateShock(state, gameMinutes);
   updateTaskTimers(state, tickMs);
+  updateOutsourcing(state, tickMs);
   updateAssignments(state, tickMs);
   updateSpawner(state, tickMs);
   checkRunState(state);
+}
+
+export function startDayAfterMorningReport(state: RtGameState): boolean {
+  normalizeRealtimeState(state);
+  if (!state.morningReport || state.status !== "running") return false;
+
+  state.morningReport = null;
+  state.paused = false;
+  checkRunState(state);
+  return true;
 }
 
 export function moveRealtimeTask(
@@ -462,13 +613,12 @@ export function moveRealtimeTask(
   taskId: string,
   targetColumn: RtColumn,
 ): boolean {
+  const moveCheck = canMoveRealtimeTask(state, taskId, targetColumn);
+  if (!moveCheck.allowed && moveCheck.reason !== "same_column") return false;
   const task = state.tasks[taskId];
-  if (!task || task.released || task.assignedCharacterId) return false;
   if (task.column === targetColumn) return true;
-  if (targetColumn === "released") return false;
 
   if (task.column === "done") {
-    if (targetColumn !== "inProgress") return false;
     state.resources.trust = clamp(state.resources.trust - DONE_REWORK_TRUST_COST, 0, 100);
     removeTaskFromBoard(state, taskId);
     task.column = "inProgress";
@@ -488,6 +638,7 @@ export function moveRealtimeTask(
   }
 
   if (targetColumn === "done") {
+    const readiness = releaseReadiness(task);
     removeTaskFromBoard(state, taskId);
     task.column = "done";
     task.stageProgress = 0;
@@ -500,7 +651,12 @@ export function moveRealtimeTask(
       type: "queued_for_release",
       title: `${task.id} queued`,
       body: `${task.title} will ship with the daily release train.`,
-      effects: [`score ${releaseScore(state, task)}`, "deadline locked", "business effects pending"],
+      effects: [
+        `${readiness.readiness} release`,
+        ...readiness.reasons.slice(0, 4).map(formatRiskReason),
+        "deadline locked",
+        "business effects pending",
+      ],
     });
     return true;
   }
@@ -516,6 +672,26 @@ export function moveRealtimeTask(
   return true;
 }
 
+export function canMoveRealtimeTask(
+  state: RtGameState,
+  taskId: string,
+  targetColumn: RtColumn,
+): RtMoveCheck {
+  const task = state.tasks[taskId];
+  if (!task) return { allowed: false, reason: "task_missing" };
+  if (task.released) return { allowed: false, reason: "task_released" };
+  if (taskBusy(task)) return { allowed: false, reason: "task_busy" };
+  if (task.column === targetColumn) return { allowed: true, reason: "same_column" };
+  if (targetColumn === "released") return { allowed: false, reason: "released_locked" };
+  if (task.column === "done" && targetColumn !== "inProgress") {
+    return { allowed: false, reason: "done_reopen_only_to_work" };
+  }
+  if (task.column === "backlog" && targetColumn === "done") {
+    return { allowed: false, reason: "backlog_to_done_forbidden" };
+  }
+  return { allowed: true };
+}
+
 function getAssignmentPlan(
   state: RtGameState,
   characterId: string,
@@ -524,7 +700,7 @@ function getAssignmentPlan(
   const character = state.characters[characterId];
   const task = state.tasks[taskId];
   if (!character || !task) return null;
-  if (character.assignedTaskId || task.assignedCharacterId) return null;
+  if (character.assignedTaskId || character.exhaustedToday || taskBusy(task)) return null;
   if (!isWorkColumn(task.column) || task.released) return null;
 
   const subtask = chooseSubtaskForAssignment(task, character);
@@ -536,7 +712,7 @@ function getAssignmentPlan(
 
 function getOutsourcePlan(state: RtGameState, taskId: string): RtOutsourcePlan | null {
   const task = state.tasks[taskId];
-  if (!task || task.assignedCharacterId || task.released || !isWorkColumn(task.column)) {
+  if (!task || taskBusy(task) || task.released || !isWorkColumn(task.column)) {
     return null;
   }
   const subtask = chooseSubtaskForOutsource(state, task, state.resources.budget);
@@ -598,33 +774,24 @@ export function outsourceTaskWork(state: RtGameState, taskId: string): boolean {
   const { task, subtask, cost } = plan;
 
   state.resources.budget = Math.max(0, state.resources.budget - cost);
-  subtask.done = true;
-  subtask.progress = 100;
-  subtask.completedBy = "outsourcing";
-  subtask.offRole = false;
-
-  const bugfixWork = isBugfixWork(subtask);
-  const qualityGain = bugfixWork ? 18 : subtask.importance === "critical" ? 16 : 11;
-  if (bugfixWork) {
-    task.bugs = Math.max(0, task.bugs - 1);
-  }
-  task.quality = clamp(task.quality + qualityGain, 0, 100);
-  task.workDone = task.subtasks.some((candidate) => candidate.done && candidate.role !== "qa");
-  task.currentSubtaskId = null;
-  task.stageProgress = 100;
-  task.stageComplete = true;
-  task.lastNote = `Outsourcing completed ${subtask.role} work.`;
+  task.outsourcing = {
+    subtaskId: subtask.id,
+    cost,
+    progress: subtask.progress,
+  };
+  task.currentSubtaskId = subtask.id;
+  task.stageProgress = subtask.progress;
+  task.stageComplete = false;
+  task.lastNote = `Outsource is working on ${subtask.role}: ${subtask.title}.`;
 
   pushEvent(state, {
-    type: "outsourced",
+    type: "outsourcing_started",
     title: `${task.id} outsourced`,
-    body: `External contractor completed ${subtask.title}.`,
+    body: `External contractor started ${subtask.title}.`,
     effects: [
       `budget -${cost}`,
       `subtask ${subtask.role}`,
       subtask.importance,
-      `quality ${task.quality}`,
-      `bugs ${task.bugs}`,
     ],
   });
 
@@ -664,6 +831,7 @@ export function releaseRealtimeTask(state: RtGameState, taskId: string): boolean
   if (!task || task.released || task.assignedCharacterId) return false;
 
   const postmortem = buildReleasePostmortem(task);
+  const readiness = releaseReadiness(task);
   const score = releaseScore(state, task);
   const valueGain = Math.max(0, Math.round(task.value * (score / 100)));
   const budgetGain = releaseBudgetGain(valueGain, score);
@@ -698,7 +866,7 @@ export function releaseRealtimeTask(state: RtGameState, taskId: string): boolean
     title: `${task.id} released`,
     body: releaseNote(score),
     effects: [
-      `score ${score}`,
+      `${readiness.readiness} release`,
       `value +${valueGain}`,
       ...(budgetGain > 0 ? [`budget +${budgetGain}`] : []),
       `trust ${formatDelta(trustDelta)}`,
@@ -707,10 +875,6 @@ export function releaseRealtimeTask(state: RtGameState, taskId: string): boolean
       ...(sreSafety ? ["SRE blast radius reduced"] : ["no SRE safety"]),
     ],
   });
-
-  if (score < 55) {
-    scheduleBadFollowUp(state, task);
-  }
 
   return true;
 }
@@ -746,6 +910,222 @@ export function runDailyReleaseTrain(state: RtGameState): string[] {
   return shipped;
 }
 
+function openMorningReport(state: RtGameState): void {
+  state.gameMinuteOfDay = RELEASE_TRAIN_GAME_MINUTE;
+
+  const releaseQuarter = state.quarter;
+  const releaseDay = state.day;
+  const resourceBefore = copyResources(state.resources);
+  const shippedTaskIds = runDailyReleaseTrain(state);
+  advanceDay(state);
+  state.gameMinuteOfDay = GAME_DAY_START_MINUTE;
+  const consequences = generateMorningConsequences(state, shippedTaskIds);
+  const resourceAfter = copyResources(state.resources);
+  const resourceDelta = diffResources(resourceBefore, resourceAfter);
+  const effects = morningReportEffects(resourceDelta);
+
+  state.morningReport = {
+    id: `morning-${releaseQuarter}-${releaseDay}-${state.elapsedRealMs}`,
+    quarter: state.quarter,
+    day: state.day,
+    previousDay: releaseDay,
+    at: formatGameTime(state),
+    shippedTaskIds,
+    resourceBefore,
+    resourceAfter,
+    resourceDelta,
+    empty: shippedTaskIds.length === 0,
+    effects,
+    consequences,
+  };
+  state.paused = true;
+
+  pushEvent(state, {
+    type: "morning_report_opened",
+    title: `Morning briefing Day ${state.day}`,
+    body: shippedTaskIds.length > 0
+      ? `${shippedTaskIds.length} task(s) shipped yesterday. ${consequences.length} consequence(s) shaped today's backlog.`
+      : "No tasks shipped yesterday. The team starts with the existing backlog.",
+    effects: [
+      ...effects,
+      ...(consequences.length > 0 ? [`consequences ${consequences.length}`] : ["no release fallout"]),
+    ],
+  });
+}
+
+function copyResources(resources: RtResources): RtResources {
+  return { ...resources };
+}
+
+function diffResources(before: RtResources, after: RtResources): RtResources {
+  return {
+    trust: after.trust - before.trust,
+    debt: after.debt - before.debt,
+    value: after.value - before.value,
+    clients: after.clients - before.clients,
+    budget: after.budget - before.budget,
+    processBoost: after.processBoost - before.processBoost,
+  };
+}
+
+function morningReportEffects(delta: RtResources): string[] {
+  const effects = [
+    delta.value !== 0 ? `value ${formatDelta(delta.value)}` : null,
+    delta.budget !== 0 ? `budget ${formatDelta(delta.budget)}` : null,
+    delta.trust !== 0 ? `trust ${formatDelta(delta.trust)}` : null,
+    delta.clients !== 0 ? `clients ${formatDelta(delta.clients)}` : null,
+    delta.debt !== 0 ? `debt ${formatDelta(delta.debt)}` : null,
+    delta.processBoost !== 0 ? `boost ${formatDelta(delta.processBoost)}` : null,
+  ].filter((effect): effect is string => Boolean(effect));
+  return effects.length > 0 ? effects : ["no business effects"];
+}
+
+function generateMorningConsequences(
+  state: RtGameState,
+  shippedTaskIds: string[],
+): RtReleaseConsequence[] {
+  const consequences: RtReleaseConsequence[] = [];
+  for (const taskId of shippedTaskIds) {
+    const task = state.tasks[taskId];
+    if (!task) continue;
+    const readiness = releaseReadiness(task);
+    const score = task.releaseScore ?? releaseScore(state, task);
+    if (!shouldCreateReleaseConsequence(state, readiness.readiness, score)) continue;
+
+    const cause = primaryConsequenceCause(readiness.reasons);
+    const symptom = releaseConsequenceSymptom(task, cause);
+    const followUp = generateTask(state, consequenceTaskKind(cause, score));
+    const originalFollowUpId = followUp.id;
+    const sequence = originalFollowUpId.match(/\d+$/)?.[0] ?? String(state.nextTaskId - 1).padStart(3, "0");
+    followUp.domain = task.domain;
+    followUp.id = `${domainPrefixes[task.domain] ?? "INC"}-${sequence}`;
+    followUp.title = `${followUp.id}: ${symptom}`;
+    for (const subtask of followUp.subtasks) {
+      subtask.id = subtask.id.replace(originalFollowUpId, followUp.id);
+    }
+    followUp.pressure = clamp(task.pressure + 1, 1, 6);
+    followUp.complexity = clamp(Math.ceil((task.complexity + 2) / 2), 1, 6);
+    followUp.value = Math.max(4, Math.round(task.value * 0.35));
+    followUp.clarity = clamp(72 - consequences.length * 4, 45, 92);
+    followUp.quality = Math.max(8, Math.round(followUp.clarity * 0.22));
+    followUp.blastRadius = task.blastRadius === "high" ? "high" : "medium";
+    followUp.lastNote = `Caused by yesterday's ${task.id}: ${consequenceCauseText(cause)}.`;
+    followUp.postmortem = [`Source release: ${task.id}.`, `Cause: ${consequenceCauseText(cause)}.`];
+
+    const added = addTask(state, followUp);
+    const generatedTaskId = added ? followUp.id : null;
+    const effects = [
+      `source ${task.id}`,
+      `cause ${consequenceCauseText(cause)}`,
+      ...(generatedTaskId ? [`created ${generatedTaskId}`] : ["backlog full"]),
+    ];
+
+    consequences.push({
+      id: `${task.id}-fallout-${state.day}-${consequences.length + 1}`,
+      sourceTaskId: task.id,
+      sourceTitle: task.title,
+      cause,
+      symptom,
+      generatedTaskId,
+      effects,
+    });
+
+    pushEvent(state, {
+      type: "release_consequence_spawned",
+      title: generatedTaskId
+        ? `${task.id} caused ${generatedTaskId}`
+        : `${task.id} fallout delayed`,
+      body: `${symptom} because yesterday's ${task.id} shipped with ${consequenceCauseText(cause)}.`,
+      effects,
+    });
+  }
+  return consequences;
+}
+
+function shouldCreateReleaseConsequence(
+  state: RtGameState,
+  readiness: RtReleaseReadiness,
+  score: number,
+): boolean {
+  if (score < 55 || readiness === "dirty") return true;
+  if (score < 70 || readiness === "risky") return chance(state, 0.55);
+  return false;
+}
+
+function primaryConsequenceCause(reasons: RtRiskReason[]): RtReleaseConsequenceCause {
+  if (reasons.includes("known_bug")) return "known_bug";
+  if (reasons.includes("changed_after_qa")) return "changed_after_qa";
+  if (reasons.includes("no_qa")) return "no_qa";
+  if (reasons.includes("blast_radius_uncovered") || reasons.includes("no_sre")) return "no_sre";
+  if (reasons.includes("critical_open")) return "critical_open";
+  if (reasons.includes("important_open")) return "important_open";
+  if (reasons.includes("low_clarity")) return "low_clarity";
+  if (reasons.includes("deadline_pressure")) return "deadline_pressure";
+  return "no_qa";
+}
+
+function consequenceTaskKind(
+  cause: RtReleaseConsequenceCause,
+  score: number,
+): RtTaskKind {
+  if (cause === "known_bug" || cause === "changed_after_qa") return "bug";
+  if (cause === "no_sre" || score < 45) return "incident";
+  if (cause === "low_clarity") return "feature";
+  return "incident";
+}
+
+function releaseConsequenceSymptom(
+  task: RtTask,
+  cause: RtReleaseConsequenceCause,
+): string {
+  const area =
+    task.domain === "payments"
+      ? "Partner payouts"
+      : task.domain === "auth"
+        ? "Partner login"
+        : task.domain === "admin"
+          ? "Admin workflow"
+          : task.domain === "search"
+            ? "Search results"
+            : task.domain === "reports"
+              ? "Partner report export"
+              : "Customer notifications";
+  const failure =
+    cause === "known_bug"
+      ? "known bug is still visible"
+      : cause === "changed_after_qa"
+        ? "regressed after untested late changes"
+        : cause === "no_qa"
+          ? "started failing without QA coverage"
+          : cause === "no_sre"
+            ? "created production instability"
+            : cause === "low_clarity"
+              ? "does not match the business request"
+              : "broke after unfinished release work";
+  return `${area}: ${failure} after ${task.id}`;
+}
+
+function consequenceCauseText(cause: RtReleaseConsequenceCause): string {
+  switch (cause) {
+    case "known_bug":
+      return "known bugs";
+    case "changed_after_qa":
+      return "changes after QA";
+    case "no_qa":
+      return "no QA pass";
+    case "no_sre":
+      return "missing SRE safety";
+    case "critical_open":
+      return "open critical work";
+    case "important_open":
+      return "open important work";
+    case "low_clarity":
+      return "low clarity";
+    case "deadline_pressure":
+      return "deadline pressure";
+  }
+}
+
 export function formatGameTime(state: RtGameState): string {
   const hour = Math.floor(state.gameMinuteOfDay / 60);
   const minute = Math.floor(state.gameMinuteOfDay % 60);
@@ -763,6 +1143,56 @@ export function isWorkColumn(column: RtColumn): column is RtWorkColumn {
 
 export function taskDeadlineRatio(task: RtTask): number {
   return task.deadlineMaxMs <= 0 ? 0 : task.deadlineMs / task.deadlineMaxMs;
+}
+
+export function releaseReadiness(task: RtTask): RtReadinessReport {
+  const knownCriticalOpen = task.subtasks.filter(
+    (subtask) => subtask.revealed && subtask.importance === "critical" && !subtask.done,
+  ).length;
+  const knownImportantOpen = task.subtasks.filter(
+    (subtask) => subtask.revealed && subtask.importance === "important" && !subtask.done,
+  ).length;
+  const qaCovered = task.testCoverage >= 45;
+  const sreCovered = task.subtasks.some(
+    (subtask) => subtask.revealed && subtask.role === "sre" && subtask.done,
+  );
+  const deadlineRatio = taskDeadlineRatio(task);
+  const reasons = uniqueReasons([
+    !task.workDone ? "not_implemented" : null,
+    knownCriticalOpen > 0 ? "critical_open" : null,
+    knownImportantOpen > 0 ? "important_open" : null,
+    task.bugs > 0 ? "known_bug" : null,
+    !qaCovered ? "no_qa" : null,
+    task.clarity < 55 ? "low_clarity" : null,
+    deadlineRatio <= 0.18 ? "deadline_pressure" : null,
+    task.blastRadius === "high" ? "blast_radius_high" : null,
+    task.blastRadius === "high" && !sreCovered ? "blast_radius_uncovered" : null,
+    task.changedAfterQa ? "changed_after_qa" : null,
+    task.subtasks.some((subtask) => subtask.revealed && subtask.role === "sre") && !sreCovered
+      ? "no_sre"
+      : null,
+  ]);
+
+  const readiness =
+    !task.workDone ||
+    knownCriticalOpen > 0 ||
+    task.bugs > 0 ||
+    task.changedAfterQa ||
+    (task.blastRadius === "high" && !sreCovered && !qaCovered)
+      ? "dirty"
+      : reasons.length > 0
+        ? "risky"
+        : "clean";
+
+  return {
+    readiness,
+    reasons,
+    blastRadius: task.blastRadius,
+    knownCriticalOpen,
+    knownImportantOpen,
+    qaCovered,
+    sreCovered,
+  };
 }
 
 export function releaseScore(state: RtGameState, task: RtTask): number {
@@ -812,6 +1242,7 @@ function createCharacter(state: RtGameState, role: RtRole): RtCharacter {
     burnout: 0,
     assignedTaskId: null,
     shockGameMinutes: 0,
+    exhaustedToday: false,
   };
 }
 
@@ -836,6 +1267,7 @@ function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTask {
     title: `${id}: ${pickOne(state, titles[kind])}`,
     kind,
     domain,
+    blastRadius: chooseBlastRadius(state, kind, complexity, pressure),
     column: "backlog",
     pressure,
     complexity,
@@ -844,6 +1276,7 @@ function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTask {
     quality: Math.max(0, Math.round(clarity * 0.25)),
     testCoverage: 0,
     bugs: 0,
+    changedAfterQa: false,
     workDone: false,
     subtasks,
     currentSubtaskId: null,
@@ -856,6 +1289,7 @@ function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTask {
     stageProgress: 0,
     stageComplete: false,
     assignedCharacterId: null,
+    outsourcing: null,
     released: false,
     releaseScore: null,
     queuedDeadlineMs: null,
@@ -1014,7 +1448,11 @@ function updateAssignments(state: RtGameState, tickMs: number): void {
     character.stamina = clamp(
       character.stamina -
         tickSeconds *
-          (0.28 + task.pressure * 0.045 + task.complexity * 0.02 + (offRole ? 0.12 : 0)),
+          (0.28 +
+            task.pressure * 0.045 +
+            task.complexity * 0.02 +
+            (stage === "analysis" ? 0.22 : 0) +
+            (offRole ? 0.12 : 0)),
       0,
       100,
     );
@@ -1029,8 +1467,108 @@ function updateAssignments(state: RtGameState, tickMs: number): void {
 
     if (task.stageProgress >= 100) {
       completeStage(state, task, character, stage);
+    } else if (character.stamina <= 0) {
+      exhaustCharacterForDay(state, task, character);
     }
   }
+}
+
+function exhaustCharacterForDay(
+  state: RtGameState,
+  task: RtTask,
+  character: RtCharacter,
+): void {
+  character.exhaustedToday = true;
+  character.assignedTaskId = null;
+  task.assignedCharacterId = null;
+  task.stageComplete = false;
+  task.lastNote = `${character.name} is exhausted and cannot continue today.`;
+  pushEvent(state, {
+    type: "character_exhausted",
+    title: `${character.name} exhausted`,
+    body: `${character.name} hit zero stamina while working on ${task.title}.`,
+    effects: ["blocked until tomorrow", `task ${task.id}`],
+  });
+}
+
+function updateOutsourcing(state: RtGameState, tickMs: number): void {
+  const tickSeconds = tickMs / 1000;
+  for (const task of Object.values(state.tasks)) {
+    if (!task.outsourcing || !isWorkColumn(task.column)) continue;
+    const subtask = task.subtasks.find((candidate) => candidate.id === task.outsourcing?.subtaskId);
+    if (!subtask || subtask.done) {
+      task.outsourcing = null;
+      task.currentSubtaskId = null;
+      task.stageProgress = 0;
+      continue;
+    }
+
+    const costFactor = 1 + task.outsourcing.cost * 0.08;
+    const importanceFactor =
+      subtask.importance === "critical" ? 0.88 : subtask.importance === "important" ? 1 : 1.12;
+    const speed =
+      (3.8 + OUTSOURCE_COST_BY_IMPORTANCE[subtask.importance] * 0.6) *
+      costFactor *
+      importanceFactor *
+      WORK_SPEED_MULTIPLIER;
+    const nextProgress = clamp(
+      task.outsourcing.progress + (speed * tickSeconds) / (1 + task.complexity * 0.26),
+      0,
+      100,
+    );
+    task.outsourcing.progress = nextProgress;
+    task.stageProgress = nextProgress;
+    subtask.progress = nextProgress;
+
+    if (nextProgress >= 100) {
+      completeOutsourcedWork(state, task, subtask, task.outsourcing.cost);
+    }
+  }
+}
+
+function completeOutsourcedWork(
+  state: RtGameState,
+  task: RtTask,
+  subtask: RtSubtask,
+  cost: number,
+): void {
+  subtask.done = true;
+  subtask.progress = 100;
+  subtask.completedBy = "outsourcing";
+  subtask.offRole = false;
+
+  const bugfixWork = isBugfixWork(subtask);
+  if (task.testCoverage > 0 && subtask.role !== "qa") {
+    task.changedAfterQa = true;
+    task.testCoverage = Math.min(task.testCoverage, 35);
+    ensureQaRecheckSubtask(task);
+    task.postmortem.push("Outsourced work changed the task after QA, so prior test coverage became stale.");
+  }
+  const qualityGain = bugfixWork ? 18 : subtask.importance === "critical" ? 16 : 11;
+  if (bugfixWork) {
+    task.bugs = Math.max(0, task.bugs - 1);
+  }
+  task.quality = clamp(task.quality + qualityGain, 0, 100);
+  task.workDone = task.subtasks.some((candidate) => candidate.done && candidate.role !== "qa");
+  task.currentSubtaskId = null;
+  task.outsourcing = null;
+  task.stageProgress = 100;
+  task.stageComplete = true;
+  task.lastNote = `Outsourcing completed ${subtask.role} work.`;
+
+  pushEvent(state, {
+    type: "outsourced",
+    title: `${task.id} outsourced`,
+    body: `External contractor completed ${subtask.title}.`,
+    effects: [
+      `budget -${cost}`,
+      `subtask ${subtask.role}`,
+      subtask.importance,
+      `quality ${task.quality}`,
+      `bugs ${task.bugs}`,
+      ...(task.changedAfterQa ? ["QA recheck required"] : []),
+    ],
+  });
 }
 
 function completeStage(
@@ -1092,6 +1630,7 @@ function completeStage(
           (offRole ? 0.72 : 1),
       );
       task.testCoverage = clamp(task.testCoverage + coverageGain, 0, 100);
+      task.changedAfterQa = false;
       const discoveredBugs = discoverBugsDuringQa(state, task);
       task.bugs += discoveredBugs;
       const triagedBugs = Math.min(
@@ -1128,6 +1667,12 @@ function completeStage(
     }
 
     const importanceQuality = subtask.importance === "critical" ? 14 : subtask.importance === "important" ? 9 : 5;
+    if (task.testCoverage > 0) {
+      task.changedAfterQa = true;
+      task.testCoverage = Math.min(task.testCoverage, 35);
+      ensureQaRecheckSubtask(task);
+      task.postmortem.push("Implementation changed after QA, so prior test coverage became stale.");
+    }
     const rawQuality =
       task.clarity * 0.55 +
       roleFit * 9 +
@@ -1171,6 +1716,7 @@ function completeStage(
         `quality ${task.quality}`,
         `bugs ${task.bugs}`,
         ...(introducedBugs > 0 ? [`bugs +${introducedBugs}`] : []),
+        ...(task.changedAfterQa ? ["QA recheck required"] : []),
       ],
     });
     return;
@@ -1178,6 +1724,7 @@ function completeStage(
 
   const coverageGain = 24 + character.skill.test * 8 + randomInt(state, 0, 8);
   task.testCoverage = clamp(task.testCoverage + coverageGain, 0, 100);
+  task.changedAfterQa = false;
   const discoveredBugs = discoverBugsDuringQa(state, task);
   task.bugs += discoveredBugs;
   const triagedBugs = Math.min(
@@ -1307,6 +1854,10 @@ function taskReadyForDone(task: RtTask): boolean {
   return task.workDone && getOpenTodoSubtasks(task).length === 0 && task.bugs === 0;
 }
 
+function taskBusy(task: RtTask): boolean {
+  return Boolean(task.assignedCharacterId || task.outsourcing);
+}
+
 function getOpenTodoSubtasks(task: RtTask): RtSubtask[] {
   return task.subtasks.filter((subtask) => subtask.revealed && !subtask.done);
 }
@@ -1376,6 +1927,28 @@ function ensureBugReviewSubtask(task: RtTask): RtSubtask | null {
     title: "Triage reported bugs",
     role: "qa",
     importance: task.bugs >= 2 ? "critical" : "important",
+    revealed: true,
+    done: false,
+    progress: 0,
+    completedBy: null,
+    offRole: false,
+  };
+  task.subtasks.push(subtask);
+  return subtask;
+}
+
+function ensureQaRecheckSubtask(task: RtTask): RtSubtask | null {
+  if (!task.changedAfterQa) return null;
+  const openQa = task.subtasks.find(
+    (subtask) => subtask.role === "qa" && subtask.revealed && !subtask.done,
+  );
+  if (openQa) return null;
+
+  const subtask: RtSubtask = {
+    id: `${task.id}-Q${task.subtasks.length + 1}`,
+    title: "Re-test changes after rework",
+    role: "qa",
+    importance: "important",
     revealed: true,
     done: false,
     progress: 0,
@@ -1489,7 +2062,7 @@ function buildReleasePostmortem(task: RtTask): string[] {
     notes.push(`${openImportant.length} important subtask(s) were still open.`);
   }
   if (hiddenOpen.length > 0) {
-    notes.push(`${hiddenOpen.length} hidden subtask(s) were never discovered by analysis.`);
+    notes.push("Analysis was incomplete; some work was never discovered.");
   }
   if (task.bugs > 0) {
     notes.push(`${task.bugs} known bug(s) shipped.`);
@@ -1511,6 +2084,11 @@ function updateSpawner(state: RtGameState, tickMs: number): void {
 
   state.spawn.nextInMs -= tickMs;
   state.spawn.nextBurstInMs -= tickMs;
+
+  const activeWorkCount = state.board.backlog.length + state.board.inProgress.length;
+  if (activeWorkCount <= 1 && state.spawn.nextInMs > LOW_WORK_SPAWN_MAX_MS) {
+    state.spawn.nextInMs = randomBetween(state, LOW_WORK_SPAWN_MIN_MS, LOW_WORK_SPAWN_MAX_MS);
+  }
 
   if (state.spawn.nextBurstInMs <= 0) {
     const count = Math.min(1, 5 - state.board.backlog.length);
@@ -1535,7 +2113,7 @@ function updateSpawner(state: RtGameState, tickMs: number): void {
 function updateShock(state: RtGameState, gameMinutes: number): void {
   for (const character of Object.values(state.characters)) {
     character.shockGameMinutes = Math.max(0, character.shockGameMinutes - gameMinutes);
-    if (!character.assignedTaskId) {
+    if (!character.assignedTaskId && !character.exhaustedToday) {
       character.stamina = clamp(character.stamina + gameMinutes * 0.12, 0, 100);
     }
   }
@@ -1565,6 +2143,7 @@ function restTeamForNewDay(state: RtGameState): void {
   for (const character of Object.values(state.characters)) {
     character.stamina = clamp(character.stamina + DAY_REST_STAMINA_BOOST, 0, 100);
     character.shockGameMinutes = 0;
+    character.exhaustedToday = false;
   }
 }
 
@@ -1598,13 +2177,69 @@ function resolveQuarter(state: RtGameState): void {
   };
 }
 
-function scheduleBadFollowUp(state: RtGameState, source: RtTask): void {
-  if (!chance(state, 0.65)) return;
-  const followUp = generateTask(state, source.bugs > 1 ? "bug" : "incident");
-  followUp.title = `${followUp.id}: Follow up ${source.id}`;
-  followUp.pressure = clamp(source.pressure + 1, 1, 6);
-  followUp.clarity = clamp(followUp.clarity - 20, 5, 100);
-  addTask(state, followUp);
+function chooseBlastRadius(
+  state: RtGameState,
+  kind: RtTaskKind,
+  complexity: number,
+  pressure: number,
+): RtBlastRadius {
+  const base =
+    kind === "incident" || kind === "performance" || kind === "compliance"
+      ? 2
+      : kind === "integration" || kind === "techDebt"
+        ? 1
+        : 0;
+  const score = base + (complexity >= 4 ? 1 : 0) + (pressure >= 4 ? 1 : 0) + (chance(state, 0.24) ? 1 : 0);
+  if (score >= 3) return "high";
+  if (score >= 1) return "medium";
+  return "low";
+}
+
+function inferBlastRadius(task: RtTask): RtBlastRadius {
+  if (
+    task.kind === "incident" ||
+    task.kind === "performance" ||
+    task.kind === "compliance" ||
+    task.pressure >= 5 ||
+    task.complexity >= 5
+  ) {
+    return "high";
+  }
+  if (task.kind === "integration" || task.kind === "techDebt" || task.pressure >= 3) {
+    return "medium";
+  }
+  return "low";
+}
+
+function uniqueReasons(reasons: Array<RtRiskReason | null>): RtRiskReason[] {
+  return Array.from(new Set(reasons.filter((reason): reason is RtRiskReason => Boolean(reason))));
+}
+
+function formatRiskReason(reason: RtRiskReason): string {
+  switch (reason) {
+    case "no_qa":
+      return "no QA pass";
+    case "no_sre":
+      return "SRE safety missing";
+    case "known_bug":
+      return "known bugs";
+    case "low_clarity":
+      return "low clarity";
+    case "critical_open":
+      return "known critical work open";
+    case "important_open":
+      return "known important work open";
+    case "deadline_pressure":
+      return "deadline pressure";
+    case "blast_radius_high":
+      return "high blast radius";
+    case "blast_radius_uncovered":
+      return "failure impact high";
+    case "changed_after_qa":
+      return "changed after QA";
+    case "not_implemented":
+      return "implementation incomplete";
+  }
 }
 
 function checkRunState(state: RtGameState): void {
@@ -1724,6 +2359,10 @@ function randomSpawnInterval(state: RtGameState): number {
   const trustPressure = state.resources.trust < 40 ? 0.85 : state.resources.trust < 60 ? 0.95 : 1;
   const debtPressure = state.resources.debt > 60 ? 0.9 : 1;
   const backlogRelief = state.board.backlog.length >= 4 ? 1.6 : state.board.backlog.length >= 3 ? 1.25 : 1;
+  const activeWorkCount = state.board.backlog.length + state.board.inProgress.length;
+  if (activeWorkCount <= 1) {
+    return Math.round(randomBetween(state, LOW_WORK_SPAWN_MIN_MS, LOW_WORK_SPAWN_MAX_MS));
+  }
   return Math.round(
     randomBetween(state, SPAWN_INTERVAL_MIN_MS, SPAWN_INTERVAL_MAX_MS) *
       trustPressure *

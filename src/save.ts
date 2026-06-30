@@ -3,7 +3,7 @@ import {
   type RtGameState,
 } from "./realtime/simulation";
 
-export const SAVE_SCHEMA_VERSION = "rt-board-v1";
+export const SAVE_SCHEMA_VERSION = "rt-board-v2";
 export const AUTOSAVE_KEY = "dtp.autosave.rt-board";
 export const APP_COMMIT = __DTP_COMMIT__;
 

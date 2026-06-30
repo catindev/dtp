@@ -8,6 +8,7 @@ import {
   assignCharacterToTask,
   cancelTaskWork,
   canAssignCharacterToTask,
+  canMoveRealtimeTask,
   canOutsourceTaskWork,
   createRealtimeState,
   formatGameTime,
@@ -15,13 +16,17 @@ import {
   moveRealtimeTask,
   normalizeRealtimeState,
   outsourceTaskWork,
-  releaseScore,
+  releaseReadiness,
+  startDayAfterMorningReport,
   taskDeadlineRatio,
   tickRealtime,
   type RtCharacter,
   type RtColumn,
   type RtEvent,
   type RtGameState,
+  type RtMorningReport,
+  type RtReadinessReport,
+  type RtRiskReason,
   type RtSubtask,
   type RtTask,
 } from "./realtime/simulation";
@@ -56,31 +61,12 @@ interface FrontendLogEntry {
 }
 
 type AppScreen = "menu" | "game";
-type ReleaseCardPhase = "release-launching" | "release-landed";
-
-interface ReleaseAnimationTask {
-  id: string;
-  title: string;
-  effects: string[];
-}
-
-interface ReleaseAnimationState {
-  tasks: ReleaseAnimationTask[];
-  activeIndex: number;
-  visibleReleasedCount: number;
-  day: number;
-  quarter: number;
-}
 
 type ActiveDrag =
   | { type: "task"; taskId: string }
   | { type: "character"; characterId: string }
   | { type: "outsourcing" }
   | null;
-
-const RELEASE_CARD_ANIMATION_MS = 920;
-const RELEASE_CARD_LAND_MS = 560;
-const RELEASE_WRAPUP_MS = 760;
 
 export function App() {
   const initialAutosaveRef = useRef<ReturnType<typeof loadSavedRun> | null>(null);
@@ -102,13 +88,9 @@ export function App() {
   );
   const [flashTaskId, setFlashTaskId] = useState<string | null>(null);
   const [bounceTaskIds, setBounceTaskIds] = useState<Set<string>>(() => new Set());
-  const [releaseAnimation, setReleaseAnimation] = useState<ReleaseAnimationState | null>(null);
   const flashTimer = useRef<number | null>(null);
   const bounceTimers = useRef<Record<string, number>>({});
   const autosaveTimer = useRef<number | null>(null);
-  const releaseAnimationTimers = useRef<number[]>([]);
-  const releaseAnimationRef = useRef<ReleaseAnimationState | null>(null);
-  const seenReleasedIdsRef = useRef(new Set(game.board.released));
   const latestGameRef = useRef(game);
   const sessionIdRef = useRef(restoredSave?.sessionId ?? createSessionId());
   const loggedEventKeysRef = useRef(
@@ -119,8 +101,9 @@ export function App() {
   );
   const activeDragRef = useRef<ActiveDrag>(null);
   const selectedTask = selectedTaskId ? game.tasks[selectedTaskId] : null;
+  const morningReport = game.morningReport;
   const interactionBlocked =
-    screen !== "game" || game.paused || game.status !== "running" || Boolean(releaseAnimation);
+    screen !== "game" || game.paused || game.status !== "running" || Boolean(morningReport);
 
   useEffect(() => {
     if (screen !== "game") return;
@@ -128,7 +111,6 @@ export function App() {
       setGame((current) => {
         const draft = structuredClone(current) as RtGameState;
         const normalized = normalizeRealtimeState(draft);
-        if (releaseAnimationRef.current) return normalized ? draft : current;
         if (draft.paused || draft.status !== "running") return normalized ? draft : current;
         tickRealtime(draft, TICK_MS);
         return draft;
@@ -138,14 +120,9 @@ export function App() {
     return () => window.clearInterval(id);
   }, [screen]);
 
-  useEffect(() => {
-    releaseAnimationRef.current = releaseAnimation;
-  }, [releaseAnimation]);
-
   useEffect(
     () => () => {
       if (autosaveTimer.current) window.clearTimeout(autosaveTimer.current);
-      clearReleaseAnimationTimers();
       clearBounceTimers();
     },
     [],
@@ -154,22 +131,6 @@ export function App() {
   useEffect(() => {
     latestGameRef.current = game;
   }, [game]);
-
-  useEffect(() => {
-    if (screen !== "game") return;
-    const nextReleasedIds = new Set(game.board.released);
-    const freshIds = game.board.released.filter((taskId) => !seenReleasedIdsRef.current.has(taskId));
-    seenReleasedIdsRef.current = nextReleasedIds;
-
-    if (freshIds.length === 0) return;
-    startReleaseAnimation(
-      freshIds.map((taskId) => ({
-        id: taskId,
-        title: game.tasks[taskId]?.title.replace(`${taskId}: `, "") ?? taskId,
-        effects: releaseEffectsForTask(game, taskId),
-      })),
-    );
-  }, [game.board.released, game.tasks, screen]);
 
   useEffect(() => {
     setGame((current) => {
@@ -263,7 +224,7 @@ export function App() {
         screen !== "game" ||
         current.paused ||
         current.status !== "running" ||
-        releaseAnimationRef.current
+        current.morningReport
       ) {
         return current;
       }
@@ -281,12 +242,8 @@ export function App() {
     sessionIdRef.current = sessionId;
     loggedEventKeysRef.current = new Set();
     animatedWorkEventKeysRef.current = new Set();
-    seenReleasedIdsRef.current = new Set(next.board.released);
     activeDragRef.current = null;
-    clearReleaseAnimationTimers();
     clearBounceTimers();
-    releaseAnimationRef.current = null;
-    setReleaseAnimation(null);
     setBounceTaskIds(new Set());
     setGame(next);
     setSelectedTaskId(next.board.backlog[0] ?? null);
@@ -301,6 +258,7 @@ export function App() {
   }
 
   function togglePause() {
+    if (game.morningReport) return;
     logAction(sessionIdRef.current, game.paused ? "resume_clicked" : "pause_clicked", {
       gameTime: formatGameTime(game),
       status: game.status,
@@ -312,6 +270,26 @@ export function App() {
 
   function newRun() {
     startRun("new_run_clicked");
+  }
+
+  function startBriefedDay() {
+    const currentReport = latestGameRef.current.morningReport;
+    if (!currentReport) return;
+    setGame((current) => {
+      const draft = structuredClone(current) as RtGameState;
+      normalizeRealtimeState(draft);
+      const continued = startDayAfterMorningReport(draft);
+      return continued ? draft : current;
+    });
+    logAction(sessionIdRef.current, "morning_report_start_day_clicked", {
+      reportId: currentReport.id,
+      quarter: currentReport.quarter,
+      day: currentReport.day,
+      previousDay: currentReport.previousDay,
+      shippedTaskIds: currentReport.shippedTaskIds,
+      effects: currentReport.effects,
+      consequences: currentReport.consequences,
+    });
   }
 
   function beginTaskDrag(event: DragEvent<HTMLElement>, task: RtTask) {
@@ -331,7 +309,7 @@ export function App() {
   }
 
   function beginCharacterDrag(event: DragEvent<HTMLElement>, character: RtCharacter) {
-    if (interactionBlocked || character.assignedTaskId) {
+    if (interactionBlocked || character.assignedTaskId || character.exhaustedToday) {
       event.preventDefault();
       return;
     }
@@ -385,7 +363,25 @@ export function App() {
       event.dataTransfer.getData("application/dtp-task") ||
       (activeDrag?.type === "task" ? activeDrag.taskId : "");
     if (!taskId) return;
+    moveDroppedTask(taskId, column);
+  }
+
+  function moveDroppedTask(taskId: string, column: RtColumn) {
     const fromColumn = game.tasks[taskId]?.column;
+    const task = game.tasks[taskId];
+    const moveCheck = canMoveRealtimeTask(game, taskId, column);
+
+    if (!moveCheck.allowed) {
+      logAction(sessionIdRef.current, "task_drop_rejected", {
+        taskId,
+        fromColumn,
+        toColumn: column,
+        reason: moveCheck.reason,
+        gameTime: formatGameTime(game),
+      });
+      activeDragRef.current = null;
+      return;
+    }
 
     mutate((draft) => {
       const moved = moveRealtimeTask(draft, taskId, column);
@@ -395,6 +391,9 @@ export function App() {
       taskId,
       fromColumn,
       toColumn: column,
+      ...(task && column === "done"
+        ? { releaseReadiness: releaseReadiness(task) }
+        : {}),
       gameTime: formatGameTime(game),
     });
     flashTask(taskId);
@@ -406,6 +405,14 @@ export function App() {
     event.stopPropagation();
     if (interactionBlocked) return;
     const activeDrag = activeDragRef.current;
+    const draggedTaskId =
+      event.dataTransfer.getData("application/dtp-task") ||
+      (activeDrag?.type === "task" ? activeDrag.taskId : "");
+    if (draggedTaskId) {
+      moveDroppedTask(draggedTaskId, task.column);
+      return;
+    }
+
     const outsourcePayload =
       event.dataTransfer.getData("application/dtp-outsourcing") ||
       (activeDrag?.type === "outsourcing" ? "outsourcing" : "");
@@ -425,7 +432,7 @@ export function App() {
           taskTitle: task.title,
           column: task.column,
           budget: game.resources.budget,
-          reason: canOutsource ? "outsourced" : "no budget or open work",
+          reason: canOutsource ? "outsourcing started" : "no budget, busy task, or open work",
           gameTime: formatGameTime(game),
         },
       );
@@ -513,85 +520,13 @@ export function App() {
     }, 720);
   }
 
-  function clearReleaseAnimationTimers() {
-    for (const timer of releaseAnimationTimers.current) {
-      window.clearTimeout(timer);
-    }
-    releaseAnimationTimers.current = [];
-  }
-
-  function updateReleaseAnimation(
-    updater: (current: ReleaseAnimationState) => ReleaseAnimationState,
-  ) {
-    setReleaseAnimation((current) => {
-      if (!current) return current;
-      const next = updater(current);
-      releaseAnimationRef.current = next;
-      return next;
-    });
-  }
-
-  function finishReleaseAnimation() {
-    clearReleaseAnimationTimers();
-    releaseAnimationRef.current = null;
-    setReleaseAnimation(null);
-  }
-
-  function startReleaseAnimation(tasks: ReleaseAnimationTask[]) {
-    clearReleaseAnimationTimers();
-    if (tasks.length === 0) return;
-
-    const initial = {
-      tasks,
-      activeIndex: 0,
-      visibleReleasedCount: 0,
-      day: Math.max(1, game.day - 1),
-      quarter: releaseQuarterForAnimation(game),
-    };
-    releaseAnimationRef.current = initial;
-    setReleaseAnimation(initial);
-    logAction(sessionIdRef.current, "release_animation_started", {
-      taskIds: tasks.map((task) => task.id),
-      gameTime: "18:00",
-    });
-
-    for (let index = 0; index < tasks.length; index += 1) {
-      releaseAnimationTimers.current.push(
-        window.setTimeout(() => {
-          updateReleaseAnimation((current) => ({
-            ...current,
-            activeIndex: index,
-            visibleReleasedCount: Math.min(current.visibleReleasedCount, index),
-          }));
-        }, index * RELEASE_CARD_ANIMATION_MS),
-      );
-      releaseAnimationTimers.current.push(
-        window.setTimeout(() => {
-          updateReleaseAnimation((current) => ({
-            ...current,
-            activeIndex: index,
-            visibleReleasedCount: Math.max(current.visibleReleasedCount, index + 1),
-          }));
-        }, index * RELEASE_CARD_ANIMATION_MS + RELEASE_CARD_LAND_MS),
-      );
-    }
-
-    releaseAnimationTimers.current.push(
-      window.setTimeout(
-        finishReleaseAnimation,
-        tasks.length * RELEASE_CARD_ANIMATION_MS + RELEASE_WRAPUP_MS,
-      ),
-    );
-  }
-
   const selectedAssigned = selectedTask?.assignedCharacterId
     ? game.characters[selectedTask.assignedCharacterId]
     : null;
   const releaseCountdown = formatReleaseCountdown(game);
-  const currentReleaseTask = releaseAnimation?.tasks[releaseAnimation.activeIndex] ?? null;
-  const clockText = releaseAnimation ? "18:00" : formatGameTime(game);
-  const displayedDay = releaseAnimation?.day ?? game.day;
-  const displayedQuarter = releaseAnimation?.quarter ?? game.quarter;
+  const clockText = morningReport ? "08:00" : formatGameTime(game);
+  const displayedDay = morningReport?.day ?? game.day;
+  const displayedQuarter = morningReport?.quarter ?? game.quarter;
 
   if (screen === "menu") {
     return (
@@ -615,7 +550,7 @@ export function App() {
         "shell",
         game.paused ? "paused" : "",
         game.status === "lost" ? "lost" : "",
-        releaseAnimation ? "code-freeze" : "",
+        morningReport ? "morning-reporting" : "",
       ].join(" ")}
     >
       <header className="game-header">
@@ -627,18 +562,15 @@ export function App() {
           <span className="clock">{clockText}</span>
           <span>Goal {game.quarterValue}/{game.quarterGoal.value}</span>
           <span>
-            {releaseAnimation
-              ? `Releasing ${Math.min(
-                  releaseAnimation.visibleReleasedCount + 1,
-                  releaseAnimation.tasks.length,
-                )}/${releaseAnimation.tasks.length}`
+            {morningReport
+              ? `Morning briefing / Fallout ${morningReport.consequences.length}`
               : `Release in ${releaseCountdown} / Done ${game.board.done.length}`}
           </span>
         </div>
         <div className="stat-strip">
-          <span className={`status-pill ${releaseAnimation ? "code-freeze" : game.status}`}>
-            {releaseAnimation
-              ? "CODE FREEZE"
+          <span className={`status-pill ${morningReport ? "morning-report" : game.status}`}>
+            {morningReport
+              ? "MORNING"
               : game.status === "running" && game.paused
                 ? "PAUSED"
                 : game.status.toUpperCase()}
@@ -651,7 +583,7 @@ export function App() {
           <span>Boost {game.resources.processBoost}%</span>
         </div>
         <div className="header-actions">
-          {selectedAssigned ? (
+          {selectedAssigned && !morningReport ? (
             <button
               className="cancel-button"
               disabled={interactionBlocked}
@@ -663,35 +595,23 @@ export function App() {
           ) : null}
           <button
             className="pause-button"
-            disabled={game.status !== "running"}
+            disabled={game.status !== "running" || Boolean(morningReport)}
             onClick={togglePause}
             type="button"
           >
-            {game.status !== "running" ? "Stopped" : game.paused ? "Resume" : "Pause"}
+            {game.status !== "running"
+              ? "Stopped"
+              : morningReport
+                ? "Paused"
+                : game.paused
+                  ? "Resume"
+                  : "Pause"}
           </button>
           <button className="ghost-button" onClick={newRun} type="button">
             New run
           </button>
         </div>
       </header>
-
-      {releaseAnimation ? (
-        <section className="code-freeze-panel">
-          <div>
-            <strong>Code Freeze</strong>
-            <span>
-              Shipping {currentReleaseTask?.id ?? ""} to Released
-            </span>
-          </div>
-          <div className="release-effect-strip">
-            {(currentReleaseTask?.effects ?? []).slice(0, 6).map((effect) => (
-              <span className={`release-effect ${effectTone(effect)}`} key={effect}>
-                {effect}
-              </span>
-            ))}
-          </div>
-        </section>
-      ) : null}
 
       {game.status !== "running" ? (
         <section className="run-banner">
@@ -700,181 +620,381 @@ export function App() {
         </section>
       ) : null}
 
-      <section className="playfield">
-        <aside className="team-panel panel">
-          <h2>Team</h2>
-          <div className="team-scroll">
-            {Object.values(game.characters).map((character) => {
-              const assignedTask = character.assignedTaskId
-                ? game.tasks[character.assignedTaskId]
-                : null;
-              return (
-                <article
-                  className={
-                    character.assignedTaskId ? "character busy" : "character"
-                  }
-                  draggable={!interactionBlocked && !character.assignedTaskId}
-                  key={character.id}
-                  onDragEnd={finishDrag}
-                  onDragStart={(event) => beginCharacterDrag(event, character)}
-                >
-                  <div>
-                    <strong>{character.name}</strong>
-                    <span>{character.role}</span>
-                  </div>
-                  <div className="character-state">
-                    {character.assignedTaskId ? (
-                      <span>On {character.assignedTaskId}</span>
-                    ) : (
-                      <span>Available</span>
-                    )}
-                    {character.shockGameMinutes > 0 ? (
-                      <span>Shock {Math.ceil(character.shockGameMinutes)}m</span>
-                    ) : null}
-                  </div>
-                  {assignedTask ? (
-                    <div className="character-work">
-                      <div>
-                        <span>{assignedTask.id} {currentWorkLabel(assignedTask)}</span>
-                        <b>{Math.round(assignedTask.stageProgress)}%</b>
-                      </div>
-                      <div className="work-track">
-                        <i style={{ width: `${assignedTask.stageProgress}%` }} />
-                      </div>
-                    </div>
-                  ) : null}
-                  <MetricBar label="Stamina" value={character.stamina} />
-                  <MetricBar label="Burnout" value={character.burnout} />
-                </article>
-              );
-            })}
-            <article
-              className={[
-                "outsourcing-card",
-                interactionBlocked || game.resources.budget <= 0 ? "disabled" : "",
-              ].join(" ")}
-              draggable={!interactionBlocked && game.resources.budget > 0}
-              onDragEnd={finishDrag}
-              onDragStart={beginOutsourceDrag}
-            >
-              <div>
-                <strong>Outsource</strong>
-                <span>contractor</span>
-              </div>
-              <p>Expensive fallback for missing competence.</p>
-              <div className="outsourcing-costs">
-                <span>Optional {OUTSOURCE_COST_BY_IMPORTANCE.optional}</span>
-                <span>Important {OUTSOURCE_COST_BY_IMPORTANCE.important}</span>
-                <span>Critical {OUTSOURCE_COST_BY_IMPORTANCE.critical}</span>
-              </div>
-              <b>Team Budget {game.resources.budget}</b>
-            </article>
-          </div>
-        </aside>
-
-        <section className="board">
-          {RT_COLUMNS.map((column) => (
-            <div
-              className={[
-                "column",
-                column === "done" ? "done-column" : "",
-                column === "released" ? "released-column" : "",
-              ].join(" ")}
-              key={column}
-              onDragOver={column === "released" ? undefined : allowDrop}
-              onDrop={(event) => dropOnColumn(event, column)}
-            >
-              <h2>{COLUMN_LABELS[column]}</h2>
-              {displayTaskIdsForColumn(game, column, releaseAnimation).map((taskId) => {
-                const task = game.tasks[taskId];
-                if (!task) return null;
+      {morningReport ? (
+        <MorningReportPage
+          game={game}
+          onContinue={startBriefedDay}
+          report={morningReport}
+        />
+      ) : (
+        <section className="playfield">
+          <aside className="team-panel panel">
+            <h2>Team</h2>
+            <div className="team-scroll">
+              {Object.values(game.characters).map((character) => {
+                const assignedTask = character.assignedTaskId
+                  ? game.tasks[character.assignedTaskId]
+                  : null;
                 return (
-                  <TaskCard
-                    attention={bounceTaskIds.has(task.id)}
-                    flash={flashTaskId === task.id}
-                    frozen={Boolean(releaseAnimation)}
-                    game={game}
-                    key={task.id}
-                    onClick={() => setSelectedTaskId(task.id)}
+                  <article
+                    className={[
+                      "character",
+                      character.assignedTaskId ? "busy" : "",
+                      character.exhaustedToday ? "exhausted" : "",
+                    ].join(" ")}
+                    draggable={
+                      !interactionBlocked &&
+                      !character.assignedTaskId &&
+                      !character.exhaustedToday
+                    }
+                    key={character.id}
                     onDragEnd={finishDrag}
-                    onDragStart={beginTaskDrag}
-                    onDropCharacter={dropOnTask}
-                    releasePhase={releasePhaseForTask(task.id, column, releaseAnimation)}
-                    selected={selectedTaskId === task.id}
-                    task={task}
-                  />
+                    onDragStart={(event) => beginCharacterDrag(event, character)}
+                  >
+                    <div>
+                      <strong>{character.name}</strong>
+                      <span>{character.role}</span>
+                    </div>
+                    <div className="character-state">
+                      {character.exhaustedToday ? (
+                        <span>Exhausted</span>
+                      ) : character.assignedTaskId ? (
+                        <span>On {character.assignedTaskId}</span>
+                      ) : (
+                        <span>Available</span>
+                      )}
+                      {character.shockGameMinutes > 0 ? (
+                        <span>Shock {Math.ceil(character.shockGameMinutes)}m</span>
+                      ) : null}
+                    </div>
+                    {assignedTask ? (
+                      <div className="character-work">
+                        <div>
+                          <span>
+                            {assignedTask.id} {currentWorkLabel(assignedTask)}
+                          </span>
+                          <b>{Math.round(assignedTask.stageProgress)}%</b>
+                        </div>
+                        <div className="work-track">
+                          <i style={{ width: `${assignedTask.stageProgress}%` }} />
+                        </div>
+                      </div>
+                    ) : null}
+                    <MetricBar label="Stamina" value={character.stamina} />
+                    <MetricBar label="Burnout" value={character.burnout} />
+                  </article>
                 );
               })}
+              <article
+                className={[
+                  "outsourcing-card",
+                  interactionBlocked || game.resources.budget <= 0 ? "disabled" : "",
+                ].join(" ")}
+                draggable={!interactionBlocked && game.resources.budget > 0}
+                onDragEnd={finishDrag}
+                onDragStart={beginOutsourceDrag}
+              >
+                <div>
+                  <strong>Outsource</strong>
+                  <span>contractor</span>
+                </div>
+                <p>Expensive fallback for missing competence.</p>
+                <div className="outsourcing-costs">
+                  <span>Optional {OUTSOURCE_COST_BY_IMPORTANCE.optional}</span>
+                  <span>Important {OUTSOURCE_COST_BY_IMPORTANCE.important}</span>
+                  <span>Critical {OUTSOURCE_COST_BY_IMPORTANCE.critical}</span>
+                </div>
+                <b>Team Budget {game.resources.budget}</b>
+              </article>
             </div>
-          ))}
-        </section>
+          </aside>
 
-        <aside className="side-stack">
-          <section className="panel inspector">
-            <h2>Selected Task</h2>
-            {selectedTask ? (
-              <TaskInspector
-                assigned={selectedAssigned}
-                game={game}
-                task={selectedTask}
-              />
-            ) : (
-              <p className="empty">No task selected.</p>
-            )}
-          </section>
-
-          {game.lossReport ? <LossReport report={game.lossReport} /> : null}
-
-          <section className="panel log-panel">
-            <h2>Event Log</h2>
-            {game.log.slice(0, 24).map((event, index) => (
-              <EventItem event={event} key={`${event.at}-${event.title}-${index}`} />
+          <section className="board">
+            {RT_COLUMNS.map((column) => (
+              <div
+                className={[
+                  "column",
+                  column === "done" ? "done-column" : "",
+                  column === "released" ? "released-column" : "",
+                ].join(" ")}
+                key={column}
+                onDragOver={column === "released" ? undefined : allowDrop}
+                onDrop={(event) => dropOnColumn(event, column)}
+              >
+                <h2>{COLUMN_LABELS[column]}</h2>
+                {game.board[column].map((taskId) => {
+                  const task = game.tasks[taskId];
+                  if (!task) return null;
+                  return (
+                    <TaskCard
+                      attention={bounceTaskIds.has(task.id)}
+                      flash={flashTaskId === task.id}
+                      game={game}
+                      key={task.id}
+                      onClick={() => setSelectedTaskId(task.id)}
+                      onDragEnd={finishDrag}
+                      onDragStart={beginTaskDrag}
+                      onDropCharacter={dropOnTask}
+                      selected={selectedTaskId === task.id}
+                      task={task}
+                    />
+                  );
+                })}
+              </div>
             ))}
           </section>
 
-          <DebugPanel game={game} />
-        </aside>
-      </section>
+          <aside className="side-stack">
+            <section className="panel inspector">
+              <h2>Selected Task</h2>
+              {selectedTask ? (
+                <TaskInspector assigned={selectedAssigned} task={selectedTask} />
+              ) : (
+                <p className="empty">No task selected.</p>
+              )}
+            </section>
+
+            {game.lossReport ? <LossReport report={game.lossReport} /> : null}
+
+            <section className="panel log-panel">
+              <h2>Event Log</h2>
+              {game.log.slice(0, 24).map((event, index) => (
+                <EventItem event={event} key={`${event.at}-${event.title}-${index}`} />
+              ))}
+            </section>
+
+            <DebugPanel game={game} />
+          </aside>
+        </section>
+      )}
     </main>
+  );
+}
+
+function MorningReportPage({
+  game,
+  onContinue,
+  report,
+}: {
+  game: RtGameState;
+  onContinue: () => void;
+  report: RtMorningReport;
+}) {
+  const shippedTasks = report.shippedTaskIds
+    .map((taskId) => game.tasks[taskId])
+    .filter((task): task is RtTask => Boolean(task));
+  const canContinue = game.status === "running";
+
+  return (
+    <section className="morning-report-page">
+      <div className="morning-report-hero">
+        <div>
+          <span>Q{report.quarter} / Day {report.day} / {report.at}</span>
+          <h1>Morning Briefing</h1>
+          <p>
+            {report.empty
+              ? "Nothing shipped yesterday. Today's work starts from the existing backlog."
+              : `${report.shippedTaskIds.length} task(s) shipped yesterday. Today's backlog reflects the consequences.`}
+          </p>
+        </div>
+        <button
+          className="start-button"
+          disabled={!canContinue}
+          onClick={onContinue}
+          type="button"
+        >
+          Начать день
+        </button>
+      </div>
+
+      <div className="morning-summary-grid">
+        <ReleaseMetric
+          after={report.resourceAfter.value}
+          before={report.resourceBefore.value}
+          delta={report.resourceDelta.value}
+          label="Value"
+        />
+        <ReleaseMetric
+          after={report.resourceAfter.budget}
+          before={report.resourceBefore.budget}
+          delta={report.resourceDelta.budget}
+          label="Team Budget"
+        />
+        <ReleaseMetric
+          after={report.resourceAfter.trust}
+          before={report.resourceBefore.trust}
+          delta={report.resourceDelta.trust}
+          label="Trust"
+        />
+        <ReleaseMetric
+          after={report.resourceAfter.clients}
+          before={report.resourceBefore.clients}
+          delta={report.resourceDelta.clients}
+          label="Clients"
+        />
+        <ReleaseMetric
+          after={report.resourceAfter.debt}
+          before={report.resourceBefore.debt}
+          delta={report.resourceDelta.debt}
+          label="Debt"
+          reverseTone
+        />
+      </div>
+
+      <section className="morning-report-section">
+        <h2>Consequences</h2>
+        {report.consequences.length === 0 ? (
+          <p className="empty">No visible release fallout hit the team this morning.</p>
+        ) : (
+          <div className="morning-consequence-list">
+            {report.consequences.map((consequence) => (
+              <article className="morning-consequence-row" key={consequence.id}>
+                <header>
+                  <div>
+                    <span>{consequence.sourceTaskId}</span>
+                    <strong>{consequence.symptom}</strong>
+                  </div>
+                  <b>{consequence.generatedTaskId ?? "blocked"}</b>
+                </header>
+                <p>
+                  Because yesterday&apos;s {consequence.sourceTaskId} shipped with{" "}
+                  {consequenceCauseLabel(consequence.cause)}.
+                </p>
+                <div className="release-effect-strip">
+                  {consequence.effects.map((effect) => (
+                    <span className={`release-effect ${effectTone(effect)}`} key={effect}>
+                      {effect}
+                    </span>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="morning-report-section">
+        <h2>Yesterday&apos;s Shipments</h2>
+        {shippedTasks.length === 0 ? (
+          <p className="empty">No cards were queued in Done before the release train.</p>
+        ) : (
+          <div className="release-task-list">
+            {shippedTasks.map((task) => {
+              const releaseEvent = game.log.find(
+                (event) => event.type === "release" && event.title === `${task.id} released`,
+              );
+              return (
+                <article className="release-task-row" key={task.id}>
+                  <header>
+                    <div>
+                      <span>{task.id}</span>
+                      <strong>{task.title.replace(`${task.id}: `, "")}</strong>
+                    </div>
+                    <b>{task.kind}</b>
+                  </header>
+                  <ReadinessBadge report={releaseReadiness(task)} />
+                  <div className="release-effect-strip">
+                    {(releaseEvent?.effects ?? [task.lastNote]).map((effect) => (
+                      <span className={`release-effect ${effectTone(effect)}`} key={effect}>
+                        {effect}
+                      </span>
+                    ))}
+                  </div>
+                  {task.postmortem.length > 0 ? (
+                    <div className="release-postmortem">
+                      {task.postmortem.slice(0, 4).map((note) => (
+                        <p key={note}>{note}</p>
+                      ))}
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {!canContinue ? (
+        <p className="release-stop-note">
+          Run stopped after this release. Start a new run from the header.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function ReleaseMetric({
+  after,
+  before,
+  delta,
+  label,
+  reverseTone = false,
+}: {
+  after: number;
+  before: number;
+  delta: number;
+  label: string;
+  reverseTone?: boolean;
+}) {
+  const tone =
+    delta === 0
+      ? "neutral"
+      : reverseTone
+        ? delta > 0
+          ? "negative"
+          : "positive"
+        : delta > 0
+          ? "positive"
+          : "negative";
+
+  return (
+    <article className={`release-metric ${tone}`}>
+      <span>{label}</span>
+      <strong>{after}</strong>
+      <em>
+        {formatSignedNumber(delta)} from {before}
+      </em>
+    </article>
   );
 }
 
 function TaskCard({
   attention,
   flash,
-  frozen,
   game,
   onClick,
   onDragEnd,
   onDragStart,
   onDropCharacter,
-  releasePhase,
   selected,
   task,
 }: {
   attention: boolean;
   flash: boolean;
-  frozen: boolean;
   game: RtGameState;
   onClick: () => void;
   onDragEnd: () => void;
   onDragStart: (event: DragEvent<HTMLElement>, task: RtTask) => void;
   onDropCharacter: (event: DragEvent<HTMLElement>, task: RtTask) => void;
-  releasePhase?: ReleaseCardPhase;
   selected: boolean;
   task: RtTask;
 }) {
   const assigned = task.assignedCharacterId
     ? game.characters[task.assignedCharacterId]
     : null;
+  const outsourcingSubtask = task.outsourcing
+    ? task.subtasks.find((subtask) => subtask.id === task.outsourcing?.subtaskId)
+    : null;
   const deadlineRatio = taskDeadlineRatio(task);
-  const openSubtasks = task.subtasks.filter((subtask) => subtask.revealed && !subtask.done);
-  const doneSubtaskCount = task.subtasks.filter((subtask) => subtask.done).length;
-  const hiddenCount = task.subtasks.filter((subtask) => !subtask.revealed && !subtask.done).length;
+  const revealedSubtasks = task.subtasks.filter((subtask) => subtask.revealed);
+  const openSubtasks = revealedSubtasks.filter((subtask) => !subtask.done);
+  const doneSubtaskCount = revealedSubtasks.filter((subtask) => subtask.done).length;
+  const hasHiddenWork = task.subtasks.some((subtask) => !subtask.revealed && !subtask.done);
+  const readiness = releaseReadiness(task);
   const urgent = !task.released && task.column !== "done" && deadlineRatio <= 0.18;
   const locked =
-    frozen ||
     Boolean(task.assignedCharacterId) ||
+    Boolean(task.outsourcing) ||
     game.paused ||
     game.status !== "running" ||
     task.released;
@@ -886,7 +1006,7 @@ function TaskCard({
     : task.column === "done"
       ? "Ships at 18:00"
       : readyForDone
-        ? "Ready for Done"
+        ? "Known work complete"
         : null;
 
   return (
@@ -899,7 +1019,6 @@ function TaskCard({
         locked ? "locked" : "",
         attention ? "work-pass-bounce" : "",
         flash ? "drop-flash" : "",
-        releasePhase ?? "",
       ].join(" ")}
       draggable={!locked}
       onClick={onClick}
@@ -909,7 +1028,8 @@ function TaskCard({
           !game.paused &&
           game.status === "running" &&
           isWorkColumn(task.column) &&
-          !task.assignedCharacterId
+          !task.assignedCharacterId &&
+          !task.outsourcing
         ) {
           event.preventDefault();
         }
@@ -926,11 +1046,13 @@ function TaskCard({
         <span>Clarity {task.clarity}</span>
         <span>Quality {task.quality}</span>
         <span>Bugs {task.bugs}</span>
+        <span>Blast {task.blastRadius}</span>
       </div>
+      <ReadinessBadge report={readiness} compact />
       <div className="subtask-summary">
-        <span>Subtasks</span>
-        <strong>{doneSubtaskCount}/{task.subtasks.length}</strong>
-        <em>{openSubtasks.length + hiddenCount} open</em>
+        <span>Known work</span>
+        <strong>{doneSubtaskCount}/{revealedSubtasks.length}</strong>
+        <em>{openSubtasks.length} open</em>
       </div>
       <div className="subtask-chips">
         {openSubtasks.slice(0, 4).map((subtask) => (
@@ -938,7 +1060,7 @@ function TaskCard({
             {subtaskRoleLabel(subtask.role)}
           </span>
         ))}
-        {hiddenCount > 0 ? <span className="chip hidden">unknown x{hiddenCount}</span> : null}
+        {hasHiddenWork ? <span className="chip hidden">unknown work</span> : null}
       </div>
       {!task.released && task.column !== "done" ? (
         <TinyBar label="Deadline" ratio={deadlineRatio} tone="deadline" />
@@ -954,6 +1076,14 @@ function TaskCard({
           </div>
         </div>
       ) : null}
+      {task.outsourcing ? (
+        <div className="work-chip outsourcing-work">
+          <span>Outsource {outsourcingSubtask ? `-> ${subtaskRoleLabel(outsourcingSubtask.role)}` : ""}</span>
+          <div className="work-track">
+            <i style={{ width: `${task.outsourcing.progress}%` }} />
+          </div>
+        </div>
+      ) : null}
       {cardStatus ? <span className="ready-chip">{cardStatus}</span> : null}
     </article>
   );
@@ -961,14 +1091,12 @@ function TaskCard({
 
 function TaskInspector({
   assigned,
-  game,
   task,
 }: {
   assigned: RtCharacter | null;
-  game: RtGameState;
   task: RtTask;
 }) {
-  const score = task.released ? task.releaseScore : releaseScore(game, task);
+  const readiness = releaseReadiness(task);
   return (
     <div className="task-inspector">
       <strong>{task.title}</strong>
@@ -981,8 +1109,9 @@ function TaskInspector({
         <span>Quality {task.quality}</span>
         <span>QA {task.testCoverage}</span>
         <span>Bugs {task.bugs}</span>
-        <span>Release score {score ?? 0}</span>
+        <span>Blast {task.blastRadius}</span>
       </div>
+      <ReadinessBadge report={readiness} />
       <SubtaskList task={task} />
       {task.column === "done" && !task.released ? (
         <p>Queued for release. Reopening costs Trust -{DONE_REWORK_TRUST_COST}.</p>
@@ -993,6 +1122,12 @@ function TaskInspector({
         <div className="current-work">
           <span>{assigned.name} is working</span>
           <TinyBar label="Progress" ratio={task.stageProgress / 100} tone="progress" />
+        </div>
+      ) : null}
+      {task.outsourcing ? (
+        <div className="current-work">
+          <span>Outsource is working</span>
+          <TinyBar label="Progress" ratio={task.outsourcing.progress / 100} tone="progress" />
         </div>
       ) : null}
       <p>{task.lastNote}</p>
@@ -1009,10 +1144,12 @@ function TaskInspector({
 }
 
 function SubtaskList({ task }: { task: RtTask }) {
+  const revealedSubtasks = task.subtasks.filter((subtask) => subtask.revealed);
+  const hasHiddenWork = task.subtasks.some((subtask) => !subtask.revealed && !subtask.done);
   return (
     <div className="subtask-list">
       <h3>Checklist</h3>
-      {task.subtasks.map((subtask) => (
+      {revealedSubtasks.map((subtask) => (
         <div
           className={[
             "subtask-row",
@@ -1027,37 +1164,16 @@ function SubtaskList({ task }: { task: RtTask }) {
           <b>{subtask.importance}</b>
         </div>
       ))}
+      {hasHiddenWork ? (
+        <div className="subtask-row hidden">
+          <span>?</span>
+          <strong>Unknown work</strong>
+          <em>analysis needed</em>
+          <b>unknown</b>
+        </div>
+      ) : null}
     </div>
   );
-}
-
-function displayTaskIdsForColumn(
-  game: RtGameState,
-  column: RtColumn,
-  releaseAnimation: ReleaseAnimationState | null,
-): string[] {
-  if (!releaseAnimation) return game.board[column];
-
-  const releaseIds = new Set(releaseAnimation.tasks.map((task) => task.id));
-  if (column === "done") {
-    return [
-      ...releaseAnimation.tasks
-        .slice(releaseAnimation.visibleReleasedCount)
-        .map((task) => task.id),
-      ...game.board.done.filter((taskId) => !releaseIds.has(taskId)),
-    ];
-  }
-
-  if (column === "released") {
-    return [
-      ...releaseAnimation.tasks
-        .slice(0, releaseAnimation.visibleReleasedCount)
-        .map((task) => task.id),
-      ...game.board.released.filter((taskId) => !releaseIds.has(taskId)),
-    ];
-  }
-
-  return game.board[column];
 }
 
 function initialSelectedTaskId(game: RtGameState): string | null {
@@ -1068,37 +1184,6 @@ function initialSelectedTaskId(game: RtGameState): string | null {
     game.board.released[0] ??
     null
   );
-}
-
-function releasePhaseForTask(
-  taskId: string,
-  column: RtColumn,
-  releaseAnimation: ReleaseAnimationState | null,
-): ReleaseCardPhase | undefined {
-  if (!releaseAnimation) return undefined;
-  const activeTask = releaseAnimation.tasks[releaseAnimation.activeIndex];
-  if (activeTask?.id !== taskId) return undefined;
-  if (column === "done" && releaseAnimation.visibleReleasedCount <= releaseAnimation.activeIndex) {
-    return "release-launching";
-  }
-  if (column === "released" && releaseAnimation.visibleReleasedCount > releaseAnimation.activeIndex) {
-    return "release-landed";
-  }
-  return undefined;
-}
-
-function releaseEffectsForTask(game: RtGameState, taskId: string): string[] {
-  const releaseEvent = game.log.find(
-    (event) => event.type === "release" && event.title === `${taskId} released`,
-  );
-  return releaseEvent?.effects ?? [`score ${game.tasks[taskId]?.releaseScore ?? 0}`];
-}
-
-function releaseQuarterForAnimation(game: RtGameState): number {
-  if (game.day > 1 && game.dayInQuarter === 1) {
-    return Math.max(1, game.quarter - 1);
-  }
-  return game.quarter;
 }
 
 function isWorkPassDoneEvent(event: RtEvent): boolean {
@@ -1118,10 +1203,99 @@ function taskReadyForDone(task: RtTask): boolean {
   );
 }
 
+function ReadinessBadge({
+  compact = false,
+  report,
+}: {
+  compact?: boolean;
+  report: RtReadinessReport;
+}) {
+  const reasons = compact ? report.reasons.slice(0, 2) : report.reasons;
+  return (
+    <div className={`readiness-box ${report.readiness} ${compact ? "compact" : ""}`}>
+      <strong>{readinessLabel(report.readiness)}</strong>
+      {reasons.length > 0 ? (
+        <div>
+          {reasons.map((reason) => (
+            <span key={reason}>{riskReasonLabel(reason)}</span>
+          ))}
+        </div>
+      ) : (
+        <div>
+          <span>No visible release risks</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function effectTone(effect: string): "positive" | "negative" | "neutral" {
+  if (effect.startsWith("debt +")) return "negative";
+  if (effect.startsWith("debt -")) return "positive";
   if (/\s-[0-9]/.test(effect) || effect.startsWith("no ")) return "negative";
   if (/\s\+[0-9]/.test(effect) || effect.includes("reduced")) return "positive";
   return "neutral";
+}
+
+function formatSignedNumber(value: number): string {
+  if (value > 0) return `+${value}`;
+  return `${value}`;
+}
+
+function readinessLabel(readiness: RtReadinessReport["readiness"]): string {
+  if (readiness === "clean") return "Clean";
+  if (readiness === "risky") return "Risky";
+  return "Dirty";
+}
+
+function riskReasonLabel(reason: RtRiskReason): string {
+  switch (reason) {
+    case "no_qa":
+      return "No QA pass";
+    case "no_sre":
+      return "SRE safety missing";
+    case "known_bug":
+      return "Known bugs";
+    case "low_clarity":
+      return "Low clarity";
+    case "critical_open":
+      return "Critical work open";
+    case "important_open":
+      return "Important work open";
+    case "deadline_pressure":
+      return "Deadline pressure";
+    case "blast_radius_high":
+      return "High blast radius";
+    case "blast_radius_uncovered":
+      return "Failure impact high";
+    case "changed_after_qa":
+      return "Changed after QA";
+    case "not_implemented":
+      return "Implementation incomplete";
+  }
+}
+
+function consequenceCauseLabel(
+  cause: RtMorningReport["consequences"][number]["cause"],
+): string {
+  switch (cause) {
+    case "known_bug":
+      return "known bugs";
+    case "changed_after_qa":
+      return "changes after QA";
+    case "no_qa":
+      return "no QA pass";
+    case "no_sre":
+      return "missing SRE safety";
+    case "critical_open":
+      return "open critical work";
+    case "important_open":
+      return "open important work";
+    case "low_clarity":
+      return "low clarity";
+    case "deadline_pressure":
+      return "deadline pressure";
+  }
 }
 
 function MetricBar({ label, value }: { label: string; value: number }) {
@@ -1258,6 +1432,7 @@ function buildDebugSnapshot(game: RtGameState) {
       dayInQuarter: game.dayInQuarter,
     },
     resources: game.resources,
+    morningReport: game.morningReport,
     quarter: {
       value: game.quarterValue,
       goal: game.quarterGoal,
@@ -1279,6 +1454,7 @@ function buildDebugSnapshot(game: RtGameState) {
       stamina: Math.round(character.stamina),
       burnout: Math.round(character.burnout),
       shockGameMinutes: Math.round(character.shockGameMinutes),
+      exhaustedToday: character.exhaustedToday,
       specialty: character.specialty,
     })),
     activeAssignments: tasks
@@ -1301,6 +1477,8 @@ function summarizeTask(task: RtTask | undefined) {
     title: task.title,
     kind: task.kind,
     column: task.column,
+    blastRadius: task.blastRadius,
+    releaseReadiness: releaseReadiness(task),
     pressure: task.pressure,
     complexity: task.complexity,
     value: task.value,
@@ -1308,9 +1486,11 @@ function summarizeTask(task: RtTask | undefined) {
     quality: task.quality,
     testCoverage: task.testCoverage,
     bugs: task.bugs,
+    changedAfterQa: task.changedAfterQa,
     workDone: task.workDone,
     subtasks: task.subtasks,
     currentSubtaskId: task.currentSubtaskId,
+    outsourcing: task.outsourcing,
     offRolePenalty: task.offRolePenalty,
     deadlineMs: Math.round(task.deadlineMs),
     stageProgress: Math.round(task.stageProgress),
@@ -1359,8 +1539,55 @@ function postDebugSnapshot(game: RtGameState, sessionId?: string) {
     // The endpoint exists only in the local Vite dev server.
   });
   if (sessionId) {
-    postBackendLog([createLogEntry(sessionId, "snapshot", "debug_snapshot", snapshot)]);
+    postBackendLog([createLogEntry(sessionId, "snapshot", "debug_snapshot", buildBackendSnapshot(snapshot))]);
   }
+}
+
+function buildBackendSnapshot(snapshot: ReturnType<typeof buildDebugSnapshot>) {
+  return {
+    savedAt: snapshot.savedAt,
+    seed: snapshot.seed,
+    status: snapshot.status,
+    lossReason: snapshot.lossReason,
+    time: snapshot.time,
+    resources: snapshot.resources,
+    morningReport: snapshot.morningReport,
+    quarter: snapshot.quarter,
+    spawn: snapshot.spawn,
+    taskCount: snapshot.taskCount,
+    boardCounts: Object.fromEntries(
+      Object.entries(snapshot.board).map(([column, tasks]) => [
+        column,
+        tasks.filter(Boolean).length,
+      ]),
+    ),
+    activeAssignments: snapshot.activeAssignments,
+    characters: snapshot.characters.map((character) => ({
+      id: character.id,
+      name: character.name,
+      role: character.role,
+      assignedTaskId: character.assignedTaskId,
+      stamina: character.stamina,
+      burnout: character.burnout,
+      exhaustedToday: character.exhaustedToday,
+    })),
+    visibleTasks: Object.fromEntries(
+      Object.entries(snapshot.board).map(([column, tasks]) => [
+        column,
+        tasks.filter(Boolean).map((task) => ({
+          id: task?.id,
+          kind: task?.kind,
+          blastRadius: task?.blastRadius,
+          releaseReadiness: task?.releaseReadiness,
+          deadlineMs: task?.deadlineMs,
+          stageProgress: task?.stageProgress,
+          assignedCharacterId: task?.assignedCharacterId,
+          outsourcing: task?.outsourcing,
+        })),
+      ]),
+    ),
+    recentEvents: snapshot.events.slice(0, 12),
+  };
 }
 
 function copyDebugSnapshot(game: RtGameState) {
