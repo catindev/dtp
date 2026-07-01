@@ -1668,7 +1668,7 @@ function TaskCard({
   const deadlineRatio = taskDeadlineRatio(task);
   const readiness = releaseReadiness(task);
   const late = lateReleaseReport(task);
-  const urgent = !task.released && task.column !== "done" && deadlineRatio <= 0.18;
+  const urgent = !task.resolved && !task.released && task.column !== "done" && deadlineRatio <= 0.18;
   const dragBlocked =
     Boolean(task.assignedCharacterId) ||
     Boolean(task.outsourcing) ||
@@ -1686,7 +1686,6 @@ function TaskCard({
     task.stageComplete && task.column === "inProgress" && !task.assignedCharacterId && !task.released;
   const readyForDone = needsAttention && taskReadyForDone(task);
   const neededRoles = taskNeededRoleChips(task, locale);
-  const cardStatus = task.released ? t(locale, "task.released") : null;
   const readinessClass = taskCardReadinessClass(task, readiness, readyForDone);
   const title = localizeTaskName(task.title, locale);
 
@@ -1737,7 +1736,6 @@ function TaskCard({
         {late.valuePenaltyPercent > 0 ? (
           <span className="late-chip">{t(locale, "task.lateChip", { value: late.valuePenaltyPercent })}</span>
         ) : null}
-        {cardStatus ? <span className="card-status-chip">{cardStatus}</span> : null}
       </div>
       {neededRoles.length > 0 ? (
         <div className="role-chip-row" aria-label={t(locale, "task.neededRoles")}>

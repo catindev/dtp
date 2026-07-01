@@ -1337,7 +1337,6 @@ button:disabled {
 }
 
 .work-chip span,
-.card-status-chip,
 .late-chip {
   font-size: 11px;
   font-weight: 800;
@@ -1355,13 +1354,6 @@ button:disabled {
   background: #245d45;
   display: block;
   height: 100%;
-}
-
-.card-status-chip {
-  border: 1px solid #245d45;
-  color: #245d45;
-  justify-self: start;
-  padding: 3px 5px;
 }
 
 .late-chip {
