@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type ReactElement } from "react";
 import {
   DONE_REWORK_TRUST_COST,
   OUTSOURCE_COST_BY_IMPORTANCE,
@@ -65,6 +65,14 @@ import {
   loadSavedRun,
   saveRun,
 } from "./save";
+import enGameLoopDoc from "../userdocs/en/game-loop.md?raw";
+import enOverviewDoc from "../userdocs/en/overview.md?raw";
+import enRolesDoc from "../userdocs/en/roles.md?raw";
+import enTasksQualityDoc from "../userdocs/en/tasks-quality.md?raw";
+import ruGameLoopDoc from "../userdocs/ru/game-loop.md?raw";
+import ruOverviewDoc from "../userdocs/ru/overview.md?raw";
+import ruRolesDoc from "../userdocs/ru/roles.md?raw";
+import ruTasksQualityDoc from "../userdocs/ru/tasks-quality.md?raw";
 import "./styles.css";
 
 const BACKEND_BASE_URL = import.meta.env.VITE_DTP_BACKEND_URL ?? "http://127.0.0.1:8787";
@@ -74,6 +82,59 @@ const BACKEND_LOG_QUEUE_KEY = "dtp.backendLogQueue.v1";
 const BACKEND_LOG_QUEUE_LIMIT = 1200;
 const BACKEND_LOG_BATCH_SIZE = 80;
 const BACKEND_LOG_FLUSH_INTERVAL_MS = 2500;
+
+interface UserDoc {
+  id: string;
+  title: Record<Locale, string>;
+  markdown: Record<Locale, string>;
+}
+
+const USER_DOCS: UserDoc[] = [
+  {
+    id: "overview",
+    title: {
+      en: "Game overview",
+      ru: "Об игре",
+    },
+    markdown: {
+      en: enOverviewDoc,
+      ru: ruOverviewDoc,
+    },
+  },
+  {
+    id: "game-loop",
+    title: {
+      en: "Game loop",
+      ru: "Игровой процесс",
+    },
+    markdown: {
+      en: enGameLoopDoc,
+      ru: ruGameLoopDoc,
+    },
+  },
+  {
+    id: "roles",
+    title: {
+      en: "Team roles",
+      ru: "Роли в команде",
+    },
+    markdown: {
+      en: enRolesDoc,
+      ru: ruRolesDoc,
+    },
+  },
+  {
+    id: "tasks-quality",
+    title: {
+      en: "Quality and risk",
+      ru: "Качество и риски",
+    },
+    markdown: {
+      en: enTasksQualityDoc,
+      ru: ruTasksQualityDoc,
+    },
+  },
+];
 
 let backendFlushInFlight = false;
 let backendFlushAgain = false;
@@ -96,7 +157,7 @@ interface BackendLogQueue {
   entries: FrontendLogEntry[];
 }
 
-type AppScreen = "menu" | "game";
+type AppScreen = "menu" | "game" | "docs";
 
 type ProdView = "released" | "unfinished";
 
@@ -133,6 +194,7 @@ export function App() {
   const [screen, setScreen] = useState<AppScreen>("menu");
   const [hasResumeCard, setHasResumeCard] = useState(Boolean(restoredSave));
   const [prodView, setProdView] = useState<ProdView>("released");
+  const [selectedDocId, setSelectedDocId] = useState(USER_DOCS[0].id);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
     initialSelectedTaskId(bootGame),
   );
@@ -366,6 +428,15 @@ export function App() {
       gameTime: formatGameTime(next),
       status: next.status,
       appCommit: APP_COMMIT,
+    });
+  }
+
+  function openDocs() {
+    setScreen("docs");
+    logAction(sessionIdRef.current, "rtfm_opened", {
+      locale,
+      selectedDocId,
+      hasSavedRun: hasResumeCard,
     });
   }
 
@@ -770,6 +841,20 @@ export function App() {
   const displayedQuarter = morningReport?.quarter ?? game.quarter;
   const quarterReviewText = quarterReviewLabel(locale, game);
   const prodTaskIds = prodView === "released" ? game.board.released : archivedUnfinishedTaskIds(game);
+  const selectedDoc = USER_DOCS.find((doc) => doc.id === selectedDocId) ?? USER_DOCS[0];
+
+  if (screen === "docs") {
+    return (
+      <DocsScreen
+        docs={USER_DOCS}
+        locale={locale}
+        onBack={() => setScreen("menu")}
+        onLocaleChange={setLocale}
+        onSelectDoc={setSelectedDocId}
+        selectedDoc={selectedDoc}
+      />
+    );
+  }
 
   if (screen === "menu") {
     return (
@@ -783,6 +868,10 @@ export function App() {
             <span>{t(locale, "menu.language")}</span>
             <LanguageSwitch locale={locale} onChange={setLocale} />
           </div>
+          <button className="rtfm-button" onClick={openDocs} type="button">
+            <strong>{t(locale, "menu.rtfm")}</strong>
+            <span>{t(locale, "menu.rtfmDescription")}</span>
+          </button>
           {hasResumeCard ? (
             <ResumeCard game={game} locale={locale} sessionId={sessionIdRef.current} />
           ) : null}
@@ -1095,6 +1184,114 @@ function LanguageSwitch({
       ))}
     </div>
   );
+}
+
+function DocsScreen({
+  docs,
+  locale,
+  onBack,
+  onLocaleChange,
+  onSelectDoc,
+  selectedDoc,
+}: {
+  docs: UserDoc[];
+  locale: Locale;
+  onBack: () => void;
+  onLocaleChange: (locale: Locale) => void;
+  onSelectDoc: (docId: string) => void;
+  selectedDoc: UserDoc;
+}) {
+  return (
+    <main className="shell docs-shell">
+      <section className="docs-frame">
+        <header className="docs-header">
+          <div>
+            <strong>{t(locale, "docs.title")}</strong>
+            <span>{t(locale, "docs.subtitle")}</span>
+          </div>
+          <div className="docs-actions">
+            <LanguageSwitch locale={locale} onChange={onLocaleChange} />
+            <button className="ghost-button" onClick={onBack} type="button">
+              {t(locale, "docs.back")}
+            </button>
+          </div>
+        </header>
+        <div className="docs-body">
+          <nav className="docs-nav" aria-label={t(locale, "docs.nav")}>
+            {docs.map((doc) => (
+              <button
+                className={doc.id === selectedDoc.id ? "active" : ""}
+                key={doc.id}
+                onClick={() => onSelectDoc(doc.id)}
+                type="button"
+              >
+                {doc.title[locale]}
+              </button>
+            ))}
+          </nav>
+          <article className="docs-article">
+            <MarkdownArticle markdown={selectedDoc.markdown[locale]} />
+          </article>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function MarkdownArticle({ markdown }: { markdown: string }) {
+  const elements: ReactElement[] = [];
+  let listItems: string[] = [];
+  let paragraph: string[] = [];
+
+  function flushList() {
+    if (listItems.length === 0) return;
+    const key = `list-${elements.length}`;
+    elements.push(
+      <ul key={key}>
+        {listItems.map((item, index) => (
+          <li key={`${key}-${index}`}>{item}</li>
+        ))}
+      </ul>,
+    );
+    listItems = [];
+  }
+
+  function flushParagraph() {
+    if (paragraph.length === 0) return;
+    elements.push(<p key={`p-${elements.length}`}>{paragraph.join(" ")}</p>);
+    paragraph = [];
+  }
+
+  for (const rawLine of markdown.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+    if (line.startsWith("- ")) {
+      flushParagraph();
+      listItems.push(line.slice(2));
+      continue;
+    }
+    flushList();
+    if (line.startsWith("### ")) {
+      flushParagraph();
+      elements.push(<h3 key={`h3-${elements.length}`}>{line.slice(4)}</h3>);
+    } else if (line.startsWith("## ")) {
+      flushParagraph();
+      elements.push(<h2 key={`h2-${elements.length}`}>{line.slice(3)}</h2>);
+    } else if (line.startsWith("# ")) {
+      flushParagraph();
+      elements.push(<h1 key={`h1-${elements.length}`}>{line.slice(2)}</h1>);
+    } else {
+      paragraph.push(line);
+    }
+  }
+  flushParagraph();
+  flushList();
+
+  return <>{elements}</>;
 }
 
 function ResumeCard({
