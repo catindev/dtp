@@ -2,9 +2,9 @@ import { useEffect, useRef, useState, type DragEvent } from "react";
 import { DocsScreen } from "./components/DocsScreen";
 import { GameHeader } from "./components/GameHeader";
 import { MenuScreen } from "./components/MenuScreen";
+import { TeamPanel } from "./components/TeamPanel";
 import {
   DONE_REWORK_TRUST_COST,
-  OUTSOURCE_COST_BY_IMPORTANCE,
   RT_COLUMNS,
   createRealtimeState,
   formatGameTime,
@@ -319,99 +319,16 @@ export function App() {
         />
       ) : (
         <section className="playfield">
-          <aside className="team-panel panel">
-            <h2>{t(locale, "team.title")}</h2>
-            <div className="team-scroll">
-              {Object.values(game.characters).map((character) => {
-                const assignedTask = character.assignedTaskId
-                  ? game.tasks[character.assignedTaskId]
-                  : null;
-                return (
-                  <article
-                    className={[
-                      "character",
-                      character.assignedTaskId ? "busy" : "",
-                      character.exhaustedToday ? "exhausted" : "",
-                    ].join(" ")}
-                    draggable={
-                      (game.paused || !interactionBlocked) &&
-                      screen === "game" &&
-                      game.status === "running" &&
-                      !morningReport &&
-                      !character.assignedTaskId &&
-                      !character.exhaustedToday
-                    }
-                    key={character.id}
-                    onDragEnd={finishDrag}
-                    onDragStart={(event) => beginCharacterDrag(event, character)}
-                  >
-                    <div>
-                      <strong>{character.name}</strong>
-                      <span>{character.role}</span>
-                    </div>
-                    <div className="character-state">
-                      {character.exhaustedToday ? (
-                        <span>{t(locale, "team.exhausted")}</span>
-                      ) : character.assignedTaskId ? (
-                        <span>{t(locale, "team.onTask", { taskId: character.assignedTaskId })}</span>
-                      ) : (
-                        <span>{t(locale, "team.available")}</span>
-                      )}
-                      {character.shockGameMinutes > 0 ? (
-                        <span>{t(locale, "team.shock", { minutes: Math.ceil(character.shockGameMinutes) })}</span>
-                      ) : null}
-                    </div>
-                    {assignedTask ? (
-                      <div className="character-work">
-                        <div>
-                          <span>
-                            {assignedTask.id} {currentWorkLabel(assignedTask, locale)}
-                          </span>
-                          <b>{Math.round(assignedTask.stageProgress)}%</b>
-                        </div>
-                        <div className="work-track">
-                          <i style={{ width: `${assignedTask.stageProgress}%` }} />
-                        </div>
-                      </div>
-                    ) : null}
-                    <MetricBar label={t(locale, "team.stamina")} tone="stamina" value={character.stamina} />
-                    {character.burnout > 0 ? (
-                      <span className="burnout-badge">
-                        {t(locale, "team.burnout", { value: Math.round(character.burnout) })}
-                      </span>
-                    ) : null}
-                  </article>
-                );
-              })}
-              <article
-                className={[
-                  "outsourcing-card",
-                  interactionBlocked || game.resources.budget <= 0 ? "disabled" : "",
-                ].join(" ")}
-                draggable={
-                  (game.paused || !interactionBlocked) &&
-                  screen === "game" &&
-                  game.status === "running" &&
-                  !morningReport &&
-                  game.resources.budget > 0
-                }
-                onDragEnd={finishDrag}
-                onDragStart={beginOutsourceDrag}
-              >
-                <div>
-                  <strong>{t(locale, "outsourcing.title")}</strong>
-                  <span>{t(locale, "outsourcing.role")}</span>
-                </div>
-                <p>{t(locale, "outsourcing.description")}</p>
-                <div className="outsourcing-costs">
-                  <span>{t(locale, "outsourcing.optional", { cost: OUTSOURCE_COST_BY_IMPORTANCE.optional })}</span>
-                  <span>{t(locale, "outsourcing.important", { cost: OUTSOURCE_COST_BY_IMPORTANCE.important })}</span>
-                  <span>{t(locale, "outsourcing.critical", { cost: OUTSOURCE_COST_BY_IMPORTANCE.critical })}</span>
-                </div>
-                <b>{t(locale, "outsourcing.budget", { budget: game.resources.budget })}</b>
-              </article>
-            </div>
-          </aside>
+          <TeamPanel
+            game={game}
+            interactionBlocked={interactionBlocked}
+            isGameScreen={screen === "game"}
+            locale={locale}
+            morningReportActive={Boolean(morningReport)}
+            onCharacterDragStart={beginCharacterDrag}
+            onDragEnd={finishDrag}
+            onOutsourceDragStart={beginOutsourceDrag}
+          />
 
           <section className="board">
             {RT_COLUMNS.map((column) => {
@@ -1222,31 +1139,6 @@ function consequenceCauseLabel(
   locale: Locale,
 ): string {
   return labelConsequenceCause(locale, cause);
-}
-
-function MetricBar({
-  label,
-  tone = "default",
-  value,
-}: {
-  label: string;
-  tone?: "default" | "stamina";
-  value: number;
-}) {
-  const safeValue = Math.max(0, Math.min(100, value));
-  const staminaLevel =
-    tone === "stamina" && safeValue <= 25
-      ? "danger"
-      : tone === "stamina" && safeValue <= 55
-        ? "warning"
-        : "";
-  return (
-    <div className={`metric ${tone} ${staminaLevel}`}>
-      <span>{label}</span>
-      <i style={{ width: `${safeValue}%` }} />
-      <b>{Math.round(value)}</b>
-    </div>
-  );
 }
 
 function TinyBar({
