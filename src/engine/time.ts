@@ -45,6 +45,12 @@ export function crossedReleaseTrain(previousMinute: number, nextMinute: number):
   return previousMinute < RELEASE_TRAIN_GAME_MINUTE && nextMinute >= RELEASE_TRAIN_GAME_MINUTE;
 }
 
+export function formatGameTime(state: RtGameState): string {
+  const hour = Math.floor(state.gameMinuteOfDay / 60);
+  const minute = Math.floor(state.gameMinuteOfDay % 60);
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 export function advanceDay(
   state: RtGameState,
   emit: TimeEventSink,
