@@ -47,6 +47,44 @@ import {
   shuffle,
   weightedPick,
 } from "../engine/rng";
+import {
+  RT_COLUMNS,
+  type RtAssignmentPlan,
+  type RtBlastRadius,
+  type RtCharacter,
+  type RtColumn,
+  type RtConsequenceSource,
+  type RtDaySummary,
+  type RtEvent,
+  type RtFalloutWarning,
+  type RtGameState,
+  type RtLateReleaseReport,
+  type RtLossReport,
+  type RtMorningReport,
+  type RtMoveBlockReason,
+  type RtMoveCheck,
+  type RtOutsourceBlockReason,
+  type RtOutsourcePlan,
+  type RtOutsourceStatus,
+  type RtOutsourcingWork,
+  type RtQuarterReviewReport,
+  type RtReadinessReport,
+  type RtReleaseConsequence,
+  type RtReleaseConsequenceCause,
+  type RtReleaseReadiness,
+  type RtResources,
+  type RtRiskReason,
+  type RtRole,
+  type RtRunStatus,
+  type RtStage,
+  type RtSubtask,
+  type RtSubtaskImportance,
+  type RtSubtaskRole,
+  type RtTask,
+  type RtTaskKind,
+  type RtTaskResolution,
+  type RtWorkColumn,
+} from "../engine/types";
 export {
   DAYS_PER_QUARTER,
   DONE_REWORK_TRUST_COST,
@@ -58,344 +96,42 @@ export {
   RELEASE_TRAIN_GAME_MINUTE,
   TICK_MS,
 } from "../engine/balance";
-
-export const RT_COLUMNS = ["backlog", "inProgress", "done", "released"] as const;
-export type RtColumn = (typeof RT_COLUMNS)[number];
-
-export type RtTaskKind =
-  | "feature"
-  | "bug"
-  | "techDebt"
-  | "integration"
-  | "incident"
-  | "performance"
-  | "compliance";
-
-export type RtRole = "analyst" | "designer" | "backend" | "frontend" | "qa" | "sre";
-export type RtStage = "analysis" | "todo" | "test";
-export type RtWorkColumn = Extract<RtColumn, "inProgress">;
-export type RtRunStatus = "running" | "won" | "lost";
-export type RtSubtaskRole = "backend" | "frontend" | "design" | "qa" | "sre" | "bugfix";
-export type RtSubtaskImportance = "critical" | "important" | "optional";
-export type RtBlastRadius = "low" | "medium" | "high";
-export type RtReleaseReadiness = "clean" | "risky" | "dirty";
-export type RtRiskReason =
-  | "no_qa"
-  | "no_sre"
-  | "known_bug"
-  | "low_clarity"
-  | "critical_open"
-  | "important_open"
-  | "deadline_pressure"
-  | "blast_radius_high"
-  | "blast_radius_uncovered"
-  | "changed_after_qa"
-  | "not_implemented";
-
-export interface RtReadinessReport {
-  readiness: RtReleaseReadiness;
-  reasons: RtRiskReason[];
-  blastRadius: RtBlastRadius;
-  knownCriticalOpen: number;
-  knownImportantOpen: number;
-  qaCovered: boolean;
-  sreCovered: boolean;
-}
-
-export type RtMoveBlockReason =
-  | "task_missing"
-  | "task_released"
-  | "task_busy"
-  | "released_locked"
-  | "same_column"
-  | "done_reopen_only_to_work"
-  | "backlog_to_done_forbidden";
-
-export interface RtMoveCheck {
-  allowed: boolean;
-  reason?: RtMoveBlockReason;
-}
-
-export interface RtSubtask {
-  id: string;
-  title: string;
-  role: RtSubtaskRole;
-  importance: RtSubtaskImportance;
-  revealed: boolean;
-  done: boolean;
-  progress: number;
-  completedBy: string | null;
-  offRole: boolean;
-}
-
-export interface RtResources {
-  trust: number;
-  debt: number;
-  value: number;
-  clients: number;
-  budget: number;
-  processBoost: number;
-}
-
-export type RtReleaseConsequenceCause =
-  | "known_bug"
-  | "changed_after_qa"
-  | "no_qa"
-  | "no_sre"
-  | "critical_open"
-  | "important_open"
-  | "low_clarity"
-  | "deadline_pressure"
-  | "ignored_work"
-  | "missed_deadline"
-  | "terminal_chain";
-
-export type RtConsequenceSource =
-  | "release"
-  | "missed_backlog"
-  | "missed_in_progress"
-  | "terminal";
-
-export type RtTaskResolution =
-  | "missed_minor"
-  | "missed_tail"
-  | "missed_terminal";
-
-export interface RtReleaseConsequence {
-  id: string;
-  source: RtConsequenceSource;
-  sourceTaskId: string;
-  sourceTitle: string;
-  rootCauseTaskId: string;
-  chainDepth: number;
-  cause: RtReleaseConsequenceCause;
-  symptom: string;
-  generatedTaskId: string | null;
-  terminal: boolean;
-  resourceDelta: Partial<RtResources>;
-  effects: string[];
-}
-
-export interface RtDaySummary {
-  day: number;
-  shipped: number;
-  releasedClean: number;
-  releasedRisky: number;
-  releasedDirty: number;
-  missedBacklog: number;
-  missedInProgress: number;
-  missedMinor: number;
-  falloutCreated: number;
-  falloutResolved: number;
-  unresolvedFallout: number;
-  terminalConsequences: number;
-}
-
-export interface RtQuarterReviewReport {
-  quarter: number;
-  hitGoal: boolean;
-  valueActual: number;
-  valueTarget: number;
-  valueMet: boolean;
-  trustActual: number;
-  trustTarget: number;
-  trustMet: boolean;
-  resourceBefore: RtResources;
-  resourceAfter: RtResources;
-  resourceDelta: RtResources;
-  effects: string[];
-}
-
-export interface RtMorningReport {
-  id: string;
-  quarter: number;
-  day: number;
-  previousDay: number;
-  at: string;
-  shippedTaskIds: string[];
-  resourceBefore: RtResources;
-  resourceAfter: RtResources;
-  resourceDelta: RtResources;
-  releaseDelta: RtResources;
-  consequenceDelta: RtResources;
-  quarterReview: RtQuarterReviewReport | null;
-  empty: boolean;
-  effects: string[];
-  missedTaskIds: string[];
-  consequences: RtReleaseConsequence[];
-  daySummary: RtDaySummary;
-}
-
-export interface RtTask {
-  id: string;
-  title: string;
-  kind: RtTaskKind;
-  domain: string;
-  blastRadius: RtBlastRadius;
-  column: RtColumn;
-  pressure: number;
-  complexity: number;
-  value: number;
-  clarity: number;
-  quality: number;
-  testCoverage: number;
-  bugs: number;
-  changedAfterQa: boolean;
-  workDone: boolean;
-  subtasks: RtSubtask[];
-  currentSubtaskId: string | null;
-  offRolePenalty: number;
-  postmortem: string[];
-  backlogTtlMs: number;
-  backlogTtlMaxMs: number;
-  deadlineMs: number;
-  deadlineMaxMs: number;
-  overdueMs: number;
-  stageProgress: number;
-  stageComplete: boolean;
-  assignedCharacterId: string | null;
-  outsourcing: RtOutsourcingWork | null;
-  released: boolean;
-  rootCauseTaskId: string | null;
-  sourceTaskId: string | null;
-  chainDepth: number;
-  resolved: boolean;
-  resolution: RtTaskResolution | null;
-  resolutionDay: number | null;
-  releaseScore: number | null;
-  queuedDeadlineMs: number | null;
-  lastNote: string;
-}
-
-export interface RtLateReleaseReport {
-  overdueMs: number;
-  overdueGameMinutes: number;
-  valueMultiplier: number;
-  valuePenaltyPercent: number;
-}
-
-export interface RtOutsourcingWork {
-  subtaskId: string;
-  cost: number;
-  progress: number;
-}
-
-export interface RtCharacter {
-  id: string;
-  name: string;
-  role: RtRole;
-  skill: Record<RtStage, number>;
-  specialty: Record<RtSubtaskRole, number>;
-  xp: Record<RtSubtaskRole, number>;
-  stamina: number;
-  burnout: number;
-  assignedTaskId: string | null;
-  shockGameMinutes: number;
-  exhaustedToday: boolean;
-}
-
-export interface RtEvent {
-  at: string;
-  type: string;
-  title: string;
-  body: string;
-  effects: string[];
-}
-
-export interface RtFalloutWarning {
-  level: "possible" | "likely";
-  label: string;
-  reasons: string[];
-}
-
-interface RtAssignmentPlan {
-  character: RtCharacter;
-  task: RtTask;
-  subtask: RtSubtask | null;
-  willAnalyze: boolean;
-}
-
-interface RtOutsourcePlan {
-  task: RtTask;
-  subtask: RtSubtask;
-  cost: number;
-}
-
-export type RtOutsourceBlockReason =
-  | "ready"
-  | "task_missing"
-  | "task_busy"
-  | "task_released"
-  | "wrong_column"
-  | "needs_analysis"
-  | "no_open_work"
-  | "insufficient_budget";
-
-export interface RtOutsourceStatus {
-  allowed: boolean;
-  reason: RtOutsourceBlockReason;
-  currentBudget: number;
-  cost: number | null;
-  neededBudget: number | null;
-  subtask: RtSubtask | null;
-}
-
-export interface RtLossReport {
-  reason: string;
-  headline: string;
-  explanation: string;
-  primaryMetric: "trust" | "clients" | "debt";
-  resourceSnapshot: RtResources;
-  lastMissedTasks: Array<{ at: string; title: string; effects: string[] }>;
-  lastBadReleases: Array<{ at: string; title: string; effects: string[] }>;
-  activePressure: Array<{
-    id: string;
-    title: string;
-    column: RtColumn;
-    deadlineMs: number;
-    assignedCharacterId: string | null;
-  }>;
-  suggestion: string;
-}
-
-export interface RtQuarterGoal {
-  value: number;
-  trust: number;
-  rewardBudget: number;
-}
-
-export interface RtSpawnState {
-  nextInMs: number;
-  nextBurstInMs: number;
-}
-
-export interface RtGameState {
-  seed: number;
-  rngState: number;
-  locale: Locale;
-  paused: boolean;
-  status: RtRunStatus;
-  lossReason: string | null;
-  lossReport: RtLossReport | null;
-  elapsedRealMs: number;
-  elapsedGameMinutes: number;
-  gameMinuteOfDay: number;
-  day: number;
-  quarter: number;
-  dayInQuarter: number;
-  daysPerQuarter: number;
-  resources: RtResources;
-  quarterGoal: RtQuarterGoal;
-  quarterValue: number;
-  morningReport: RtMorningReport | null;
-  board: Record<RtColumn, string[]>;
-  tasks: Record<string, RtTask>;
-  characters: Record<string, RtCharacter>;
-  nextTaskId: number;
-  nextCharacterId: number;
-  spawn: RtSpawnState;
-  log: RtEvent[];
-}
+export { RT_COLUMNS } from "../engine/types";
+export type {
+  RtBlastRadius,
+  RtCharacter,
+  RtColumn,
+  RtConsequenceSource,
+  RtDaySummary,
+  RtEvent,
+  RtFalloutWarning,
+  RtGameState,
+  RtLateReleaseReport,
+  RtLossReport,
+  RtMorningReport,
+  RtMoveBlockReason,
+  RtMoveCheck,
+  RtOutsourceBlockReason,
+  RtOutsourceStatus,
+  RtOutsourcingWork,
+  RtQuarterReviewReport,
+  RtReadinessReport,
+  RtReleaseConsequence,
+  RtReleaseConsequenceCause,
+  RtReleaseReadiness,
+  RtResources,
+  RtRiskReason,
+  RtRole,
+  RtRunStatus,
+  RtStage,
+  RtSubtask,
+  RtSubtaskImportance,
+  RtSubtaskRole,
+  RtTask,
+  RtTaskKind,
+  RtTaskResolution,
+  RtWorkColumn,
+} from "../engine/types";
 
 const domains = ["payments", "auth", "admin", "search", "reports", "notifications"];
 
