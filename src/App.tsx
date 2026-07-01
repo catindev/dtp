@@ -2,19 +2,13 @@ import { useRef, useState } from "react";
 import { BoardPanel } from "./components/BoardPanel";
 import { DocsScreen } from "./components/DocsScreen";
 import { GameHeader } from "./components/GameHeader";
-import { LossReport } from "./components/LossReport";
 import { MenuScreen } from "./components/MenuScreen";
 import { MorningReportPage } from "./components/MorningReportPage";
+import { RunBanner } from "./components/RunBanner";
+import { SidePanel } from "./components/SidePanel";
 import { TeamPanel } from "./components/TeamPanel";
-import { TaskInspector } from "./components/TaskInspector";
 import { type RtGameState } from "./realtime/simulation";
-import {
-  localizeLossExplanation,
-  localizeLossHeadline,
-  localizeText,
-  t,
-  type Locale,
-} from "./i18n";
+import { type Locale } from "./i18n";
 import { useTaskFeedback } from "./hooks/useTaskFeedback";
 import { useGameDragAndDrop } from "./hooks/useGameDragAndDrop";
 import { useGameEventEffects } from "./hooks/useGameEventEffects";
@@ -152,9 +146,6 @@ export function App() {
     bounceTask,
   });
 
-  const selectedAssigned = selectedTask?.assignedCharacterId
-    ? game.characters[selectedTask.assignedCharacterId]
-    : null;
   const selectedDoc = USER_DOCS.find((doc) => doc.id === selectedDocId) ?? USER_DOCS[0];
 
   if (screen === "docs") {
@@ -203,16 +194,7 @@ export function App() {
         pauseShake={pauseShake}
       />
 
-      {game.status !== "running" ? (
-        <section className="run-banner">
-          <strong>{game.lossReport ? localizeLossHeadline(game.lossReport.headline, locale) : t(locale, "run.stopped")}</strong>
-          <span>
-            {game.lossReport
-              ? localizeLossExplanation(game.lossReport.explanation, locale)
-              : localizeText(game.lossReason, locale)}
-          </span>
-        </section>
-      ) : null}
+      {game.status !== "running" ? <RunBanner game={game} locale={locale} /> : null}
 
       {morningReport ? (
         <MorningReportPage
@@ -252,27 +234,19 @@ export function App() {
             selectedTaskId={selectedTaskId}
           />
 
-          <aside className="side-stack">
-            <section className="panel inspector">
-              <h2>{t(locale, "inspector.title")}</h2>
-              {selectedTask ? (
-                <TaskInspector
-                  assigned={selectedAssigned}
-                  canCancelWork={Boolean(selectedAssigned && !morningReport)}
-                  cancelDisabled={interactionBlocked}
-                  game={game}
-                  locale={locale}
-                  onCancelWork={cancelSelectedTask}
-                  onOpenLinkedTask={openLinkedTask}
-                  task={selectedTask}
-                />
-              ) : (
-                <p className="empty">{t(locale, "inspector.empty")}</p>
-              )}
-            </section>
-
-            {game.lossReport ? <LossReport locale={locale} report={game.lossReport} /> : null}
-          </aside>
+          <SidePanel
+            canCancelWork={Boolean(
+              selectedTask?.assignedCharacterId &&
+                game.characters[selectedTask.assignedCharacterId] &&
+                !morningReport,
+            )}
+            cancelDisabled={interactionBlocked}
+            game={game}
+            locale={locale}
+            onCancelWork={cancelSelectedTask}
+            onOpenLinkedTask={openLinkedTask}
+            selectedTask={selectedTask}
+          />
         </section>
       )}
     </main>
