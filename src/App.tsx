@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { BoardPanel } from "./components/BoardPanel";
 import { DocsScreen } from "./components/DocsScreen";
 import { GameHeader } from "./components/GameHeader";
@@ -14,7 +14,6 @@ import {
   type RtGameState,
 } from "./realtime/simulation";
 import {
-  LOCALE_STORAGE_KEY,
   localizeLossExplanation,
   localizeLossHeadline,
   localizeText,
@@ -31,13 +30,17 @@ import { useTaskFeedback } from "./hooks/useTaskFeedback";
 import { useGameDragAndDrop } from "./hooks/useGameDragAndDrop";
 import { useGameEventEffects } from "./hooks/useGameEventEffects";
 import { initialSelectedTaskId, useGameActions } from "./hooks/useGameActions";
+import { loadStoredLocale, useLocaleGameSync } from "./hooks/useLocaleSync";
 import {
   useAutosaveRun,
   useBackendLogPump,
   useDebugSnapshotPoster,
+  useLatestGameRef,
+  useNormalizeRealtimeStateOnMount,
   useRealtimeTicker,
   useStatusDebugSnapshot,
 } from "./hooks/useRuntimeEffects";
+import { useSelectedTaskSync } from "./hooks/useSelectedTaskSync";
 import { USER_DOCS } from "./userdocs";
 import "./styles.css";
 
@@ -48,7 +51,7 @@ type ProdView = "released" | "unfinished";
 export function App() {
   const initialLocaleRef = useRef<Locale | null>(null);
   if (!initialLocaleRef.current) {
-    initialLocaleRef.current = loadLocale();
+    initialLocaleRef.current = loadStoredLocale();
   }
   const initialAutosaveRef = useRef<ReturnType<typeof loadSavedRun> | null>(null);
   if (!initialAutosaveRef.current) {
@@ -161,6 +164,10 @@ export function App() {
   useDebugSnapshotPoster(screen, latestGameRef, sessionIdRef);
   useAutosaveRun(game, screen, latestGameRef, sessionIdRef);
   useStatusDebugSnapshot(game, screen, sessionIdRef);
+  useLatestGameRef(game, latestGameRef);
+  useLocaleGameSync(locale, setGame, latestGameRef);
+  useNormalizeRealtimeStateOnMount(setGame);
+  useSelectedTaskSync(game, selectedTaskId, setSelectedTaskId);
   useGameEventEffects({
     game,
     screen,
@@ -170,33 +177,6 @@ export function App() {
     animatedWorkEventKeysRef,
     bounceTask,
   });
-
-  useEffect(() => {
-    latestGameRef.current = game;
-  }, [game]);
-
-  useEffect(() => {
-    saveLocale(locale);
-    setGame((current) => {
-      if (current.locale === locale) return current;
-      const next = { ...current, locale };
-      latestGameRef.current = next;
-      return next;
-    });
-  }, [locale]);
-
-  useEffect(() => {
-    setGame((current) => {
-      const draft = structuredClone(current) as RtGameState;
-      return normalizeRealtimeState(draft) ? draft : current;
-    });
-  }, []);
-
-  useEffect(() => {
-    if (selectedTaskId && !game.tasks[selectedTaskId]) {
-      setSelectedTaskId(initialSelectedTaskId(game));
-    }
-  }, [game, selectedTaskId]);
 
   function mutate(updater: (draft: RtGameState) => void) {
     setGame((current) => {
@@ -340,27 +320,4 @@ export function App() {
       )}
     </main>
   );
-}
-
-function loadLocale(): Locale {
-  const storage = getBrowserStorage();
-  return normalizeLocale(storage?.getItem(LOCALE_STORAGE_KEY));
-}
-
-function saveLocale(locale: Locale): void {
-  const storage = getBrowserStorage();
-  if (!storage) return;
-  try {
-    storage.setItem(LOCALE_STORAGE_KEY, locale);
-  } catch {
-    // Locale selection is a convenience setting.
-  }
-}
-
-function getBrowserStorage(): Storage | null {
-  try {
-    return typeof window === "undefined" ? null : window.localStorage;
-  } catch {
-    return null;
-  }
 }

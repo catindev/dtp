@@ -25,6 +25,26 @@ export function useBackendLogPump(): void {
   }, []);
 }
 
+export function useLatestGameRef(
+  game: RtGameState,
+  latestGameRef: MutableRefObject<RtGameState>,
+): void {
+  useEffect(() => {
+    latestGameRef.current = game;
+  }, [game, latestGameRef]);
+}
+
+export function useNormalizeRealtimeStateOnMount(
+  setGame: Dispatch<SetStateAction<RtGameState>>,
+): void {
+  useEffect(() => {
+    setGame((current) => {
+      const draft = structuredClone(current) as RtGameState;
+      return normalizeRealtimeState(draft) ? draft : current;
+    });
+  }, [setGame]);
+}
+
 export function useRealtimeTicker(
   screen: string,
   setGame: Dispatch<SetStateAction<RtGameState>>,
