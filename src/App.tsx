@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState } from "react";
+import { BoardPanel } from "./components/BoardPanel";
 import { DocsScreen } from "./components/DocsScreen";
 import { GameHeader } from "./components/GameHeader";
 import { MenuScreen } from "./components/MenuScreen";
+import { ReadinessBadge } from "./components/ReadinessBadge";
 import { TeamPanel } from "./components/TeamPanel";
+import { TinyBar } from "./components/TinyBar";
 import {
   DONE_REWORK_TRUST_COST,
-  RT_COLUMNS,
   createRealtimeState,
   formatGameTime,
   formatOverdueGameTime,
@@ -20,7 +22,6 @@ import {
   type RtMorningReport,
   type RtQuarterReviewReport,
   type RtReadinessReport,
-  type RtRiskReason,
   type RtSubtask,
   type RtTask,
 } from "./realtime/simulation";
@@ -29,8 +30,6 @@ import {
   labelBlastRadius,
   labelConsequenceCause,
   labelImportance,
-  labelReadiness,
-  labelRiskReason,
   labelRole,
   labelTaskKind,
   localizeEffect,
@@ -250,7 +249,6 @@ export function App() {
   const selectedAssigned = selectedTask?.assignedCharacterId
     ? game.characters[selectedTask.assignedCharacterId]
     : null;
-  const prodTaskIds = prodView === "released" ? game.board.released : archivedUnfinishedTaskIds(game);
   const selectedDoc = USER_DOCS.find((doc) => doc.id === selectedDocId) ?? USER_DOCS[0];
 
   if (screen === "docs") {
@@ -330,62 +328,23 @@ export function App() {
             onOutsourceDragStart={beginOutsourceDrag}
           />
 
-          <section className="board">
-            {RT_COLUMNS.map((column) => {
-              const taskIds = column === "released" ? prodTaskIds : game.board[column];
-              return (
-                <div
-                  className={[
-                    "column",
-                    column === "done" ? "done-column" : "",
-                    column === "released" ? "released-column" : "",
-                    shakeColumnIds.has(column) ? "reject-shake" : "",
-                  ].join(" ")}
-                  key={column}
-                  onDragOver={allowDrop}
-                  onDrop={(event) => dropOnColumn(event, column)}
-                >
-                  <div className="column-header">
-                    <h2>{columnLabel(locale, column)}</h2>
-                    {column === "released" ? (
-                      <div className="prod-view-switch" aria-label={t(locale, "prodView.label")}>
-                        {(["released", "unfinished"] as ProdView[]).map((view) => (
-                          <button
-                            className={prodView === view ? "active" : ""}
-                            key={view}
-                            onClick={() => setProdView(view)}
-                            type="button"
-                          >
-                            {t(locale, `prodView.${view}`)}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                  {taskIds.map((taskId) => {
-                    const task = game.tasks[taskId];
-                    if (!task) return null;
-                    return (
-                      <TaskCard
-                        attention={bounceTaskIds.has(task.id)}
-                        flash={flashTaskId === task.id}
-                        game={game}
-                        key={task.id}
-                        locale={locale}
-                        onClick={() => setSelectedTaskId(task.id)}
-                        onDragEnd={finishDrag}
-                        onDragStart={beginTaskDrag}
-                        onDropCharacter={dropOnTask}
-                        reject={shakeTaskIds.has(task.id)}
-                        selected={selectedTaskId === task.id}
-                        task={task}
-                      />
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </section>
+          <BoardPanel
+            attentionTaskIds={bounceTaskIds}
+            flashTaskId={flashTaskId}
+            game={game}
+            locale={locale}
+            onAllowDrop={allowDrop}
+            onColumnDrop={dropOnColumn}
+            onProdViewChange={setProdView}
+            onTaskClick={setSelectedTaskId}
+            onTaskDragEnd={finishDrag}
+            onTaskDragStart={beginTaskDrag}
+            onTaskDrop={dropOnTask}
+            prodView={prodView}
+            rejectColumnIds={shakeColumnIds}
+            rejectTaskIds={shakeTaskIds}
+            selectedTaskId={selectedTaskId}
+          />
 
           <aside className="side-stack">
             <section className="panel inspector">
@@ -686,147 +645,6 @@ function ReleaseMetric({
   );
 }
 
-function TaskCard({
-  attention,
-  flash,
-  game,
-  locale,
-  onClick,
-  onDragEnd,
-  onDragStart,
-  onDropCharacter,
-  reject,
-  selected,
-  task,
-}: {
-  attention: boolean;
-  flash: boolean;
-  game: RtGameState;
-  locale: Locale;
-  onClick: () => void;
-  onDragEnd: () => void;
-  onDragStart: (event: DragEvent<HTMLElement>, task: RtTask) => void;
-  onDropCharacter: (event: DragEvent<HTMLElement>, task: RtTask) => void;
-  reject: boolean;
-  selected: boolean;
-  task: RtTask;
-}) {
-  const assigned = task.assignedCharacterId
-    ? game.characters[task.assignedCharacterId]
-    : null;
-  const outsourcingSubtask = task.outsourcing
-    ? task.subtasks.find((subtask) => subtask.id === task.outsourcing?.subtaskId)
-    : null;
-  const deadlineRatio = taskDeadlineRatio(task);
-  const readiness = releaseReadiness(task);
-  const late = lateReleaseReport(task);
-  const urgent = !task.resolved && !task.released && task.column !== "done" && deadlineRatio <= 0.18;
-  const dragBlocked =
-    Boolean(task.assignedCharacterId) ||
-    Boolean(task.outsourcing) ||
-    game.status !== "running" ||
-    task.resolved ||
-    task.released;
-  const locked =
-    Boolean(task.assignedCharacterId) ||
-    Boolean(task.outsourcing) ||
-    game.paused ||
-    game.status !== "running" ||
-    task.resolved ||
-    task.released;
-  const needsAttention =
-    task.stageComplete && task.column === "inProgress" && !task.assignedCharacterId && !task.released;
-  const readyForDone = needsAttention && taskReadyForDone(task);
-  const neededRoles = taskNeededRoleChips(task, locale);
-  const readinessClass = taskCardReadinessClass(task, readiness, readyForDone);
-  const title = localizeTaskName(task.title, locale);
-
-  return (
-    <article
-      className={[
-        "task-card",
-        selected ? "selected" : "",
-        selected && task.column === "inProgress" ? "selected-work" : "",
-        urgent ? "urgent" : "",
-        locked ? "locked" : "",
-        readinessClass,
-        attention ? "work-pass-bounce" : "",
-        flash ? "drop-flash" : "",
-        reject ? "reject-shake" : "",
-      ].join(" ")}
-      data-task-card-id={task.id}
-      draggable={!dragBlocked}
-      onClick={onClick}
-      onDragEnd={onDragEnd}
-      onDragOver={(event) => {
-        const hasDropPayload =
-          event.dataTransfer.types.includes("application/dtp-task") ||
-          event.dataTransfer.types.includes("application/dtp-character") ||
-          event.dataTransfer.types.includes("application/dtp-outsourcing");
-        if (!game.paused && game.status === "running" && hasDropPayload) {
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "move";
-        }
-      }}
-      onDragStart={(event) => onDragStart(event, task)}
-      onDrop={(event) => onDropCharacter(event, task)}
-    >
-      <header className="task-card-top">
-        <div>
-          <span>{task.id}</span>
-          <b>{labelTaskKind(locale, task.kind)}</b>
-        </div>
-        <i
-          aria-label={t(locale, "task.impact", { value: blastRadiusLabel(task.blastRadius, locale) })}
-          className={`impact-dot ${task.blastRadius}`}
-          title={t(locale, "task.impact", { value: blastRadiusLabel(task.blastRadius, locale) })}
-        />
-      </header>
-      <strong className="task-title">{title}</strong>
-      <div className="task-scan-row">
-        <ReadinessBadge locale={locale} report={readiness} compact />
-        {late.valuePenaltyPercent > 0 ? (
-          <span className="late-chip">{t(locale, "task.lateChip", { value: late.valuePenaltyPercent })}</span>
-        ) : null}
-      </div>
-      {neededRoles.length > 0 ? (
-        <div className="role-chip-row" aria-label={t(locale, "task.neededRoles")}>
-          {neededRoles.map((role) => (
-            <span className={`role-chip ${role.kind}`} key={role.key}>
-              {role.label}
-            </span>
-          ))}
-        </div>
-      ) : null}
-      {!task.released && task.column !== "done" ? (
-        <TinyBar label={t(locale, "task.deadline")} ratio={deadlineRatio} tone={deadlineTone(deadlineRatio)} />
-      ) : null}
-      {task.column === "done" && !task.released ? (
-        <span className="queue-note">{t(locale, "task.reopenCost", { cost: DONE_REWORK_TRUST_COST })}</span>
-      ) : null}
-      {assigned ? (
-        <div className="work-chip">
-          <span>{assigned.name} {currentWorkLabel(task, locale)}</span>
-          <div className="work-track">
-            <i style={{ width: `${task.stageProgress}%` }} />
-          </div>
-        </div>
-      ) : null}
-      {task.outsourcing ? (
-        <div className="work-chip outsourcing-work">
-          <span>
-            {t(locale, "task.outsource")}{" "}
-            {outsourcingSubtask ? `-> ${subtaskRoleLabel(outsourcingSubtask.role, locale)}` : ""}
-          </span>
-          <div className="work-track">
-            <i style={{ width: `${task.outsourcing.progress}%` }} />
-          </div>
-        </div>
-      ) : null}
-    </article>
-  );
-}
-
 function TaskInspector({
   assigned,
   canCancelWork,
@@ -987,70 +805,6 @@ function SubtaskList({ locale, task }: { locale: Locale; task: RtTask }) {
   );
 }
 
-function archivedUnfinishedTaskIds(game: RtGameState): string[] {
-  return Object.values(game.tasks)
-    .filter((task) => task.resolved && !task.released)
-    .sort((left, right) => {
-      const dayDelta = (right.resolutionDay ?? 0) - (left.resolutionDay ?? 0);
-      if (dayDelta !== 0) return dayDelta;
-      return taskIdSequence(right.id) - taskIdSequence(left.id);
-    })
-    .map((task) => task.id);
-}
-
-function taskIdSequence(taskId: string): number {
-  return Number(taskId.match(/\d+$/)?.[0] ?? 0);
-}
-
-function taskReadyForDone(task: RtTask): boolean {
-  return (
-    task.workDone &&
-    task.subtasks.filter((subtask) => subtask.revealed && !subtask.done).length === 0 &&
-    task.bugs === 0
-  );
-}
-
-function taskCardReadinessClass(
-  task: RtTask,
-  readiness: RtReadinessReport,
-  readyForDone: boolean,
-): "ready-clean" | "ready-risky" | "needs-work" {
-  const queuedOrReleased = task.column === "done" || task.released;
-  const canResolveNow = readyForDone || queuedOrReleased;
-  if (!canResolveNow) return "needs-work";
-  if (readiness.readiness === "clean") return "ready-clean";
-  if (readiness.readiness === "risky") return "ready-risky";
-  return "needs-work";
-}
-
-function ReadinessBadge({
-  compact = false,
-  locale,
-  report,
-}: {
-  compact?: boolean;
-  locale: Locale;
-  report: RtReadinessReport;
-}) {
-  const reasons = compact ? report.reasons.slice(0, 2) : report.reasons;
-  return (
-    <div className={`readiness-box ${report.readiness} ${compact ? "compact" : ""}`}>
-      <strong>{readinessLabel(report.readiness, locale)}</strong>
-      {!compact && reasons.length > 0 ? (
-        <div>
-          {reasons.map((reason) => (
-            <span key={reason}>{riskReasonLabel(reason, locale)}</span>
-          ))}
-        </div>
-      ) : !compact ? (
-        <div>
-          <span>{t(locale, "readiness.noRisks")}</span>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function effectTone(effect: string): "positive" | "negative" | "neutral" {
   if (effect.startsWith("debt +")) return "negative";
   if (effect.startsWith("debt -")) return "positive";
@@ -1078,14 +832,6 @@ function isReleaseOutcomeEffect(effect: string): boolean {
 function formatSignedNumber(value: number): string {
   if (value > 0) return `+${value}`;
   return `${value}`;
-}
-
-function readinessLabel(readiness: RtReadinessReport["readiness"], locale: Locale): string {
-  return labelReadiness(locale, readiness);
-}
-
-function riskReasonLabel(reason: RtRiskReason, locale: Locale): string {
-  return labelRiskReason(locale, reason);
 }
 
 function blastRadiusLabel(blastRadius: RtTask["blastRadius"], locale: Locale): string {
@@ -1139,32 +885,6 @@ function consequenceCauseLabel(
   locale: Locale,
 ): string {
   return labelConsequenceCause(locale, cause);
-}
-
-function TinyBar({
-  label,
-  ratio,
-  tone,
-}: {
-  label: string;
-  ratio: number;
-  tone: "queue" | "deadline" | "deadline-safe" | "deadline-warning" | "deadline-urgent" | "progress";
-}) {
-  const percent = Math.max(0, Math.min(100, ratio * 100));
-  return (
-    <div className={`tiny-bar ${tone}`}>
-      <span>{label}</span>
-      <div className="tiny-track">
-        <i style={{ width: `${percent}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function deadlineTone(ratio: number): "deadline-safe" | "deadline-warning" | "deadline-urgent" {
-  if (ratio <= 0.18) return "deadline-urgent";
-  if (ratio <= 0.42) return "deadline-warning";
-  return "deadline-safe";
 }
 
 function LossReport({
@@ -1257,37 +977,6 @@ function currentWorkLabel(task: RtTask, locale: Locale): string {
     : null;
   if (subtask) return `-> ${subtaskRoleLabel(subtask.role, locale)}`;
   return task.assignedCharacterId ? (locale === "ru" ? "-> анализ" : "-> analysis") : "";
-}
-
-function taskNeededRoleChips(task: RtTask, locale: Locale): Array<{
-  key: string;
-  kind: "known" | "unknown";
-  label: string;
-}> {
-  if (task.released) return [];
-  const roles = new Set<RtSubtask["role"]>();
-  for (const subtask of task.subtasks) {
-    if (!subtask.revealed || subtask.done) continue;
-    roles.add(subtask.role);
-  }
-  const chips: Array<{
-    key: string;
-    kind: "known" | "unknown";
-    label: string;
-  }> = Array.from(roles).map((role) => ({
-    key: role,
-    kind: "known",
-    label: subtaskRoleLabel(role, locale),
-  }));
-  const hasHiddenOpenWork = task.subtasks.some((subtask) => !subtask.revealed && !subtask.done);
-  if (hasHiddenOpenWork) {
-    chips.push({
-      key: "unknown",
-      kind: "unknown",
-      label: t(locale, "subtasks.unknownImportance"),
-    });
-  }
-  return chips;
 }
 
 function subtaskRoleLabel(role: RtSubtask["role"], locale: Locale): string {
