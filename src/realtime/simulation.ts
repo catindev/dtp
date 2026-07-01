@@ -40,6 +40,13 @@ import {
   WORK_STAMINA_DRAIN_BASE,
 } from "../engine/balance";
 import {
+  BASE_SKILLS,
+  BASE_SPECIALTIES,
+  CHARACTER_NAMES,
+  DOMAINS,
+  DOMAIN_PREFIXES,
+} from "../engine/catalog";
+import {
   chance,
   pickOne,
   randomBetween,
@@ -132,37 +139,6 @@ export type {
   RtTaskResolution,
   RtWorkColumn,
 } from "../engine/types";
-
-const domains = ["payments", "auth", "admin", "search", "reports", "notifications"];
-
-const domainPrefixes: Record<string, string> = {
-  payments: "PAY",
-  auth: "AUTH",
-  admin: "ADM",
-  search: "SRCH",
-  reports: "REP",
-  notifications: "NTF",
-};
-
-const names = ["Nina", "Oleg", "Mira", "Anton", "Lena", "Max"];
-
-const baseSkills: Record<RtRole, Record<RtStage, number>> = {
-  analyst: { analysis: 5, todo: 2, test: 2 },
-  designer: { analysis: 3, todo: 3, test: 1 },
-  backend: { analysis: 1, todo: 5, test: 2 },
-  frontend: { analysis: 1, todo: 5, test: 2 },
-  qa: { analysis: 2, todo: 1, test: 5 },
-  sre: { analysis: 2, todo: 3, test: 4 },
-};
-
-const baseSpecialties: Record<RtRole, Record<RtSubtaskRole, number>> = {
-  analyst: { backend: 1, frontend: 1, design: 2, qa: 2, sre: 1, bugfix: 1 },
-  designer: { backend: 0, frontend: 3, design: 5, qa: 1, sre: 0, bugfix: 1 },
-  backend: { backend: 5, frontend: 2, design: 0, qa: 1, sre: 2, bugfix: 4 },
-  frontend: { backend: 2, frontend: 5, design: 2, qa: 1, sre: 0, bugfix: 3 },
-  qa: { backend: 1, frontend: 1, design: 1, qa: 5, sre: 1, bugfix: 1 },
-  sre: { backend: 3, frontend: 0, design: 0, qa: 3, sre: 5, bugfix: 3 },
-};
 
 export function createRealtimeState(seed = Date.now(), locale: Locale = DEFAULT_LOCALE): RtGameState {
   const state: RtGameState = {
@@ -1168,7 +1144,7 @@ function createTailConsequence(
   const sequence =
     originalFollowUpId.match(/\d+$/)?.[0] ?? String(state.nextTaskId - 1).padStart(3, "0");
   followUp.domain = sourceTask.domain;
-  followUp.id = `${domainPrefixes[sourceTask.domain] ?? "INC"}-${sequence}`;
+  followUp.id = `${DOMAIN_PREFIXES[sourceTask.domain] ?? "INC"}-${sequence}`;
   followUp.title = `${followUp.id}: ${symptom}`;
   for (const subtask of followUp.subtasks) {
     subtask.id = subtask.id.replace(originalFollowUpId, followUp.id);
@@ -1789,10 +1765,13 @@ function lateReleaseScorePenalty(task: RtTask): number {
 function createCharacter(state: RtGameState, role: RtRole): RtCharacter {
   return {
     id: `C-${state.nextCharacterId++}`,
-    name: names[(state.nextCharacterId + Object.keys(state.characters).length) % names.length],
+    name:
+      CHARACTER_NAMES[
+        (state.nextCharacterId + Object.keys(state.characters).length) % CHARACTER_NAMES.length
+      ],
     role,
-    skill: { ...baseSkills[role] },
-    specialty: { ...baseSpecialties[role] },
+    skill: { ...BASE_SKILLS[role] },
+    specialty: { ...BASE_SPECIALTIES[role] },
     xp: { backend: 0, frontend: 0, design: 0, qa: 0, sre: 0, bugfix: 0 },
     stamina: 100,
     burnout: 0,
@@ -1804,8 +1783,8 @@ function createCharacter(state: RtGameState, role: RtRole): RtCharacter {
 
 function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTask {
   const kind = forcedKind ?? chooseTaskKind(state);
-  const domain = pickOne(state, domains);
-  const id = `${domainPrefixes[domain]}-${String(state.nextTaskId++).padStart(3, "0")}`;
+  const domain = pickOne(state, DOMAINS);
+  const id = `${DOMAIN_PREFIXES[domain]}-${String(state.nextTaskId++).padStart(3, "0")}`;
   const pressure = kind === "incident" ? randomInt(state, 4, 6) : randomInt(state, 1, 5);
   const complexity = randomInt(state, 1, 5);
   const blastRadius = chooseBlastRadius(state, kind, complexity, pressure);
