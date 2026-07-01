@@ -1,4 +1,18 @@
-import { LATE_RELEASE_GRACE_MS } from "./balance";
+import {
+  LATE_RELEASE_AFTER_HALF_HOUR_PENALTY_PER_HOUR,
+  LATE_RELEASE_BLAST_SENSITIVITY,
+  LATE_RELEASE_FIRST_HALF_HOUR_PENALTY_PER_HOUR,
+  LATE_RELEASE_GRACE_MS,
+  LATE_RELEASE_KIND_SENSITIVITY,
+  LATE_RELEASE_MAX_VALUE_PENALTY,
+  LATE_RELEASE_PRESSURE_BASELINE,
+  LATE_RELEASE_PRESSURE_PENALTY,
+  LATE_RELEASE_SCORE_PENALTY_BASE,
+  LATE_RELEASE_SCORE_PENALTY_MAX,
+  LATE_RELEASE_SCORE_PENALTY_MIN,
+  LATE_RELEASE_SCORE_PENALTY_PER_VALUE_PERCENT,
+  LATE_RELEASE_SCORE_PENALTY_WHEN_ON_TIME,
+} from "./balance";
 import { clamp } from "./math";
 import type {
   RtFalloutWarning,
@@ -7,7 +21,6 @@ import type {
   RtReadinessReport,
   RtRiskReason,
   RtTask,
-  RtTaskKind,
 } from "./types";
 
 export function falloutWarningForTask(task: RtTask): RtFalloutWarning | null {
@@ -67,9 +80,13 @@ export function lateReleaseReport(task: RtTask): RtLateReleaseReport {
 
   const overdueGameMinutes = overdueMs / 1000;
   const overdueHours = overdueGameMinutes / 60;
-  const firstHalfHourPenalty = Math.min(overdueHours, 0.5) * 0.1;
-  const latePenalty = Math.max(0, overdueHours - 0.5) * 0.16;
-  const pressurePenalty = Math.max(0, task.pressure - 3) * 0.025;
+  const firstHalfHourPenalty =
+    Math.min(overdueHours, 0.5) * LATE_RELEASE_FIRST_HALF_HOUR_PENALTY_PER_HOUR;
+  const latePenalty =
+    Math.max(0, overdueHours - 0.5) * LATE_RELEASE_AFTER_HALF_HOUR_PENALTY_PER_HOUR;
+  const pressurePenalty =
+    Math.max(0, task.pressure - LATE_RELEASE_PRESSURE_BASELINE) *
+    LATE_RELEASE_PRESSURE_PENALTY;
   const sensitivity = lateSensitivity(task);
   const maxPenalty = lateMaxPenalty(task);
   const penalty = clamp(
@@ -212,40 +229,27 @@ export function formatRiskReason(reason: RtRiskReason): string {
 }
 
 function lateSensitivity(task: RtTask): number {
-  const kindSensitivity: Record<RtTaskKind, number> = {
-    feature: 1,
-    bug: 0.9,
-    techDebt: 0.45,
-    integration: 1.2,
-    incident: 1.25,
-    performance: 0.9,
-    compliance: 1.2,
-  };
-  const blastAdjustment =
-    task.blastRadius === "high" ? 0.12 : task.blastRadius === "medium" ? 0.05 : 0;
-  return kindSensitivity[task.kind] + blastAdjustment;
+  return (
+    LATE_RELEASE_KIND_SENSITIVITY[task.kind] +
+    LATE_RELEASE_BLAST_SENSITIVITY[task.blastRadius]
+  );
 }
 
 function lateMaxPenalty(task: RtTask): number {
-  switch (task.kind) {
-    case "techDebt":
-      return 0.25;
-    case "bug":
-    case "performance":
-      return 0.45;
-    case "feature":
-      return 0.55;
-    case "integration":
-    case "incident":
-    case "compliance":
-      return 0.65;
-  }
+  return LATE_RELEASE_MAX_VALUE_PENALTY[task.kind];
 }
 
 function lateReleaseScorePenalty(task: RtTask): number {
   const late = lateReleaseReport(task);
-  if (late.valuePenaltyPercent === 0) return 8;
-  return Math.round(clamp(6 + late.valuePenaltyPercent * 0.12, 8, 14));
+  if (late.valuePenaltyPercent === 0) return LATE_RELEASE_SCORE_PENALTY_WHEN_ON_TIME;
+  return Math.round(
+    clamp(
+      LATE_RELEASE_SCORE_PENALTY_BASE +
+        late.valuePenaltyPercent * LATE_RELEASE_SCORE_PENALTY_PER_VALUE_PERCENT,
+      LATE_RELEASE_SCORE_PENALTY_MIN,
+      LATE_RELEASE_SCORE_PENALTY_MAX,
+    ),
+  );
 }
 
 function uniqueReasons(reasons: Array<RtRiskReason | null>): RtRiskReason[] {

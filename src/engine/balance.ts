@@ -1,3 +1,5 @@
+import type { RtBlastRadius, RtTaskKind } from "./types";
+
 export const TICK_MS = 500;
 export const GAME_MINUTES_PER_REAL_SECOND = 1;
 export const GAME_MINUTES_PER_TICK = 0.5;
@@ -39,6 +41,38 @@ export const BACKLOG_LIMIT = 5;
 export const FALLOUT_BACKLOG_EXTRA_SLOTS = 2;
 export const MAX_FALLOUT_CHAIN_DEPTH = 2;
 export const LATE_RELEASE_GRACE_MS = 30000;
+export const LATE_RELEASE_FIRST_HALF_HOUR_PENALTY_PER_HOUR = 0.1;
+export const LATE_RELEASE_AFTER_HALF_HOUR_PENALTY_PER_HOUR = 0.16;
+export const LATE_RELEASE_PRESSURE_BASELINE = 3;
+export const LATE_RELEASE_PRESSURE_PENALTY = 0.025;
+export const LATE_RELEASE_KIND_SENSITIVITY: Record<RtTaskKind, number> = {
+  feature: 1,
+  bug: 0.9,
+  techDebt: 0.45,
+  integration: 1.2,
+  incident: 1.25,
+  performance: 0.9,
+  compliance: 1.2,
+};
+export const LATE_RELEASE_BLAST_SENSITIVITY: Record<RtBlastRadius, number> = {
+  low: 0,
+  medium: 0.05,
+  high: 0.12,
+};
+export const LATE_RELEASE_MAX_VALUE_PENALTY: Record<RtTaskKind, number> = {
+  feature: 0.55,
+  bug: 0.45,
+  techDebt: 0.25,
+  integration: 0.65,
+  incident: 0.65,
+  performance: 0.45,
+  compliance: 0.65,
+};
+export const LATE_RELEASE_SCORE_PENALTY_WHEN_ON_TIME = 8;
+export const LATE_RELEASE_SCORE_PENALTY_BASE = 6;
+export const LATE_RELEASE_SCORE_PENALTY_PER_VALUE_PERCENT = 0.12;
+export const LATE_RELEASE_SCORE_PENALTY_MIN = 8;
+export const LATE_RELEASE_SCORE_PENALTY_MAX = 14;
 
 export const FRONTEND_GUARDRAIL_WINDOW = 7;
 export const FRONTEND_GUARDRAIL_MIN_MAJOR_WORK = 1;

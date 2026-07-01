@@ -1582,8 +1582,6 @@ function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTask {
     currentSubtaskId: null,
     offRolePenalty: 0,
     postmortem: [],
-    backlogTtlMs: 0,
-    backlogTtlMaxMs: 0,
     deadlineMs: Math.max(420000, deadlineMs),
     deadlineMaxMs: Math.max(420000, deadlineMs),
     overdueMs: 0,

@@ -187,8 +187,6 @@ export interface RtTask {
   currentSubtaskId: string | null;
   offRolePenalty: number;
   postmortem: string[];
-  backlogTtlMs: number;
-  backlogTtlMaxMs: number;
   deadlineMs: number;
   deadlineMaxMs: number;
   overdueMs: number;
