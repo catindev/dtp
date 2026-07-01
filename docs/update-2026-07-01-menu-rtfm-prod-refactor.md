@@ -147,6 +147,22 @@ Result:
 - shared formatting helpers are no longer local to `App.tsx`;
 - game behavior was intentionally left unchanged.
 
+Follow-up refactor:
+
+- the remaining shell logic was later split into `src/hooks/*`;
+- visible playfield areas were moved into `src/components/*`;
+- `src/realtime/simulation.ts` became a facade over `src/engine/*`;
+- the active file map is documented in `docs/update-2026-07-01-refactor-milestones.md`.
+
+Additional UI cleanup after this note:
+
+- language switching moved out of the active game header and into menu/docs flow;
+- `Pause` and `Menu` are separate controls;
+- `New run` lives in the menu;
+- Done cards no longer show the old "ships at 18:00" chip;
+- `Checklist` was renamed to `Subtasks` / `Подзадачи`;
+- Russian unknown-work labels are now `Скрытая работа` / `скрыто`.
+
 ---
 
 ## Verification

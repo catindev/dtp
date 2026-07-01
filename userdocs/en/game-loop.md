@@ -24,6 +24,8 @@ When a task looks clean enough, move it to "Done". Before 18:00 you can still re
 
 Only shipped tasks affect the business. Clean releases help. Dirty releases can create follow-up work for the next day.
 
+The "Prod" column is history. You can switch between shipped tasks and unfinished work that has already turned into a consequence or a capped resource hit.
+
 ## 6. Read the morning fallout
 
 The morning briefing shows what happened after yesterday's release. If yesterday's release carried risk, today may start with a new consequence task.

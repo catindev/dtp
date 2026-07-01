@@ -611,12 +611,16 @@ npm run check
 Актуальный runtime:
 
 ```txt
-src/realtime/simulation.ts
-src/App.tsx
-src/styles.css
-vite.config.ts
-src/save.ts
-/Users/vladimirtitskiy/Dev/dtp-backend/src/server.ts
+src/realtime/simulation.ts - публичный фасад realtime-движка
+src/engine/* - правила симуляции, баланс, задачи, релиз, последствия, миграции
+src/hooks/* - browser/runtime orchestration: tick, autosave, drag-and-drop, logging, actions
+src/components/* - player-facing UI панели
+src/App.tsx - shell-композиция экранов menu/game/docs
+src/styles.css - визуальный слой
+src/save.ts - autosave envelope и schema guard
+src/frontendLogging.ts - backend logging + browser fallback queue
+vite.config.ts - dev/build wiring
+/Users/vladimirtitskiy/Dev/dtp-backend/src/server.ts - локальный JSONL/session logger backend
 ```
 
 Legacy runtime:
@@ -720,7 +724,140 @@ src/formatting.ts
 
 ---
 
-## 29. Открытые вопросы
+## 29. Большой рефакторинг App и realtime-движка
+
+После ревью архитектуры был выполнен последовательный рефакторинг без изменения правил игры.
+
+Главная цель:
+
+```txt
+перестать наращивать App.tsx и simulation.ts как два монолита
+```
+
+### Движок
+
+`src/realtime/simulation.ts` превращен в фасад над модульным движком. Он сохраняет стабильный API для UI и debug harnesses, но правила больше не живут в одном файле.
+
+Основные модули:
+
+- `src/engine/balance.ts` - константы и баланс;
+- `src/engine/types.ts` - типы realtime-состояния;
+- `src/engine/taskFactory.ts` и `src/engine/spawn.ts` - генерация задач, команды и входящего потока;
+- `src/engine/board.ts` - правила движения карточек;
+- `src/engine/work.ts` - назначение людей, прогресс, stamina, analysis, QA, баги и rework;
+- `src/engine/outsourcing.ts` - аутсорс;
+- `src/engine/release.ts` - release train и бизнес-эффекты;
+- `src/engine/consequences.ts` - fallout, missed work, цепочки и terminal cap;
+- `src/engine/morning.ts` - Morning Briefing;
+- `src/engine/time.ts` - часы, дедлайны и дневной цикл;
+- `src/engine/loss.ts` - поражение;
+- `src/engine/migration.ts` - нормализация autosave;
+- `src/engine/readiness.ts` - clean/risky/dirty, late release и внутренний score.
+
+Legacy runtime перенесен в `src/archive/core`, а старый debug-скрипт переименован в `debug:legacy`.
+
+### Shell и hooks
+
+Из `App.tsx` вынесены runtime-эффекты и игровые действия:
+
+- `useGameBoot`;
+- `useGameMutation`;
+- `useRuntimeEffects`;
+- `useGameActions`;
+- `useGameDragAndDrop`;
+- `useGameEventEffects`;
+- `useTaskFeedback`;
+- `useLocaleSync`;
+- `useSelectedTaskSync`.
+
+Теперь `App.tsx` в основном:
+
+- хранит выбранный экран (`menu`, `game`, `docs`);
+- держит выбранную задачу/doc/prod-filter;
+- связывает hooks и компоненты;
+- раскладывает страницу.
+
+### UI-компоненты
+
+Игровой экран разложен на компоненты:
+
+- `GameHeader`;
+- `MenuScreen`;
+- `DocsScreen`;
+- `TeamPanel`;
+- `BoardPanel`;
+- `TaskCard`;
+- `TaskInspector`;
+- `MorningReportPage`;
+- `LossReport`;
+- `RunBanner`;
+- `SidePanel`;
+- `ReadinessBadge`;
+- `TinyBar`.
+
+### UI-полировка, зафиксированная в этом проходе
+
+Сохранены и задокументированы последние UX-решения:
+
+- язык переключается в меню/docs, а не в активном игровом header;
+- `Пауза` только ставит игру на паузу, `Меню` открывает меню;
+- `Новая игра` находится в меню;
+- из header убран шумный текст с промежуточными подсказками по цели;
+- `Released` заменен player-facing колонкой `Прод`;
+- у `Прод` есть фильтры `Релизы` и `Невыполненные`;
+- с карточек в проде убраны лишние плашки `Зарелизено`;
+- с карточек в `Done` убрана плашка `Уедет в 18:00`;
+- `Чеклист` переименован в `Подзадачи`;
+- `Unknown work` на русском называется `Скрытая работа`;
+- fallout-названия очищены от длинного "после такой-то задачи";
+- связи между задачами показываются структурно через `Спровоцировано задачей` и `Последствия`;
+- клик по linked task выбирает карточку и скроллит к ней, при необходимости переключая фильтр `Прод`;
+- Event Log и Debug Trace убраны из игрового экрана, но structured logs остаются для плейтеста.
+
+### Текущий размер узких мест
+
+После прохода самые крупные активные файлы:
+
+```txt
+src/engine/work.ts
+src/engine/consequences.ts
+src/components/MorningReportPage.tsx
+src/hooks/useGameDragAndDrop.ts
+src/engine/migration.ts
+src/engine/types.ts
+src/engine/taskFactory.ts
+src/realtime/simulation.ts
+src/App.tsx
+```
+
+Вывод:
+
+```txt
+основной App/simulation-монолит снят;
+следующие кандидаты на дробление стали локальными и понятными.
+```
+
+### Проверки
+
+После рефакторинга прогонялись:
+
+```sh
+npm run check
+npm run build
+npm run debug:rt
+npm run debug:ab
+git diff --check
+```
+
+Подробная архитектурная заметка:
+
+```txt
+docs/update-2026-07-01-refactor-milestones.md
+```
+
+---
+
+## 30. Открытые вопросы
 
 1. Нужно ли сохранять `Burnout`, если `Stamina` уже покрывает короткую усталость?
 2. Достаточно ли понятна роль `Team Budget`, если кроме outsource пока нет расходов?
