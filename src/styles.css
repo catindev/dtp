@@ -108,6 +108,14 @@ button {
   font-size: 12px;
 }
 
+.brand-block .session-id {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .clock {
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 24px;
@@ -121,13 +129,33 @@ button {
   gap: 6px;
 }
 
-.stat-strip span,
+.stat-strip .stat-pill,
+.stat-strip .status-pill,
 .inspector-grid span,
 .event-item div span,
-.task-facts span,
 .debug-facts span {
   border: 1px solid #dfdfd8;
   padding: 4px 6px;
+}
+
+.stat-pill {
+  font-weight: 700;
+}
+
+.stat-pill.primary {
+  border-color: #9fb9aa;
+  color: #245d45;
+  font-weight: 900;
+}
+
+.stat-pill.value {
+  border-color: #b7ad7a;
+  color: #6c6330;
+  font-weight: 900;
+}
+
+.stat-pill.muted {
+  color: #66665f;
 }
 
 .status-pill {
@@ -195,9 +223,17 @@ button {
   color: #ffffff;
 }
 
+.pause-button.reject-shake {
+  animation: rejectShake 380ms ease-in-out 1;
+}
+
 .cancel-button {
   border-color: #9f3f2f;
   color: #9f3f2f;
+}
+
+.inspector-cancel-button {
+  justify-self: start;
 }
 
 button:disabled {
@@ -506,6 +542,24 @@ button:disabled {
   gap: 6px;
 }
 
+.character-state span:first-child {
+  border: 1px solid #dfdfd8;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 5px;
+  text-transform: uppercase;
+}
+
+.character.busy .character-state span:first-child {
+  border-color: #6c6330;
+  color: #6c6330;
+}
+
+.character.exhausted .character-state span:first-child {
+  border-color: #9f3f2f;
+  color: #9f3f2f;
+}
+
 .character-work {
   border: 1px solid #dfdfd8;
   display: grid;
@@ -587,15 +641,34 @@ button:disabled {
   height: 5px;
 }
 
+.metric.stamina i {
+  background: #245d45;
+}
+
+.metric.stamina.warning i {
+  background: #b17b2f;
+}
+
+.metric.stamina.danger i {
+  background: #9f3f2f;
+}
+
 .metric b {
   font-size: 11px;
   text-align: right;
 }
 
+.burnout-badge {
+  color: #9f3f2f;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .board {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(4, minmax(170px, 1fr));
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
   height: 100%;
   min-width: 0;
   overflow-x: auto;
@@ -609,6 +682,11 @@ button:disabled {
   min-height: 0;
   overflow-y: auto;
   padding: 8px;
+}
+
+.column.reject-shake {
+  animation: rejectShake 380ms ease-in-out 1;
+  border-color: #9f3f2f;
 }
 
 .done-column {
@@ -625,14 +703,31 @@ button:disabled {
   border: 1px solid #d8d8d0;
   cursor: grab;
   display: grid;
-  gap: 7px;
+  gap: 6px;
   margin-bottom: 8px;
-  min-height: 146px;
+  min-height: 106px;
+  min-width: 0;
   padding: 8px;
+  position: relative;
   transition:
+    background-color 120ms ease,
     border-color 120ms ease,
     box-shadow 120ms ease,
     transform 120ms ease;
+}
+
+.task-card.ready-clean {
+  background: rgba(36, 93, 69, 0.08);
+  border-color: rgba(36, 93, 69, 0.36);
+}
+
+.task-card.ready-risky {
+  background: rgba(217, 200, 121, 0.2);
+  border-color: rgba(108, 99, 48, 0.34);
+}
+
+.task-card.needs-work {
+  background: #f7f7f3;
 }
 
 .task-card:hover {
@@ -641,11 +736,15 @@ button:disabled {
 
 .task-card.selected {
   border-color: #9f3f2f;
+  box-shadow: 0 10px 22px rgba(23, 23, 19, 0.16);
   outline: 1px solid #9f3f2f;
+  transform: translateY(-4px) scale(1.025);
+  z-index: 8;
 }
 
 .task-card.selected.selected-work {
   border-color: #8f8f86;
+  box-shadow: 0 10px 22px rgba(23, 23, 19, 0.12);
   outline-color: #8f8f86;
 }
 
@@ -658,6 +757,10 @@ button:disabled {
   border-color: #9f3f2f;
 }
 
+.task-card.selected.urgent {
+  animation: selectedUrgencyPulse 900ms ease-in-out infinite;
+}
+
 .task-card.work-pass-bounce {
   animation: workPassBounce 620ms cubic-bezier(0.2, 0.85, 0.25, 1) 1;
 }
@@ -666,69 +769,105 @@ button:disabled {
   animation: dropFlash 420ms ease-out 1;
 }
 
-.task-card header {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
+.task-card.reject-shake {
+  animation: rejectShake 380ms ease-in-out 1;
+  border-color: #9f3f2f;
 }
 
-.task-card header span {
+.task-card-top {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.task-card-top > div {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  min-width: 0;
+}
+
+.task-card-top span {
   color: #66665f;
+  flex: 0 0 auto;
   font-size: 12px;
   font-weight: 800;
+  white-space: nowrap;
 }
 
-.task-card header b {
+.task-card-top b {
   color: #66665f;
   font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.task-card strong {
+.task-title {
+  display: block;
   font-size: 13px;
   line-height: 1.25;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-.task-facts {
+.impact-dot {
+  border: 1px solid #999990;
+  display: block;
+  flex: 0 0 auto;
+  height: 9px;
+  width: 9px;
+}
+
+.impact-dot.low {
+  background: #d9ded5;
+  border-color: #9fb9aa;
+}
+
+.impact-dot.medium {
+  background: #d9c879;
+  border-color: #6c6330;
+}
+
+.impact-dot.high {
+  background: #9f3f2f;
+  border-color: #9f3f2f;
+}
+
+.task-scan-row {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.role-chip-row {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
 }
 
-.task-facts span {
-  font-size: 11px;
-  padding: 3px 4px;
-}
-
-.subtask-summary {
-  align-items: center;
-  background: #f7f7f3;
-  border: 1px solid #dfdfd8;
-  display: grid;
-  gap: 6px;
-  grid-template-columns: 1fr auto auto;
-  min-height: 26px;
-  padding: 4px 6px;
-}
-
-.subtask-summary span,
-.subtask-summary em {
-  color: #66665f;
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 700;
+.role-chip {
+  border: 1px solid #bdbdb5;
+  color: #55554d;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  padding: 4px 5px;
   text-transform: uppercase;
 }
 
-.subtask-summary strong {
-  color: #171713;
-  font-size: 12px;
+.role-chip.known {
+  border-color: #8f8f86;
 }
 
-.subtask-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+.role-chip.unknown {
+  border-color: #dfdfd8;
+  color: #77776f;
 }
 
 .chip {
@@ -780,7 +919,13 @@ button:disabled {
 }
 
 .readiness-box.compact {
-  padding: 4px 5px;
+  display: inline-flex;
+  gap: 0;
+  padding: 4px 6px;
+}
+
+.readiness-box.compact strong {
+  line-height: 1;
 }
 
 .readiness-box.clean {
@@ -805,37 +950,6 @@ button:disabled {
 
 .readiness-box.dirty strong {
   color: #9f3f2f;
-}
-
-.fallout-warning {
-  border: 1px solid #6c6330;
-  color: #6c6330;
-  display: grid;
-  gap: 3px;
-  padding: 5px 6px;
-}
-
-.fallout-warning.likely {
-  border-color: #9f3f2f;
-  color: #9f3f2f;
-}
-
-.fallout-warning strong,
-.fallout-warning span {
-  font-size: 11px;
-}
-
-.fallout-warning strong {
-  text-transform: uppercase;
-}
-
-.fallout-warning span {
-  color: #66665f;
-  font-weight: 700;
-}
-
-.fallout-warning.compact {
-  padding: 4px 5px;
 }
 
 .tiny-bar {
@@ -866,8 +980,17 @@ button:disabled {
   background: #6c6330;
 }
 
-.tiny-bar.deadline .tiny-track i {
+.tiny-bar.deadline .tiny-track i,
+.tiny-bar.deadline-urgent .tiny-track i {
   background: #9f3f2f;
+}
+
+.tiny-bar.deadline-warning .tiny-track i {
+  background: #b17b2f;
+}
+
+.tiny-bar.deadline-safe .tiny-track i {
+  background: #245d45;
 }
 
 .tiny-bar.progress .tiny-track i {
@@ -886,7 +1009,8 @@ button:disabled {
 }
 
 .work-chip span,
-.ready-chip {
+.card-status-chip,
+.late-chip {
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
@@ -905,10 +1029,16 @@ button:disabled {
   height: 100%;
 }
 
-.ready-chip {
+.card-status-chip {
   border: 1px solid #245d45;
   color: #245d45;
   justify-self: start;
+  padding: 3px 5px;
+}
+
+.late-chip {
+  border: 1px solid #9f3f2f;
+  color: #9f3f2f;
   padding: 3px 5px;
 }
 
@@ -1089,6 +1219,16 @@ button:disabled {
   }
 }
 
+@keyframes selectedUrgencyPulse {
+  0%,
+  100% {
+    transform: translateY(-4px) scale(1.025);
+  }
+  50% {
+    transform: translateY(-4px) scale(1.045);
+  }
+}
+
 @keyframes workPassBounce {
   0% {
     box-shadow: 0 0 0 rgba(36, 93, 69, 0);
@@ -1119,6 +1259,28 @@ button:disabled {
   100% {
     box-shadow: 0 0 0 12px rgba(159, 63, 47, 0);
     transform: scale(1);
+  }
+}
+
+@keyframes rejectShake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  18% {
+    transform: translateX(-7px);
+  }
+  36% {
+    transform: translateX(6px);
+  }
+  54% {
+    transform: translateX(-4px);
+  }
+  72% {
+    transform: translateX(3px);
+  }
+  88% {
+    transform: translateX(-1px);
   }
 }
 

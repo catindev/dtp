@@ -10,7 +10,8 @@ export const OUTSOURCE_COST_BY_IMPORTANCE: Record<RtSubtaskImportance, number> =
   important: 4,
   critical: 6,
 };
-const DAY_REST_STAMINA_BOOST = 35;
+const NIGHT_STAMINA_MIN_RECOVERY = 55;
+const NIGHT_STAMINA_RECOVERY_RATIO = 0.8;
 const FIRST_SPAWN_MIN_MS = 80000;
 const FIRST_SPAWN_MAX_MS = 120000;
 const SPAWN_INTERVAL_MIN_MS = 90000;
@@ -21,8 +22,17 @@ const BURST_INTERVAL_MIN_MS = 420000;
 const BURST_INTERVAL_MAX_MS = 660000;
 const WORK_SPEED_MULTIPLIER = 0.38;
 const ANALYSIS_SPEED_MULTIPLIER = 0.24;
+const WORK_STAMINA_DRAIN_BASE = 0.28;
+const WORK_PRESSURE_STAMINA_DRAIN = 0.045;
+const WORK_COMPLEXITY_STAMINA_DRAIN = 0.02;
+const OFF_ROLE_STAMINA_DRAIN = 0.12;
+const ANALYSIS_STAMINA_DRAIN_BASE = 0.23;
+const ANALYSIS_PRESSURE_STAMINA_DRAIN = 0.025;
+const ANALYSIS_COMPLEXITY_STAMINA_DRAIN = 0.012;
 const BACKLOG_LIMIT = 5;
+const FALLOUT_BACKLOG_EXTRA_SLOTS = 2;
 const MAX_FALLOUT_CHAIN_DEPTH = 2;
+const LATE_RELEASE_GRACE_MS = 30000;
 
 export const RT_COLUMNS = ["backlog", "inProgress", "done", "released"] as const;
 export type RtColumn = (typeof RT_COLUMNS)[number];
@@ -197,6 +207,7 @@ export interface RtTask {
   backlogTtlMaxMs: number;
   deadlineMs: number;
   deadlineMaxMs: number;
+  overdueMs: number;
   stageProgress: number;
   stageComplete: boolean;
   assignedCharacterId: string | null;
@@ -211,6 +222,13 @@ export interface RtTask {
   releaseScore: number | null;
   queuedDeadlineMs: number | null;
   lastNote: string;
+}
+
+export interface RtLateReleaseReport {
+  overdueMs: number;
+  overdueGameMinutes: number;
+  valueMultiplier: number;
+  valuePenaltyPercent: number;
 }
 
 export interface RtOutsourcingWork {
@@ -258,6 +276,25 @@ interface RtOutsourcePlan {
   task: RtTask;
   subtask: RtSubtask;
   cost: number;
+}
+
+export type RtOutsourceBlockReason =
+  | "ready"
+  | "task_missing"
+  | "task_busy"
+  | "task_released"
+  | "wrong_column"
+  | "needs_analysis"
+  | "no_open_work"
+  | "insufficient_budget";
+
+export interface RtOutsourceStatus {
+  allowed: boolean;
+  reason: RtOutsourceBlockReason;
+  currentBudget: number;
+  cost: number | null;
+  neededBudget: number | null;
+  subtask: RtSubtask | null;
 }
 
 export interface RtLossReport {
@@ -582,6 +619,7 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
   for (const task of Object.values(state.tasks)) {
     const legacyColumn = (task as unknown as { column: string }).column;
     const queueFields = task as RtTask & { queuedDeadlineMs?: number | null };
+    const lateFields = task as RtTask & { overdueMs?: number };
     const taskWithBlast = task as RtTask & { blastRadius?: RtBlastRadius };
     const taskWithOutsourcing = task as RtTask & { outsourcing?: RtOutsourcingWork | null };
     const taskWithChain = task as RtTask & {
@@ -609,6 +647,13 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
         task.column === "done" || task.released ? Math.max(0, task.deadlineMs) : null;
       changed = true;
     }
+    if (typeof lateFields.overdueMs !== "number" || !Number.isFinite(lateFields.overdueMs)) {
+      task.overdueMs = 0;
+      changed = true;
+    } else if (task.overdueMs < 0) {
+      task.overdueMs = 0;
+      changed = true;
+    }
     if (!("rootCauseTaskId" in taskWithChain)) {
       task.rootCauseTaskId = null;
       changed = true;
@@ -632,6 +677,16 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
     if (!("resolutionDay" in taskWithChain)) {
       task.resolutionDay = null;
       changed = true;
+    }
+    if (!Array.isArray(task.postmortem)) {
+      task.postmortem = [];
+      changed = true;
+    } else {
+      const postmortem = uniqueStrings(task.postmortem);
+      if (postmortem.length !== task.postmortem.length) {
+        task.postmortem = postmortem;
+        changed = true;
+      }
     }
     if (legacyColumn === "analysis" || legacyColumn === "todo" || legacyColumn === "test") {
       task.column = "inProgress";
@@ -768,13 +823,17 @@ export function moveRealtimeTask(
 
   if (targetColumn === "done") {
     const readiness = releaseReadiness(task);
+    const late = lateReleaseReport(task);
     removeTaskFromBoard(state, taskId);
     task.column = "done";
     task.stageProgress = 0;
     task.currentSubtaskId = null;
     task.stageComplete = true;
     task.queuedDeadlineMs = Math.max(0, task.deadlineMs);
-    task.lastNote = "Queued for the daily release train.";
+    task.lastNote =
+      late.valuePenaltyPercent > 0
+        ? `Queued late for release. Value reduced by ${late.valuePenaltyPercent}%.`
+        : "Queued for the daily release train.";
     state.board.done.unshift(taskId);
     pushEvent(state, {
       type: "queued_for_release",
@@ -782,6 +841,7 @@ export function moveRealtimeTask(
       body: `${task.title} will ship with the daily release train.`,
       effects: [
         `${readiness.readiness} release`,
+        ...(late.valuePenaltyPercent > 0 ? [`late value -${late.valuePenaltyPercent}%`] : []),
         ...readiness.reasons.slice(0, 4).map(formatRiskReason),
         "deadline locked",
         "business effects pending",
@@ -839,17 +899,101 @@ function getAssignmentPlan(
   return { character, task, subtask, willAnalyze };
 }
 
+export function getOutsourceTaskWorkStatus(state: RtGameState, taskId: string): RtOutsourceStatus {
+  const task = state.tasks[taskId];
+  const currentBudget = state.resources.budget;
+  if (!task) {
+    return {
+      allowed: false,
+      reason: "task_missing",
+      currentBudget,
+      cost: null,
+      neededBudget: null,
+      subtask: null,
+    };
+  }
+  if (taskBusy(task)) {
+    return {
+      allowed: false,
+      reason: "task_busy",
+      currentBudget,
+      cost: null,
+      neededBudget: null,
+      subtask: null,
+    };
+  }
+  if (task.released) {
+    return {
+      allowed: false,
+      reason: "task_released",
+      currentBudget,
+      cost: null,
+      neededBudget: null,
+      subtask: null,
+    };
+  }
+  if (!isWorkColumn(task.column)) {
+    return {
+      allowed: false,
+      reason: "wrong_column",
+      currentBudget,
+      cost: null,
+      neededBudget: null,
+      subtask: null,
+    };
+  }
+
+  const open = getOpenTodoSubtasks(task);
+  if (open.length === 0) {
+    return {
+      allowed: false,
+      reason: task.subtasks.some((subtask) => !subtask.revealed && !subtask.done)
+        ? "needs_analysis"
+        : "no_open_work",
+      currentBudget,
+      cost: null,
+      neededBudget: null,
+      subtask: null,
+    };
+  }
+
+  const subtask = chooseSubtaskForOutsource(state, task, currentBudget);
+  if (!subtask) {
+    const cheapest = open
+      .map((candidate) => ({
+        subtask: candidate,
+        cost: OUTSOURCE_COST_BY_IMPORTANCE[candidate.importance],
+      }))
+      .sort((a, b) => a.cost - b.cost)[0];
+    return {
+      allowed: false,
+      reason: "insufficient_budget",
+      currentBudget,
+      cost: cheapest.cost,
+      neededBudget: cheapest.cost,
+      subtask: cheapest.subtask,
+    };
+  }
+
+  const cost = OUTSOURCE_COST_BY_IMPORTANCE[subtask.importance];
+  return {
+    allowed: true,
+    reason: "ready",
+    currentBudget,
+    cost,
+    neededBudget: cost,
+    subtask,
+  };
+}
+
 function getOutsourcePlan(state: RtGameState, taskId: string): RtOutsourcePlan | null {
   const task = state.tasks[taskId];
-  if (!task || taskBusy(task) || task.released || !isWorkColumn(task.column)) {
-    return null;
-  }
-  const subtask = chooseSubtaskForOutsource(state, task, state.resources.budget);
-  if (!subtask) return null;
+  const status = getOutsourceTaskWorkStatus(state, taskId);
+  if (!task || !status.allowed || !status.subtask || status.cost === null) return null;
   return {
     task,
-    subtask,
-    cost: OUTSOURCE_COST_BY_IMPORTANCE[subtask.importance],
+    subtask: status.subtask,
+    cost: status.cost,
   };
 }
 
@@ -893,8 +1037,7 @@ export function canAssignCharacterToTask(
 }
 
 export function canOutsourceTaskWork(state: RtGameState, taskId: string): boolean {
-  const plan = getOutsourcePlan(state, taskId);
-  return Boolean(plan && state.resources.budget >= plan.cost);
+  return getOutsourceTaskWorkStatus(state, taskId).allowed;
 }
 
 export function outsourceTaskWork(state: RtGameState, taskId: string): boolean {
@@ -962,14 +1105,14 @@ export function releaseRealtimeTask(state: RtGameState, taskId: string): boolean
   const postmortem = buildReleasePostmortem(task);
   const readiness = releaseReadiness(task);
   const score = releaseScore(state, task);
-  const valueGain = Math.max(0, Math.round(task.value * (score / 100)));
+  const late = lateReleaseReport(task);
+  const baseValueGain = Math.max(0, Math.round(task.value * (score / 100)));
+  const valueGain = Math.max(0, Math.round(baseValueGain * late.valueMultiplier));
   const budgetGain = releaseBudgetGain(valueGain, score);
   const sreSafety = task.subtasks.some((subtask) => subtask.role === "sre" && subtask.done);
   const blastMultiplier = sreSafety ? 0.65 : 1.15;
-  const trustDelta =
-    score >= 80 ? 5 : score >= 60 ? 2 : score >= 40 ? -Math.ceil(5 * blastMultiplier) : -Math.ceil(12 * blastMultiplier);
-  const clientDelta =
-    score >= 75 ? 2 : score >= 50 ? 0 : -Math.ceil(((55 - score) / 5) * blastMultiplier);
+  const trustDelta = releaseTrustDelta(readiness.readiness, score, blastMultiplier, state.resources.trust);
+  const clientDelta = releaseClientDelta(readiness.readiness, score, blastMultiplier, state.resources.trust);
   const debtDelta =
     score >= 75 ? -1 : Math.ceil(((75 - score) / 12 + task.bugs) * blastMultiplier);
 
@@ -997,6 +1140,7 @@ export function releaseRealtimeTask(state: RtGameState, taskId: string): boolean
     effects: [
       `${readiness.readiness} release`,
       `value +${valueGain}`,
+      ...(late.valuePenaltyPercent > 0 ? [`late value -${late.valuePenaltyPercent}%`] : []),
       ...(budgetGain > 0 ? [`budget +${budgetGain}`] : []),
       `trust ${formatDelta(trustDelta)}`,
       `clients ${formatDelta(clientDelta)}`,
@@ -1278,7 +1422,7 @@ function createTailConsequence(
     ...(source === "missed_in_progress" ? ["Some prior work carried forward as context."] : []),
   ];
 
-  const added = addTask(state, followUp);
+  const added = addTask(state, followUp, BACKLOG_LIMIT + FALLOUT_BACKLOG_EXTRA_SLOTS);
   const generatedTaskId = added ? followUp.id : null;
   const resourceDelta = added ? {} : applyResourceDelta(state, blockedTailResourceDelta(sourceTask));
   const effects = [
@@ -1693,6 +1837,48 @@ export function taskDeadlineRatio(task: RtTask): number {
   return task.deadlineMaxMs <= 0 ? 0 : task.deadlineMs / task.deadlineMaxMs;
 }
 
+export function lateReleaseReport(task: RtTask): RtLateReleaseReport {
+  const overdueMs = Math.max(0, Math.round(task.overdueMs));
+  if (overdueMs <= LATE_RELEASE_GRACE_MS) {
+    return {
+      overdueMs,
+      overdueGameMinutes: Math.round(overdueMs / 1000),
+      valueMultiplier: 1,
+      valuePenaltyPercent: 0,
+    };
+  }
+
+  const overdueGameMinutes = overdueMs / 1000;
+  const overdueHours = overdueGameMinutes / 60;
+  const firstHalfHourPenalty = Math.min(overdueHours, 0.5) * 0.1;
+  const latePenalty = Math.max(0, overdueHours - 0.5) * 0.16;
+  const pressurePenalty = Math.max(0, task.pressure - 3) * 0.025;
+  const sensitivity = lateSensitivity(task);
+  const maxPenalty = lateMaxPenalty(task);
+  const penalty = clamp(
+    (firstHalfHourPenalty + latePenalty + pressurePenalty) * sensitivity,
+    0,
+    maxPenalty,
+  );
+  const valueMultiplier = clamp(1 - penalty, 0, 1);
+
+  return {
+    overdueMs,
+    overdueGameMinutes: Math.round(overdueGameMinutes),
+    valueMultiplier,
+    valuePenaltyPercent: Math.round((1 - valueMultiplier) * 100),
+  };
+}
+
+export function formatOverdueGameTime(overdueMs: number): string {
+  const totalMinutes = Math.max(0, Math.round(overdueMs / 1000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours <= 0) return `${minutes}m`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
 export function releaseReadiness(task: RtTask): RtReadinessReport {
   const knownCriticalOpen = task.subtasks.filter(
     (subtask) => subtask.revealed && subtask.importance === "critical" && !subtask.done,
@@ -1713,7 +1899,6 @@ export function releaseReadiness(task: RtTask): RtReadinessReport {
     !qaCovered ? "no_qa" : null,
     task.clarity < 55 ? "low_clarity" : null,
     deadlineRatio <= 0.18 ? "deadline_pressure" : null,
-    task.blastRadius === "high" ? "blast_radius_high" : null,
     task.blastRadius === "high" && !sreCovered ? "blast_radius_uncovered" : null,
     task.changedAfterQa ? "changed_after_qa" : null,
     task.subtasks.some((subtask) => subtask.revealed && subtask.role === "sre") && !sreCovered
@@ -1748,7 +1933,11 @@ export function releaseScore(state: RtGameState, task: RtTask): number {
   const deadlineRatioForScore =
     task.deadlineMaxMs <= 0 ? 0 : deadlineMsForScore / task.deadlineMaxMs;
   const deadlinePenalty =
-    deadlineMsForScore <= 0 ? 18 : deadlineRatioForScore < 0.2 ? 8 : 0;
+    deadlineMsForScore <= 0
+      ? lateReleaseScorePenalty(task)
+      : deadlineRatioForScore < 0.2
+        ? 8
+        : 0;
   const bugPenalty = task.bugs * 12;
   const debtPenalty = state.resources.debt * 0.12;
   const openCritical = task.subtasks.filter(
@@ -1776,6 +1965,43 @@ export function releaseScore(state: RtGameState, task: RtTask): number {
     bugPenalty -
     debtPenalty;
   return Math.round(clamp(score, 0, 100));
+}
+
+function lateSensitivity(task: RtTask): number {
+  const kindSensitivity: Record<RtTaskKind, number> = {
+    feature: 1,
+    bug: 0.9,
+    techDebt: 0.45,
+    integration: 1.2,
+    incident: 1.25,
+    performance: 0.9,
+    compliance: 1.2,
+  };
+  const blastAdjustment =
+    task.blastRadius === "high" ? 0.12 : task.blastRadius === "medium" ? 0.05 : 0;
+  return kindSensitivity[task.kind] + blastAdjustment;
+}
+
+function lateMaxPenalty(task: RtTask): number {
+  switch (task.kind) {
+    case "techDebt":
+      return 0.25;
+    case "bug":
+    case "performance":
+      return 0.45;
+    case "feature":
+      return 0.55;
+    case "integration":
+    case "incident":
+    case "compliance":
+      return 0.65;
+  }
+}
+
+function lateReleaseScorePenalty(task: RtTask): number {
+  const late = lateReleaseReport(task);
+  if (late.valuePenaltyPercent === 0) return 8;
+  return Math.round(clamp(6 + late.valuePenaltyPercent * 0.12, 8, 14));
 }
 
 function createCharacter(state: RtGameState, role: RtRole): RtCharacter {
@@ -1834,6 +2060,7 @@ function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTask {
     backlogTtlMaxMs: 0,
     deadlineMs: Math.max(420000, deadlineMs),
     deadlineMaxMs: Math.max(420000, deadlineMs),
+    overdueMs: 0,
     stageProgress: 0,
     stageComplete: false,
     assignedCharacterId: null,
@@ -1942,8 +2169,8 @@ function revealInitialSubtasks(
   }
 }
 
-function addTask(state: RtGameState, task: RtTask): boolean {
-  if (state.board.backlog.length >= BACKLOG_LIMIT) return false;
+function addTask(state: RtGameState, task: RtTask, backlogLimit = BACKLOG_LIMIT): boolean {
+  if (state.board.backlog.length >= backlogLimit) return false;
   state.tasks[task.id] = task;
   state.board.backlog.unshift(task.id);
   pushEvent(state, {
@@ -1958,7 +2185,15 @@ function addTask(state: RtGameState, task: RtTask): boolean {
 function updateTaskTimers(state: RtGameState, tickMs: number): void {
   for (const task of Object.values(state.tasks)) {
     if (task.released || task.column === "done") continue;
-    task.deadlineMs = Math.max(0, task.deadlineMs - tickMs);
+    if (task.deadlineMs > 0) {
+      const nextDeadlineMs = task.deadlineMs - tickMs;
+      if (nextDeadlineMs < 0) {
+        task.overdueMs += Math.abs(nextDeadlineMs);
+      }
+      task.deadlineMs = Math.max(0, nextDeadlineMs);
+    } else {
+      task.overdueMs += tickMs;
+    }
   }
 }
 
@@ -1999,14 +2234,17 @@ function updateAssignments(state: RtGameState, tickMs: number): void {
       0,
       100,
     );
+    const staminaDrainPerSecond =
+      stage === "analysis"
+        ? ANALYSIS_STAMINA_DRAIN_BASE +
+          task.pressure * ANALYSIS_PRESSURE_STAMINA_DRAIN +
+          task.complexity * ANALYSIS_COMPLEXITY_STAMINA_DRAIN
+        : WORK_STAMINA_DRAIN_BASE +
+          task.pressure * WORK_PRESSURE_STAMINA_DRAIN +
+          task.complexity * WORK_COMPLEXITY_STAMINA_DRAIN +
+          (offRole ? OFF_ROLE_STAMINA_DRAIN : 0);
     character.stamina = clamp(
-      character.stamina -
-        tickSeconds *
-          (0.28 +
-            task.pressure * 0.045 +
-            task.complexity * 0.02 +
-            (stage === "analysis" ? 0.22 : 0) +
-            (offRole ? 0.12 : 0)),
+      character.stamina - tickSeconds * staminaDrainPerSecond,
       0,
       100,
     );
@@ -2096,7 +2334,10 @@ function completeOutsourcedWork(
     task.changedAfterQa = true;
     task.testCoverage = Math.min(task.testCoverage, 35);
     ensureQaRecheckSubtask(task);
-    task.postmortem.push("Outsourced work changed the task after QA, so prior test coverage became stale.");
+    addPostmortemNote(
+      task,
+      "Outsourced work changed the task after QA, so prior test coverage became stale.",
+    );
   }
   const qualityGain = bugfixWork ? 18 : subtask.importance === "critical" ? 16 : 11;
   if (bugfixWork) {
@@ -2175,7 +2416,7 @@ function completeStage(
     if (offRole) {
       task.offRolePenalty += subtask.importance === "critical" ? 10 : 6;
       character.stamina = clamp(character.stamina - 12, 0, 100);
-      task.postmortem.push(`${character.name} completed ${subtask.role} work off-role.`);
+      addPostmortemNote(task, `${character.name} completed ${subtask.role} work off-role.`);
     }
 
     if (subtask.role === "qa") {
@@ -2225,7 +2466,10 @@ function completeStage(
       task.changedAfterQa = true;
       task.testCoverage = Math.min(task.testCoverage, 35);
       ensureQaRecheckSubtask(task);
-      task.postmortem.push("Implementation changed after QA, so prior test coverage became stale.");
+      addPostmortemNote(
+        task,
+        "Implementation changed after QA, so prior test coverage became stale.",
+      );
     }
     const rawQuality =
       task.clarity * 0.55 +
@@ -2598,7 +2842,13 @@ function roleMatchesSubtask(role: RtRole, subtaskRole: RtSubtaskRole): boolean {
 }
 
 function buildReleasePostmortem(task: RtTask): string[] {
-  const notes = [...task.postmortem];
+  const notes = uniqueStrings(task.postmortem);
+  const late = lateReleaseReport(task);
+  if (late.valuePenaltyPercent > 0) {
+    notes.push(
+      `Release missed the business window by ${formatOverdueGameTime(late.overdueMs)}, reducing value by ${late.valuePenaltyPercent}%.`,
+    );
+  }
   const openCritical = task.subtasks.filter(
     (subtask) => subtask.importance === "critical" && !subtask.done,
   );
@@ -2631,6 +2881,12 @@ function buildReleasePostmortem(task: RtTask): string[] {
     notes.push("Release was clean: critical work was done and no known bugs shipped.");
   }
   return notes;
+}
+
+function addPostmortemNote(task: RtTask, note: string): void {
+  if (!task.postmortem.includes(note)) {
+    task.postmortem.push(note);
+  }
 }
 
 function updateSpawner(state: RtGameState, tickMs: number): void {
@@ -2685,7 +2941,7 @@ function advanceDay(state: RtGameState): void {
     type: "day_started",
     title: `Day ${state.day}`,
     body: "A new production day starts. The team had overnight rest.",
-    effects: [`stamina +${DAY_REST_STAMINA_BOOST}`, "context shock cleared", "clock reset to 08:00"],
+    effects: ["stamina restored overnight", "context shock cleared", "clock reset to 08:00"],
   });
 
   if (state.dayInQuarter > state.daysPerQuarter) {
@@ -2695,7 +2951,12 @@ function advanceDay(state: RtGameState): void {
 
 function restTeamForNewDay(state: RtGameState): void {
   for (const character of Object.values(state.characters)) {
-    character.stamina = clamp(character.stamina + DAY_REST_STAMINA_BOOST, 0, 100);
+    const missingStamina = 100 - character.stamina;
+    const overnightRecovery = Math.max(
+      NIGHT_STAMINA_MIN_RECOVERY,
+      missingStamina * NIGHT_STAMINA_RECOVERY_RATIO,
+    );
+    character.stamina = clamp(character.stamina + overnightRecovery, 0, 100);
     character.shockGameMinutes = 0;
     character.exhaustedToday = false;
   }
@@ -2767,6 +3028,10 @@ function inferBlastRadius(task: RtTask): RtBlastRadius {
 
 function uniqueReasons(reasons: Array<RtRiskReason | null>): RtRiskReason[] {
   return Array.from(new Set(reasons.filter((reason): reason is RtRiskReason => Boolean(reason))));
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values));
 }
 
 function formatRiskReason(reason: RtRiskReason): string {
@@ -2968,6 +3233,48 @@ function releaseNote(score: number): string {
   if (score >= 60) return "Acceptable release. Some rough edges remain.";
   if (score >= 40) return "Risky release. Support will feel this.";
   return "Bad release. Customers are frustrated.";
+}
+
+function releaseTrustDelta(
+  readiness: RtReleaseReadiness,
+  score: number,
+  blastMultiplier: number,
+  currentTrust: number,
+): number {
+  const pressureMultiplier = currentTrust < 45 ? 1.45 : currentTrust < 60 ? 1.15 : 1;
+
+  if (readiness === "clean") {
+    if (score >= 80) return currentTrust < 45 ? 2 : 3;
+    if (score >= 65) return 1;
+    return -Math.ceil(3 * blastMultiplier * pressureMultiplier);
+  }
+
+  if (readiness === "risky") {
+    if (score >= 75) return 1;
+    if (score >= 60) return 0;
+    if (score >= 45) return -Math.ceil(4 * blastMultiplier * pressureMultiplier);
+    return -Math.ceil(8 * blastMultiplier * pressureMultiplier);
+  }
+
+  if (score >= 70) return -Math.ceil(1 * blastMultiplier * pressureMultiplier);
+  if (score >= 55) return -Math.ceil(5 * blastMultiplier * pressureMultiplier);
+  if (score >= 40) return -Math.ceil(8 * blastMultiplier * pressureMultiplier);
+  return -Math.ceil(12 * blastMultiplier * pressureMultiplier);
+}
+
+function releaseClientDelta(
+  readiness: RtReleaseReadiness,
+  score: number,
+  blastMultiplier: number,
+  currentTrust: number,
+): number {
+  const pressureMultiplier = currentTrust < 45 ? 1.25 : 1;
+  if (readiness === "clean" && score >= 75) return 2;
+  if (readiness === "risky" && score >= 75) return 1;
+  if (readiness !== "dirty" && score >= 60) return 0;
+  if (readiness === "dirty" && score >= 60) return currentTrust < 45 ? -1 : 0;
+  if (score >= 50) return -Math.ceil(1 * blastMultiplier * pressureMultiplier);
+  return -Math.ceil(((60 - score) / 5) * blastMultiplier * pressureMultiplier);
 }
 
 function releaseBudgetGain(valueGain: number, score: number): number {

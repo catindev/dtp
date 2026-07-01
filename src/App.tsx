@@ -9,11 +9,12 @@ import {
   cancelTaskWork,
   canAssignCharacterToTask,
   canMoveRealtimeTask,
-  canOutsourceTaskWork,
   createRealtimeState,
-  falloutWarningForTask,
   formatGameTime,
+  formatOverdueGameTime,
+  getOutsourceTaskWorkStatus,
   isWorkColumn,
+  lateReleaseReport,
   moveRealtimeTask,
   normalizeRealtimeState,
   outsourceTaskWork,
@@ -24,9 +25,9 @@ import {
   type RtCharacter,
   type RtColumn,
   type RtEvent,
-  type RtFalloutWarning,
   type RtGameState,
   type RtMorningReport,
+  type RtOutsourceStatus,
   type RtReadinessReport,
   type RtRiskReason,
   type RtSubtask,
@@ -52,14 +53,30 @@ const COLUMN_LABELS: Record<RtColumn, string> = {
 const BACKEND_BASE_URL = import.meta.env.VITE_DTP_BACKEND_URL ?? "http://127.0.0.1:8787";
 const BACKEND_LOG_URL = `${BACKEND_BASE_URL}/api/log`;
 const BACKEND_RESET_URL = `${BACKEND_BASE_URL}/api/reset`;
+const BACKEND_LOG_QUEUE_KEY = "dtp.backendLogQueue.v1";
+const BACKEND_LOG_QUEUE_LIMIT = 1200;
+const BACKEND_LOG_BATCH_SIZE = 80;
+const BACKEND_LOG_FLUSH_INTERVAL_MS = 2500;
+
+let backendFlushInFlight = false;
+let backendFlushAgain = false;
 
 interface FrontendLogEntry {
   id: string;
+  clientCreatedAt: string;
   sessionId: string;
   source: "dtp2-frontend";
   kind: "action" | "game_event" | "snapshot";
   name: string;
   payload: unknown;
+}
+
+interface BackendLogQueue {
+  version: 1;
+  updatedAt: string;
+  compactedEntries: number;
+  droppedEntries: number;
+  entries: FrontendLogEntry[];
 }
 
 type AppScreen = "menu" | "game";
@@ -90,8 +107,14 @@ export function App() {
   );
   const [flashTaskId, setFlashTaskId] = useState<string | null>(null);
   const [bounceTaskIds, setBounceTaskIds] = useState<Set<string>>(() => new Set());
+  const [shakeTaskIds, setShakeTaskIds] = useState<Set<string>>(() => new Set());
+  const [shakeColumnIds, setShakeColumnIds] = useState<Set<RtColumn>>(() => new Set());
+  const [pauseShake, setPauseShake] = useState(false);
   const flashTimer = useRef<number | null>(null);
   const bounceTimers = useRef<Record<string, number>>({});
+  const shakeTaskTimers = useRef<Record<string, number>>({});
+  const shakeColumnTimers = useRef<Partial<Record<RtColumn, number>>>({});
+  const pauseShakeTimer = useRef<number | null>(null);
   const autosaveTimer = useRef<number | null>(null);
   const latestGameRef = useRef(game);
   const sessionIdRef = useRef(restoredSave?.sessionId ?? createSessionId());
@@ -106,6 +129,17 @@ export function App() {
   const morningReport = game.morningReport;
   const interactionBlocked =
     screen !== "game" || game.paused || game.status !== "running" || Boolean(morningReport);
+
+  useEffect(() => {
+    flushBackendLogQueue();
+    const id = window.setInterval(flushBackendLogQueue, BACKEND_LOG_FLUSH_INTERVAL_MS);
+    window.addEventListener("online", flushBackendLogQueue);
+
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("online", flushBackendLogQueue);
+    };
+  }, []);
 
   useEffect(() => {
     if (screen !== "game") return;
@@ -125,7 +159,9 @@ export function App() {
   useEffect(
     () => () => {
       if (autosaveTimer.current) window.clearTimeout(autosaveTimer.current);
+      if (pauseShakeTimer.current) window.clearTimeout(pauseShakeTimer.current);
       clearBounceTimers();
+      clearShakeTimers();
     },
     [],
   );
@@ -295,6 +331,11 @@ export function App() {
   }
 
   function beginTaskDrag(event: DragEvent<HTMLElement>, task: RtTask) {
+    if (game.paused && screen === "game" && game.status === "running" && !morningReport) {
+      event.preventDefault();
+      shakePauseButton();
+      return;
+    }
     if (interactionBlocked || task.assignedCharacterId || task.released) {
       event.preventDefault();
       return;
@@ -311,6 +352,11 @@ export function App() {
   }
 
   function beginCharacterDrag(event: DragEvent<HTMLElement>, character: RtCharacter) {
+    if (game.paused && screen === "game" && game.status === "running" && !morningReport) {
+      event.preventDefault();
+      shakePauseButton();
+      return;
+    }
     if (interactionBlocked || character.assignedTaskId || character.exhaustedToday) {
       event.preventDefault();
       return;
@@ -328,6 +374,11 @@ export function App() {
   }
 
   function beginOutsourceDrag(event: DragEvent<HTMLElement>) {
+    if (game.paused && screen === "game" && game.status === "running" && !morningReport) {
+      event.preventDefault();
+      shakePauseButton();
+      return;
+    }
     if (interactionBlocked || game.resources.budget <= 0) {
       event.preventDefault();
       return;
@@ -359,21 +410,34 @@ export function App() {
     event.preventDefault();
     event.stopPropagation();
     if (interactionBlocked) return;
-    if (column === "released") return;
     const activeDrag = activeDragRef.current;
+    if (column === "released") {
+      shakeColumn(column);
+      activeDragRef.current = null;
+      return;
+    }
     const taskId =
       event.dataTransfer.getData("application/dtp-task") ||
       (activeDrag?.type === "task" ? activeDrag.taskId : "");
-    if (!taskId) return;
+    if (!taskId) {
+      if (activeDrag) shakeColumn(column);
+      activeDragRef.current = null;
+      return;
+    }
     moveDroppedTask(taskId, column);
   }
 
-  function moveDroppedTask(taskId: string, column: RtColumn) {
+  function moveDroppedTask(taskId: string, column: RtColumn, rejectTargetTaskId?: string) {
     const fromColumn = game.tasks[taskId]?.column;
     const task = game.tasks[taskId];
     const moveCheck = canMoveRealtimeTask(game, taskId, column);
 
     if (!moveCheck.allowed) {
+      if (rejectTargetTaskId) {
+        shakeTask(rejectTargetTaskId);
+      } else {
+        shakeColumn(column);
+      }
       logAction(sessionIdRef.current, "task_drop_rejected", {
         taskId,
         fromColumn,
@@ -411,7 +475,7 @@ export function App() {
       event.dataTransfer.getData("application/dtp-task") ||
       (activeDrag?.type === "task" ? activeDrag.taskId : "");
     if (draggedTaskId) {
-      moveDroppedTask(draggedTaskId, task.column);
+      moveDroppedTask(draggedTaskId, task.column, task.id);
       return;
     }
 
@@ -419,13 +483,17 @@ export function App() {
       event.dataTransfer.getData("application/dtp-outsourcing") ||
       (activeDrag?.type === "outsourcing" ? "outsourcing" : "");
     if (outsourcePayload) {
-      if (!isWorkColumn(task.column)) return;
-      const canOutsource = canOutsourceTaskWork(game, task.id);
-      mutate((draft) => {
-        if (outsourceTaskWork(draft, task.id)) {
-          setSelectedTaskId(task.id);
-        }
-      });
+      const outsourceStatus = getOutsourceTaskWorkStatus(game, task.id);
+      const canOutsource = outsourceStatus.allowed;
+      if (canOutsource) {
+        mutate((draft) => {
+          if (outsourceTaskWork(draft, task.id)) {
+            setSelectedTaskId(task.id);
+          }
+        });
+      } else {
+        shakeTask(task.id);
+      }
       logAction(
         sessionIdRef.current,
         canOutsource ? "outsourcing_dropped_on_task" : "outsourcing_drop_rejected",
@@ -434,7 +502,11 @@ export function App() {
           taskTitle: task.title,
           column: task.column,
           budget: game.resources.budget,
-          reason: canOutsource ? "outsourcing started" : "no budget, busy task, or open work",
+          reason: outsourceStatusText(outsourceStatus),
+          blocker: outsourceStatus.reason,
+          neededBudget: outsourceStatus.neededBudget,
+          subtaskRole: outsourceStatus.subtask?.role,
+          subtaskImportance: outsourceStatus.subtask?.importance,
           gameTime: formatGameTime(game),
         },
       );
@@ -446,15 +518,19 @@ export function App() {
     const characterId =
       event.dataTransfer.getData("application/dtp-character") ||
       (activeDrag?.type === "character" ? activeDrag.characterId : "");
-    if (!characterId || !isWorkColumn(task.column)) return;
+    if (!characterId) return;
     const character = game.characters[characterId];
     const canAssign = canAssignCharacterToTask(game, characterId, task.id);
 
-    mutate((draft) => {
-      if (assignCharacterToTask(draft, characterId, task.id)) {
-        setSelectedTaskId(task.id);
-      }
-    });
+    if (canAssign) {
+      mutate((draft) => {
+        if (assignCharacterToTask(draft, characterId, task.id)) {
+          setSelectedTaskId(task.id);
+        }
+      });
+    } else {
+      shakeTask(task.id);
+    }
     logAction(
       sessionIdRef.current,
       canAssign ? "character_dropped_on_task" : "character_drop_rejected",
@@ -465,7 +541,7 @@ export function App() {
         taskId: task.id,
         taskTitle: task.title,
         column: task.column,
-        reason: canAssign ? "assigned" : "no matching specialization",
+        reason: canAssign ? "assigned" : characterDropRejectReason(characterId, task),
         gameTime: formatGameTime(game),
       },
     );
@@ -522,6 +598,85 @@ export function App() {
     }, 720);
   }
 
+  function clearShakeTimers() {
+    for (const timer of Object.values(shakeTaskTimers.current)) {
+      window.clearTimeout(timer);
+    }
+    for (const timer of Object.values(shakeColumnTimers.current)) {
+      if (timer) window.clearTimeout(timer);
+    }
+    shakeTaskTimers.current = {};
+    shakeColumnTimers.current = {};
+  }
+
+  function shakeTask(taskId: string) {
+    setShakeTaskIds((current) => {
+      const next = new Set(current);
+      next.delete(taskId);
+      return next;
+    });
+    if (shakeTaskTimers.current[taskId]) {
+      window.clearTimeout(shakeTaskTimers.current[taskId]);
+    }
+    window.requestAnimationFrame(() => {
+      setShakeTaskIds((current) => new Set(current).add(taskId));
+      shakeTaskTimers.current[taskId] = window.setTimeout(() => {
+        setShakeTaskIds((current) => {
+          const next = new Set(current);
+          next.delete(taskId);
+          return next;
+        });
+        delete shakeTaskTimers.current[taskId];
+      }, 420);
+    });
+  }
+
+  function shakeColumn(column: RtColumn) {
+    setShakeColumnIds((current) => {
+      const next = new Set(current);
+      next.delete(column);
+      return next;
+    });
+    if (shakeColumnTimers.current[column]) {
+      window.clearTimeout(shakeColumnTimers.current[column]);
+    }
+    window.requestAnimationFrame(() => {
+      setShakeColumnIds((current) => new Set(current).add(column));
+      shakeColumnTimers.current[column] = window.setTimeout(() => {
+        setShakeColumnIds((current) => {
+          const next = new Set(current);
+          next.delete(column);
+          return next;
+        });
+        delete shakeColumnTimers.current[column];
+      }, 420);
+    });
+  }
+
+  function shakePauseButton() {
+    setPauseShake(false);
+    if (pauseShakeTimer.current) {
+      window.clearTimeout(pauseShakeTimer.current);
+    }
+    window.requestAnimationFrame(() => {
+      setPauseShake(true);
+      pauseShakeTimer.current = window.setTimeout(() => {
+        setPauseShake(false);
+        pauseShakeTimer.current = null;
+      }, 420);
+    });
+  }
+
+  function characterDropRejectReason(characterId: string, task: RtTask): string {
+    const character = game.characters[characterId];
+    if (!character) return "character missing";
+    if (character.assignedTaskId) return "character already busy";
+    if (character.exhaustedToday) return "character exhausted";
+    if (!isWorkColumn(task.column)) return "wrong column";
+    if (task.assignedCharacterId || task.outsourcing) return "task already in work";
+    return "no matching visible work";
+  }
+
   const selectedAssigned = selectedTask?.assignedCharacterId
     ? game.characters[selectedTask.assignedCharacterId]
     : null;
@@ -559,6 +714,9 @@ export function App() {
         <div className="brand-block">
           <strong>Don&apos;t Touch Prod</strong>
           <span>Q{displayedQuarter} / Day {displayedDay}</span>
+          <span className="session-id" title={sessionIdRef.current}>
+            Session {formatSessionId(sessionIdRef.current)}
+          </span>
         </div>
         <div className="clock-block">
           <span className="clock">{clockText}</span>
@@ -577,26 +735,16 @@ export function App() {
                 ? "PAUSED"
                 : game.status.toUpperCase()}
           </span>
-          <span>Trust {game.resources.trust}</span>
-          <span>Clients {game.resources.clients}</span>
-          <span>Debt {game.resources.debt}</span>
-          <span>Value {game.resources.value}</span>
-          <span>Team Budget {game.resources.budget}</span>
-          <span>Boost {game.resources.processBoost}%</span>
+          <span className="stat-pill primary">Trust {game.resources.trust}</span>
+          <span className="stat-pill primary">Clients {game.resources.clients}</span>
+          <span className="stat-pill value">Value {game.resources.value}</span>
+          <span className="stat-pill muted">Debt {game.resources.debt}</span>
+          <span className="stat-pill muted">Budget {game.resources.budget}</span>
+          <span className="stat-pill muted">Boost {game.resources.processBoost}%</span>
         </div>
         <div className="header-actions">
-          {selectedAssigned && !morningReport ? (
-            <button
-              className="cancel-button"
-              disabled={interactionBlocked}
-              onClick={cancelSelectedTask}
-              type="button"
-            >
-              Отменить задачу
-            </button>
-          ) : null}
           <button
-            className="pause-button"
+            className={`pause-button ${pauseShake ? "reject-shake" : ""}`}
             disabled={game.status !== "running" || Boolean(morningReport)}
             onClick={togglePause}
             type="button"
@@ -645,7 +793,10 @@ export function App() {
                       character.exhaustedToday ? "exhausted" : "",
                     ].join(" ")}
                     draggable={
-                      !interactionBlocked &&
+                      (game.paused || !interactionBlocked) &&
+                      screen === "game" &&
+                      game.status === "running" &&
+                      !morningReport &&
                       !character.assignedTaskId &&
                       !character.exhaustedToday
                     }
@@ -682,8 +833,10 @@ export function App() {
                         </div>
                       </div>
                     ) : null}
-                    <MetricBar label="Stamina" value={character.stamina} />
-                    <MetricBar label="Burnout" value={character.burnout} />
+                    <MetricBar label="Stamina" tone="stamina" value={character.stamina} />
+                    {character.burnout > 0 ? (
+                      <span className="burnout-badge">Burnout {Math.round(character.burnout)}</span>
+                    ) : null}
                   </article>
                 );
               })}
@@ -692,7 +845,13 @@ export function App() {
                   "outsourcing-card",
                   interactionBlocked || game.resources.budget <= 0 ? "disabled" : "",
                 ].join(" ")}
-                draggable={!interactionBlocked && game.resources.budget > 0}
+                draggable={
+                  (game.paused || !interactionBlocked) &&
+                  screen === "game" &&
+                  game.status === "running" &&
+                  !morningReport &&
+                  game.resources.budget > 0
+                }
                 onDragEnd={finishDrag}
                 onDragStart={beginOutsourceDrag}
               >
@@ -718,9 +877,10 @@ export function App() {
                   "column",
                   column === "done" ? "done-column" : "",
                   column === "released" ? "released-column" : "",
+                  shakeColumnIds.has(column) ? "reject-shake" : "",
                 ].join(" ")}
                 key={column}
-                onDragOver={column === "released" ? undefined : allowDrop}
+                onDragOver={allowDrop}
                 onDrop={(event) => dropOnColumn(event, column)}
               >
                 <h2>{COLUMN_LABELS[column]}</h2>
@@ -737,6 +897,7 @@ export function App() {
                       onDragEnd={finishDrag}
                       onDragStart={beginTaskDrag}
                       onDropCharacter={dropOnTask}
+                      reject={shakeTaskIds.has(task.id)}
                       selected={selectedTaskId === task.id}
                       task={task}
                     />
@@ -750,7 +911,13 @@ export function App() {
             <section className="panel inspector">
               <h2>Selected Task</h2>
               {selectedTask ? (
-                <TaskInspector assigned={selectedAssigned} task={selectedTask} />
+                <TaskInspector
+                  assigned={selectedAssigned}
+                  canCancelWork={Boolean(selectedAssigned && !morningReport)}
+                  cancelDisabled={interactionBlocked}
+                  onCancelWork={cancelSelectedTask}
+                  task={selectedTask}
+                />
               ) : (
                 <p className="empty">No task selected.</p>
               )}
@@ -896,6 +1063,8 @@ function MorningReportPage({
               const releaseEvent = game.log.find(
                 (event) => event.type === "release" && event.title === `${task.id} released`,
               );
+              const readiness = releaseReadiness(task);
+              const releaseEffects = releaseEffectsForTask(task, releaseEvent, readiness);
               return (
                 <article className="release-task-row" key={task.id}>
                   <header>
@@ -905,9 +1074,9 @@ function MorningReportPage({
                     </div>
                     <b>{task.kind}</b>
                   </header>
-                  <ReadinessBadge report={releaseReadiness(task)} />
+                  <ReadinessBadge report={readiness} />
                   <div className="release-effect-strip">
-                    {(releaseEvent?.effects ?? [task.lastNote]).map((effect) => (
+                    {releaseEffects.map((effect) => (
                       <span className={`release-effect ${effectTone(effect)}`} key={effect}>
                         {effect}
                       </span>
@@ -979,6 +1148,7 @@ function TaskCard({
   onDragEnd,
   onDragStart,
   onDropCharacter,
+  reject,
   selected,
   task,
 }: {
@@ -989,6 +1159,7 @@ function TaskCard({
   onDragEnd: () => void;
   onDragStart: (event: DragEvent<HTMLElement>, task: RtTask) => void;
   onDropCharacter: (event: DragEvent<HTMLElement>, task: RtTask) => void;
+  reject: boolean;
   selected: boolean;
   task: RtTask;
 }) {
@@ -999,13 +1170,14 @@ function TaskCard({
     ? task.subtasks.find((subtask) => subtask.id === task.outsourcing?.subtaskId)
     : null;
   const deadlineRatio = taskDeadlineRatio(task);
-  const revealedSubtasks = task.subtasks.filter((subtask) => subtask.revealed);
-  const openSubtasks = revealedSubtasks.filter((subtask) => !subtask.done);
-  const doneSubtaskCount = revealedSubtasks.filter((subtask) => subtask.done).length;
-  const hasHiddenWork = task.subtasks.some((subtask) => !subtask.revealed && !subtask.done);
   const readiness = releaseReadiness(task);
-  const falloutWarning = falloutWarningForTask(task);
+  const late = lateReleaseReport(task);
   const urgent = !task.released && task.column !== "done" && deadlineRatio <= 0.18;
+  const dragBlocked =
+    Boolean(task.assignedCharacterId) ||
+    Boolean(task.outsourcing) ||
+    game.status !== "running" ||
+    task.released;
   const locked =
     Boolean(task.assignedCharacterId) ||
     Boolean(task.outsourcing) ||
@@ -1015,13 +1187,14 @@ function TaskCard({
   const needsAttention =
     task.stageComplete && task.column === "inProgress" && !task.assignedCharacterId && !task.released;
   const readyForDone = needsAttention && taskReadyForDone(task);
+  const neededRoles = taskNeededRoleChips(task);
   const cardStatus = task.released
     ? "Released"
     : task.column === "done"
-      ? "Ships at 18:00"
-      : readyForDone
-        ? "Known work complete"
-        : null;
+      ? "Ships 18:00"
+      : null;
+  const readinessClass = taskCardReadinessClass(task, readiness, readyForDone);
+  const title = task.title.replace(`${task.id}: `, "");
 
   return (
     <article
@@ -1031,54 +1204,57 @@ function TaskCard({
         selected && task.column === "inProgress" ? "selected-work" : "",
         urgent ? "urgent" : "",
         locked ? "locked" : "",
+        readinessClass,
         attention ? "work-pass-bounce" : "",
         flash ? "drop-flash" : "",
+        reject ? "reject-shake" : "",
       ].join(" ")}
-      draggable={!locked}
+      draggable={!dragBlocked}
       onClick={onClick}
       onDragEnd={onDragEnd}
       onDragOver={(event) => {
-        if (
-          !game.paused &&
-          game.status === "running" &&
-          isWorkColumn(task.column) &&
-          !task.assignedCharacterId &&
-          !task.outsourcing
-        ) {
+        const hasDropPayload =
+          event.dataTransfer.types.includes("application/dtp-task") ||
+          event.dataTransfer.types.includes("application/dtp-character") ||
+          event.dataTransfer.types.includes("application/dtp-outsourcing");
+        if (!game.paused && game.status === "running" && hasDropPayload) {
           event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
         }
       }}
       onDragStart={(event) => onDragStart(event, task)}
       onDrop={(event) => onDropCharacter(event, task)}
     >
-      <header>
-        <span>{task.id}</span>
-        <b>{task.kind}</b>
+      <header className="task-card-top">
+        <div>
+          <span>{task.id}</span>
+          <b>{task.kind}</b>
+        </div>
+        <i
+          aria-label={`Impact ${blastRadiusLabel(task.blastRadius)}`}
+          className={`impact-dot ${task.blastRadius}`}
+          title={`Impact ${blastRadiusLabel(task.blastRadius)}`}
+        />
       </header>
-      <strong>{task.title.replace(`${task.id}: `, "")}</strong>
-      <div className="task-facts">
-        <span>Clarity {task.clarity}</span>
-        <span>Quality {task.quality}</span>
-        <span>Bugs {task.bugs}</span>
-        <span>Blast {task.blastRadius}</span>
+      <strong className="task-title">{title}</strong>
+      <div className="task-scan-row">
+        <ReadinessBadge report={readiness} compact />
+        {late.valuePenaltyPercent > 0 ? (
+          <span className="late-chip">Late -{late.valuePenaltyPercent}%</span>
+        ) : null}
+        {cardStatus ? <span className="card-status-chip">{cardStatus}</span> : null}
       </div>
-      <ReadinessBadge report={readiness} compact />
-      {falloutWarning ? <FalloutWarning warning={falloutWarning} compact /> : null}
-      <div className="subtask-summary">
-        <span>Known work</span>
-        <strong>{doneSubtaskCount}/{revealedSubtasks.length}</strong>
-        <em>{openSubtasks.length} open</em>
-      </div>
-      <div className="subtask-chips">
-        {openSubtasks.slice(0, 4).map((subtask) => (
-          <span className={`chip ${subtask.importance}`} key={subtask.id}>
-            {subtaskRoleLabel(subtask.role)}
-          </span>
-        ))}
-        {hasHiddenWork ? <span className="chip hidden">unknown work</span> : null}
-      </div>
+      {neededRoles.length > 0 ? (
+        <div className="role-chip-row" aria-label="Needed roles">
+          {neededRoles.map((role) => (
+            <span className={`role-chip ${role.kind}`} key={role.key}>
+              {role.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
       {!task.released && task.column !== "done" ? (
-        <TinyBar label="Deadline" ratio={deadlineRatio} tone="deadline" />
+        <TinyBar label="Deadline" ratio={deadlineRatio} tone={deadlineTone(deadlineRatio)} />
       ) : null}
       {task.column === "done" && !task.released ? (
         <span className="queue-note">Reopen costs Trust -{DONE_REWORK_TRUST_COST}</span>
@@ -1099,20 +1275,25 @@ function TaskCard({
           </div>
         </div>
       ) : null}
-      {cardStatus ? <span className="ready-chip">{cardStatus}</span> : null}
     </article>
   );
 }
 
 function TaskInspector({
   assigned,
+  canCancelWork,
+  cancelDisabled,
+  onCancelWork,
   task,
 }: {
   assigned: RtCharacter | null;
+  canCancelWork: boolean;
+  cancelDisabled: boolean;
+  onCancelWork: () => void;
   task: RtTask;
 }) {
   const readiness = releaseReadiness(task);
-  const falloutWarning = falloutWarningForTask(task);
+  const late = lateReleaseReport(task);
   return (
     <div className="task-inspector">
       <strong>{task.title}</strong>
@@ -1125,10 +1306,12 @@ function TaskInspector({
         <span>Quality {task.quality}</span>
         <span>QA {task.testCoverage}</span>
         <span>Bugs {task.bugs}</span>
-        <span>Blast {task.blastRadius}</span>
+        <span>Impact {blastRadiusLabel(task.blastRadius)}</span>
+        {late.valuePenaltyPercent > 0 ? (
+          <span>Late {formatOverdueGameTime(late.overdueMs)} / Value -{late.valuePenaltyPercent}%</span>
+        ) : null}
       </div>
       <ReadinessBadge report={readiness} />
-      {falloutWarning ? <FalloutWarning warning={falloutWarning} /> : null}
       <SubtaskList task={task} />
       {task.column === "done" && !task.released ? (
         <p>Queued for release. Reopening costs Trust -{DONE_REWORK_TRUST_COST}.</p>
@@ -1146,6 +1329,16 @@ function TaskInspector({
           <span>Outsource is working</span>
           <TinyBar label="Progress" ratio={task.outsourcing.progress / 100} tone="progress" />
         </div>
+      ) : null}
+      {canCancelWork ? (
+        <button
+          className="cancel-button inspector-cancel-button"
+          disabled={cancelDisabled}
+          onClick={onCancelWork}
+          type="button"
+        >
+          Отменить задачу
+        </button>
       ) : null}
       <p>{task.lastNote}</p>
       {task.postmortem.length > 0 ? (
@@ -1220,6 +1413,19 @@ function taskReadyForDone(task: RtTask): boolean {
   );
 }
 
+function taskCardReadinessClass(
+  task: RtTask,
+  readiness: RtReadinessReport,
+  readyForDone: boolean,
+): "ready-clean" | "ready-risky" | "needs-work" {
+  const queuedOrReleased = task.column === "done" || task.released;
+  const canResolveNow = readyForDone || queuedOrReleased;
+  if (!canResolveNow) return "needs-work";
+  if (readiness.readiness === "clean") return "ready-clean";
+  if (readiness.readiness === "risky") return "ready-risky";
+  return "needs-work";
+}
+
 function ReadinessBadge({
   compact = false,
   report,
@@ -1231,33 +1437,16 @@ function ReadinessBadge({
   return (
     <div className={`readiness-box ${report.readiness} ${compact ? "compact" : ""}`}>
       <strong>{readinessLabel(report.readiness)}</strong>
-      {reasons.length > 0 ? (
+      {!compact && reasons.length > 0 ? (
         <div>
           {reasons.map((reason) => (
             <span key={reason}>{riskReasonLabel(reason)}</span>
           ))}
         </div>
-      ) : (
+      ) : !compact ? (
         <div>
           <span>No visible release risks</span>
         </div>
-      )}
-    </div>
-  );
-}
-
-function FalloutWarning({
-  compact = false,
-  warning,
-}: {
-  compact?: boolean;
-  warning: RtFalloutWarning;
-}) {
-  return (
-    <div className={`fallout-warning ${warning.level} ${compact ? "compact" : ""}`}>
-      <strong>{warning.label}</strong>
-      {!compact && warning.reasons.length > 0 ? (
-        <span>{warning.reasons.slice(0, 3).join(" / ")}</span>
       ) : null}
     </div>
   );
@@ -1266,9 +1455,48 @@ function FalloutWarning({
 function effectTone(effect: string): "positive" | "negative" | "neutral" {
   if (effect.startsWith("debt +")) return "negative";
   if (effect.startsWith("debt -")) return "positive";
+  if (effect.startsWith("dirty release")) return "negative";
+  if (effect.startsWith("clean release")) return "positive";
   if (/\s-[0-9]/.test(effect) || effect.startsWith("no ")) return "negative";
   if (/\s\+[0-9]/.test(effect) || effect.includes("reduced")) return "positive";
   return "neutral";
+}
+
+function outsourceStatusText(status: RtOutsourceStatus): string {
+  const subtask = status.subtask;
+  const work = subtask ? `${subtaskRoleLabel(subtask.role)} ${subtask.importance}` : "known work";
+  switch (status.reason) {
+    case "ready":
+      return `Can take ${work} for Budget ${status.cost}.`;
+    case "insufficient_budget":
+      return `Need Budget ${status.neededBudget} for ${work}; current ${status.currentBudget}.`;
+    case "needs_analysis":
+      return "Needs analysis first: no visible open work.";
+    case "no_open_work":
+      return "No visible open work for outsourcing.";
+    case "task_busy":
+      return "Task is already in work.";
+    case "task_released":
+      return "Task is already released.";
+    case "wrong_column":
+      return "Move task to In Progress first.";
+    case "task_missing":
+      return "Task is no longer on the board.";
+  }
+}
+
+function releaseEffectsForTask(
+  task: RtTask,
+  releaseEvent: RtEvent | undefined,
+  readiness: RtReadinessReport,
+): string[] {
+  const eventEffects = releaseEvent?.effects ?? [task.lastNote];
+  const effectsWithoutOutcome = eventEffects.filter((effect) => !isReleaseOutcomeEffect(effect));
+  return [`${readiness.readiness} release`, ...effectsWithoutOutcome];
+}
+
+function isReleaseOutcomeEffect(effect: string): boolean {
+  return /^(clean|risky|dirty) release$/.test(effect);
 }
 
 function formatSignedNumber(value: number): string {
@@ -1299,14 +1527,20 @@ function riskReasonLabel(reason: RtRiskReason): string {
     case "deadline_pressure":
       return "Deadline pressure";
     case "blast_radius_high":
-      return "High blast radius";
+      return "High impact area";
     case "blast_radius_uncovered":
-      return "Failure impact high";
+      return "High impact not protected";
     case "changed_after_qa":
       return "Changed after QA";
     case "not_implemented":
       return "Implementation incomplete";
   }
+}
+
+function blastRadiusLabel(blastRadius: RtTask["blastRadius"]): string {
+  if (blastRadius === "high") return "High";
+  if (blastRadius === "medium") return "Medium";
+  return "Low";
 }
 
 function consequenceText(
@@ -1362,11 +1596,26 @@ function consequenceCauseLabel(
   }
 }
 
-function MetricBar({ label, value }: { label: string; value: number }) {
+function MetricBar({
+  label,
+  tone = "default",
+  value,
+}: {
+  label: string;
+  tone?: "default" | "stamina";
+  value: number;
+}) {
+  const safeValue = Math.max(0, Math.min(100, value));
+  const staminaLevel =
+    tone === "stamina" && safeValue <= 25
+      ? "danger"
+      : tone === "stamina" && safeValue <= 55
+        ? "warning"
+        : "";
   return (
-    <div className="metric">
+    <div className={`metric ${tone} ${staminaLevel}`}>
       <span>{label}</span>
-      <i style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
+      <i style={{ width: `${safeValue}%` }} />
       <b>{Math.round(value)}</b>
     </div>
   );
@@ -1379,7 +1628,7 @@ function TinyBar({
 }: {
   label: string;
   ratio: number;
-  tone: "queue" | "deadline" | "progress";
+  tone: "queue" | "deadline" | "deadline-safe" | "deadline-warning" | "deadline-urgent" | "progress";
 }) {
   const percent = Math.max(0, Math.min(100, ratio * 100));
   return (
@@ -1390,6 +1639,12 @@ function TinyBar({
       </div>
     </div>
   );
+}
+
+function deadlineTone(ratio: number): "deadline-safe" | "deadline-warning" | "deadline-urgent" {
+  if (ratio <= 0.18) return "deadline-urgent";
+  if (ratio <= 0.42) return "deadline-warning";
+  return "deadline-safe";
 }
 
 function EventItem({ event }: { event: RtEvent }) {
@@ -1480,10 +1735,12 @@ function setDragGhost(event: DragEvent<HTMLElement>, character: RtCharacter) {
   window.setTimeout(() => document.body.removeChild(ghost), 0);
 }
 
-function buildDebugSnapshot(game: RtGameState) {
+function buildDebugSnapshot(game: RtGameState, sessionId?: string) {
   const tasks = Object.values(game.tasks);
+  const backendQueue = readBackendLogQueue();
   return {
     savedAt: new Date().toISOString(),
+    sessionId: sessionId ?? null,
     seed: game.seed,
     status: game.paused && game.status === "running" ? "paused" : game.status,
     lossReason: game.lossReason,
@@ -1530,6 +1787,12 @@ function buildDebugSnapshot(game: RtGameState) {
         characterId: task.assignedCharacterId,
         progress: Math.round(task.stageProgress),
       })),
+    logger: {
+      backendUrl: BACKEND_LOG_URL,
+      queuedEntries: backendQueue.entries.length,
+      compactedEntries: backendQueue.compactedEntries,
+      droppedEntries: backendQueue.droppedEntries,
+    },
     events: game.log,
   };
 }
@@ -1557,6 +1820,8 @@ function summarizeTask(task: RtTask | undefined) {
     outsourcing: task.outsourcing,
     offRolePenalty: task.offRolePenalty,
     deadlineMs: Math.round(task.deadlineMs),
+    overdueMs: Math.round(task.overdueMs),
+    lateRelease: lateReleaseReport(task),
     stageProgress: Math.round(task.stageProgress),
     stageComplete: task.stageComplete,
     assignedCharacterId: task.assignedCharacterId,
@@ -1582,6 +1847,37 @@ function currentWorkLabel(task: RtTask): string {
   return task.assignedCharacterId ? "-> analysis" : "";
 }
 
+function taskNeededRoleChips(task: RtTask): Array<{
+  key: string;
+  kind: "known" | "unknown";
+  label: string;
+}> {
+  if (task.released) return [];
+  const roles = new Set<RtSubtask["role"]>();
+  for (const subtask of task.subtasks) {
+    if (!subtask.revealed || subtask.done) continue;
+    roles.add(subtask.role);
+  }
+  const chips: Array<{
+    key: string;
+    kind: "known" | "unknown";
+    label: string;
+  }> = Array.from(roles).map((role) => ({
+    key: role,
+    kind: "known",
+    label: subtaskRoleLabel(role),
+  }));
+  const hasHiddenOpenWork = task.subtasks.some((subtask) => !subtask.revealed && !subtask.done);
+  if (hasHiddenOpenWork) {
+    chips.push({
+      key: "unknown",
+      kind: "unknown",
+      label: "unknown",
+    });
+  }
+  return chips;
+}
+
 function subtaskRoleLabel(role: RtSubtask["role"]): string {
   if (role === "bugfix") return "bugfix";
   if (role === "design") return "design";
@@ -1598,7 +1894,7 @@ function formatReleaseCountdown(game: RtGameState): string {
 }
 
 function postDebugSnapshot(game: RtGameState, sessionId?: string) {
-  const snapshot = buildDebugSnapshot(game);
+  const snapshot = buildDebugSnapshot(game, sessionId);
   const body = JSON.stringify(snapshot, null, 2);
   window.localStorage.setItem("dtp.latestRun", body);
   fetch("/__dtp-debug-log", {
@@ -1616,6 +1912,7 @@ function postDebugSnapshot(game: RtGameState, sessionId?: string) {
 function buildBackendSnapshot(snapshot: ReturnType<typeof buildDebugSnapshot>) {
   return {
     savedAt: snapshot.savedAt,
+    sessionId: snapshot.sessionId,
     seed: snapshot.seed,
     status: snapshot.status,
     lossReason: snapshot.lossReason,
@@ -1626,6 +1923,7 @@ function buildBackendSnapshot(snapshot: ReturnType<typeof buildDebugSnapshot>) {
     quarter: snapshot.quarter,
     spawn: snapshot.spawn,
     taskCount: snapshot.taskCount,
+    logger: snapshot.logger,
     boardCounts: Object.fromEntries(
       Object.entries(snapshot.board).map(([column, tasks]) => [
         column,
@@ -1655,6 +1953,7 @@ function buildBackendSnapshot(snapshot: ReturnType<typeof buildDebugSnapshot>) {
           resolved: task?.resolved,
           resolution: task?.resolution,
           deadlineMs: task?.deadlineMs,
+          overdueMs: task?.overdueMs,
           stageProgress: task?.stageProgress,
           assignedCharacterId: task?.assignedCharacterId,
           outsourcing: task?.outsourcing,
@@ -1669,6 +1968,13 @@ function copyDebugSnapshot(game: RtGameState) {
   navigator.clipboard?.writeText(JSON.stringify(buildDebugSnapshot(game), null, 2));
 }
 
+function formatSessionId(sessionId: string): string {
+  const [prefix, timestamp, ...rest] = sessionId.split("-");
+  const suffix = rest.join("-").slice(-8);
+  if (!prefix || !timestamp || !suffix) return sessionId;
+  return `${prefix}-${timestamp}-${suffix}`;
+}
+
 function createSessionId(): string {
   return `dtp-${Date.now()}-${crypto.randomUUID?.() ?? Math.random().toString(16).slice(2)}`;
 }
@@ -1681,6 +1987,7 @@ function createLogEntry(
 ): FrontendLogEntry {
   return {
     id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+    clientCreatedAt: new Date().toISOString(),
     sessionId,
     source: "dtp2-frontend",
     kind,
@@ -1698,13 +2005,43 @@ function gameEventKey(event: RtEvent): string {
 }
 
 function postBackendLog(entries: FrontendLogEntry[]) {
+  enqueueBackendLog(entries);
+  flushBackendLogQueue();
+}
+
+function flushBackendLogQueue(): void {
+  if (backendFlushInFlight) {
+    backendFlushAgain = true;
+    return;
+  }
+
+  const queue = readBackendLogQueue();
+  if (queue.entries.length === 0) return;
+
+  const batch = queue.entries.slice(0, BACKEND_LOG_BATCH_SIZE);
+  const sentIds = new Set(batch.map((entry) => entry.id));
+  backendFlushInFlight = true;
+
   fetch(BACKEND_LOG_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ entries }),
-  }).catch(() => {
-    // Backend is optional during UI-only work.
-  });
+    body: JSON.stringify({ entries: batch }),
+  })
+    .then((response) => {
+      if (!response.ok) throw new Error(`backend log rejected: ${response.status}`);
+      removeBackendLogEntries(sentIds);
+    })
+    .catch(() => {
+      // Keep the local queue. The next interval or online event will retry.
+    })
+    .finally(() => {
+      backendFlushInFlight = false;
+      const hasMore = readBackendLogQueue().entries.length > 0;
+      if (backendFlushAgain || hasMore) {
+        backendFlushAgain = false;
+        window.setTimeout(flushBackendLogQueue, hasMore ? 120 : BACKEND_LOG_FLUSH_INTERVAL_MS);
+      }
+    });
 }
 
 function resetBackendLog(sessionId: string) {
@@ -1715,4 +2052,155 @@ function resetBackendLog(sessionId: string) {
   }).catch(() => {
     // Backend is optional during UI-only work.
   });
+}
+
+function enqueueBackendLog(entries: FrontendLogEntry[]): void {
+  if (entries.length === 0) return;
+  const queue = readBackendLogQueue();
+  const compacted = compactBackendQueueEntries([...queue.entries, ...entries]);
+  writeBackendLogQueue({
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    compactedEntries: queue.compactedEntries + compacted.compactedEntries,
+    droppedEntries: queue.droppedEntries + compacted.droppedEntries,
+    entries: compacted.entries,
+  });
+}
+
+function removeBackendLogEntries(sentIds: Set<string>): void {
+  const queue = readBackendLogQueue();
+  const entries = queue.entries.filter((entry) => !sentIds.has(entry.id));
+  writeBackendLogQueue({
+    ...queue,
+    updatedAt: new Date().toISOString(),
+    entries,
+  });
+}
+
+function compactBackendQueueEntries(entries: FrontendLogEntry[]): {
+  entries: FrontendLogEntry[];
+  compactedEntries: number;
+  droppedEntries: number;
+} {
+  const nonSnapshots: FrontendLogEntry[] = [];
+  const latestSnapshotBySession = new Map<string, FrontendLogEntry>();
+  const seenIds = new Set<string>();
+  let duplicateEntries = 0;
+  let snapshotEntries = 0;
+
+  for (const entry of entries) {
+    if (seenIds.has(entry.id)) {
+      duplicateEntries += 1;
+      continue;
+    }
+    seenIds.add(entry.id);
+
+    if (entry.kind === "snapshot") {
+      snapshotEntries += 1;
+      latestSnapshotBySession.set(entry.sessionId, entry);
+    } else {
+      nonSnapshots.push(entry);
+    }
+  }
+
+  const snapshots = Array.from(latestSnapshotBySession.values());
+  const maxNonSnapshots = Math.max(0, BACKEND_LOG_QUEUE_LIMIT - snapshots.length);
+  const keptNonSnapshots = nonSnapshots.slice(-maxNonSnapshots);
+  const droppedNonSnapshots = Math.max(0, nonSnapshots.length - keptNonSnapshots.length);
+  const droppedSnapshots = Math.max(0, snapshotEntries - snapshots.length);
+
+  return {
+    entries: [...keptNonSnapshots, ...snapshots],
+    compactedEntries: duplicateEntries + droppedSnapshots,
+    droppedEntries: droppedNonSnapshots,
+  };
+}
+
+function readBackendLogQueue(): BackendLogQueue {
+  const storage = getBrowserStorage();
+  if (!storage) return emptyBackendLogQueue();
+  const raw = storage.getItem(BACKEND_LOG_QUEUE_KEY);
+  if (!raw) return emptyBackendLogQueue();
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<BackendLogQueue>;
+    if (
+      parsed.version !== 1 ||
+      typeof parsed.updatedAt !== "string" ||
+      typeof parsed.droppedEntries !== "number" ||
+      !Array.isArray(parsed.entries)
+    ) {
+      storage.removeItem(BACKEND_LOG_QUEUE_KEY);
+      return emptyBackendLogQueue();
+    }
+
+    return {
+      version: 1,
+      updatedAt: parsed.updatedAt,
+      compactedEntries:
+        typeof parsed.compactedEntries === "number" ? parsed.compactedEntries : 0,
+      droppedEntries: parsed.droppedEntries,
+      entries: parsed.entries.filter(isFrontendLogEntry),
+    };
+  } catch {
+    storage.removeItem(BACKEND_LOG_QUEUE_KEY);
+    return emptyBackendLogQueue();
+  }
+}
+
+function writeBackendLogQueue(queue: BackendLogQueue): void {
+  const storage = getBrowserStorage();
+  if (!storage) return;
+
+  try {
+    storage.setItem(BACKEND_LOG_QUEUE_KEY, JSON.stringify(queue));
+  } catch {
+    const compacted = compactBackendQueueEntries(queue.entries.slice(-Math.floor(BACKEND_LOG_QUEUE_LIMIT / 2)));
+    const halfQueueDrop = Math.max(0, queue.entries.length - Math.floor(BACKEND_LOG_QUEUE_LIMIT / 2));
+    try {
+      storage.setItem(
+        BACKEND_LOG_QUEUE_KEY,
+        JSON.stringify({
+          ...queue,
+          updatedAt: new Date().toISOString(),
+          compactedEntries: queue.compactedEntries + compacted.compactedEntries,
+          droppedEntries: queue.droppedEntries + halfQueueDrop + compacted.droppedEntries,
+          entries: compacted.entries,
+        }),
+      );
+    } catch {
+      // If localStorage is full or unavailable, diagnostics cannot be persisted.
+    }
+  }
+}
+
+function emptyBackendLogQueue(): BackendLogQueue {
+  return {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    compactedEntries: 0,
+    droppedEntries: 0,
+    entries: [],
+  };
+}
+
+function isFrontendLogEntry(value: unknown): value is FrontendLogEntry {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Partial<FrontendLogEntry>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.clientCreatedAt === "string" &&
+    typeof record.sessionId === "string" &&
+    record.source === "dtp2-frontend" &&
+    (record.kind === "action" || record.kind === "game_event" || record.kind === "snapshot") &&
+    typeof record.name === "string"
+  );
+}
+
+function getBrowserStorage(): Storage | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
 }
