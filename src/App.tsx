@@ -45,7 +45,6 @@ import {
   labelRole,
   labelTaskKind,
   localizeEffect,
-  localizeEventBody,
   localizeEventTitle,
   localizeLossExplanation,
   localizeLossHeadline,
@@ -120,14 +119,19 @@ export function App() {
     initialAutosaveRef.current.status === "loaded" ? initialAutosaveRef.current.save : null;
   const bootGameRef = useRef<RtGameState | null>(null);
   if (!bootGameRef.current) {
-    bootGameRef.current = restoredSave?.game ?? createRealtimeState(184, initialLocaleRef.current);
-    bootGameRef.current.locale = normalizeLocale(bootGameRef.current.locale ?? initialLocaleRef.current);
+    const initialGame = restoredSave?.game ?? createRealtimeState(184, initialLocaleRef.current);
+    initialGame.locale = normalizeLocale(initialGame.locale ?? initialLocaleRef.current);
+    if (restoredSave && initialGame.status === "running" && !initialGame.morningReport) {
+      initialGame.paused = true;
+    }
+    bootGameRef.current = initialGame;
   }
   const bootGame = bootGameRef.current;
 
   const [locale, setLocale] = useState<Locale>(() => initialLocaleRef.current ?? "en");
   const [game, setGame] = useState<RtGameState>(() => bootGame);
-  const [screen, setScreen] = useState<AppScreen>(() => (restoredSave ? "game" : "menu"));
+  const [screen, setScreen] = useState<AppScreen>("menu");
+  const [hasResumeCard, setHasResumeCard] = useState(Boolean(restoredSave));
   const [prodView, setProdView] = useState<ProdView>("released");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
     initialSelectedTaskId(bootGame),
@@ -322,6 +326,7 @@ export function App() {
     setBounceTaskIds(new Set());
     setGame(next);
     setSelectedTaskId(next.board.backlog[0] ?? null);
+    setHasResumeCard(true);
     setScreen("game");
     saveRun(next, sessionId);
     logAction(sessionId, actionName, {
@@ -334,17 +339,34 @@ export function App() {
 
   function togglePause() {
     if (game.morningReport) return;
-    logAction(sessionIdRef.current, game.paused ? "resume_clicked" : "pause_clicked", {
+    logAction(sessionIdRef.current, "pause_menu_opened", {
       gameTime: formatGameTime(game),
       status: game.status,
     });
-    setGame((current) =>
-      current.status === "running" ? { ...current, paused: !current.paused } : current,
-    );
+    const next = game.status === "running" ? { ...game, paused: true } : game;
+    latestGameRef.current = next;
+    setGame(next);
+    setHasResumeCard(true);
+    setScreen("menu");
+    saveRun(next, sessionIdRef.current);
   }
 
   function newRun() {
     startRun("new_run_clicked");
+  }
+
+  function continueRun() {
+    const next = game.status === "running" ? { ...game, paused: false } : game;
+    latestGameRef.current = next;
+    setGame(next);
+    setSelectedTaskId((current) => (current && next.tasks[current] ? current : initialSelectedTaskId(next)));
+    setScreen("game");
+    saveRun(next, sessionIdRef.current);
+    logAction(sessionIdRef.current, "continue_run_clicked", {
+      gameTime: formatGameTime(next),
+      status: next.status,
+      appCommit: APP_COMMIT,
+    });
   }
 
   function startBriefedDay() {
@@ -753,14 +775,31 @@ export function App() {
     return (
       <main className="shell menu-shell">
         <section className="main-menu">
-          <LanguageSwitch locale={locale} onChange={setLocale} />
           <div className="menu-title">
             <strong>Don&apos;t Touch Prod</strong>
-            <span>{t(locale, "menu.subtitle")}</span>
+            <span>{hasResumeCard ? t(locale, "menu.pauseSubtitle") : t(locale, "menu.subtitle")}</span>
           </div>
-          <button className="start-button" onClick={() => startRun()} type="button">
-            {t(locale, "menu.start")}
-          </button>
+          <div className="menu-settings">
+            <span>{t(locale, "menu.language")}</span>
+            <LanguageSwitch locale={locale} onChange={setLocale} />
+          </div>
+          {hasResumeCard ? (
+            <ResumeCard game={game} locale={locale} sessionId={sessionIdRef.current} />
+          ) : null}
+          <div className="menu-actions">
+            {hasResumeCard ? (
+              <button className="start-button" onClick={continueRun} type="button">
+                {t(locale, "menu.continue")}
+              </button>
+            ) : null}
+            <button
+              className={hasResumeCard ? "ghost-button menu-new-run" : "start-button"}
+              onClick={() => startRun(hasResumeCard ? "menu_new_run_clicked" : "start_run_clicked")}
+              type="button"
+            >
+              {hasResumeCard ? t(locale, "menu.newRun") : t(locale, "menu.start")}
+            </button>
+          </div>
         </section>
       </main>
     );
@@ -819,7 +858,6 @@ export function App() {
           <span className="stat-pill muted">{t(locale, "header.boost", { value: game.resources.processBoost })}</span>
         </div>
         <div className="header-actions">
-          <LanguageSwitch locale={locale} onChange={setLocale} />
           <button
             className={`pause-button ${pauseShake ? "reject-shake" : ""}`}
             disabled={game.status !== "running" || Boolean(morningReport)}
@@ -830,9 +868,7 @@ export function App() {
               ? t(locale, "header.stopped")
               : morningReport
                 ? t(locale, "header.paused")
-                : game.paused
-                  ? t(locale, "header.resume")
-                  : t(locale, "header.pause")}
+                : t(locale, "header.pause")}
           </button>
           <button className="ghost-button" onClick={newRun} type="button">
             {t(locale, "header.newRun")}
@@ -1031,15 +1067,6 @@ export function App() {
             </section>
 
             {game.lossReport ? <LossReport locale={locale} report={game.lossReport} /> : null}
-
-            <section className="panel log-panel">
-              <h2>{t(locale, "log.title")}</h2>
-              {game.log.slice(0, 24).map((event, index) => (
-                <EventItem event={event} key={`${event.at}-${event.title}-${index}`} locale={locale} />
-              ))}
-            </section>
-
-            <DebugPanel game={game} locale={locale} sessionId={sessionIdRef.current} />
           </aside>
         </section>
       )}
@@ -1067,6 +1094,57 @@ function LanguageSwitch({
         </button>
       ))}
     </div>
+  );
+}
+
+function ResumeCard({
+  game,
+  locale,
+  sessionId,
+}: {
+  game: RtGameState;
+  locale: Locale;
+  sessionId: string;
+}) {
+  const report = game.morningReport;
+  const quarter = report?.quarter ?? game.quarter;
+  const day = report?.day ?? game.day;
+  const releaseLine = report
+    ? t(locale, "header.morningLine", { count: report.consequences.length })
+    : t(locale, "header.releaseLine", {
+      time: formatReleaseCountdown(game),
+      done: game.board.done.length,
+    });
+  const statusLabel =
+    game.status !== "running"
+      ? t(locale, "header.stopped")
+      : report
+        ? t(locale, "status.morning")
+        : game.paused
+          ? t(locale, "status.paused")
+          : t(locale, "status.running");
+
+  return (
+    <section className="resume-card">
+      <header>
+        <span>{t(locale, "menu.savedRun")}</span>
+        <strong>{t(locale, "header.day", { quarter, day, daysPerQuarter: game.daysPerQuarter })}</strong>
+      </header>
+      <div className="resume-facts">
+        <span>{statusLabel}</span>
+        <span>{t(locale, "header.goal", {
+          value: game.quarterValue,
+          goal: game.quarterGoal.value,
+          trust: game.resources.trust,
+          trustGoal: game.quarterGoal.trust,
+        })}</span>
+        <span>{releaseLine}</span>
+        <span>{t(locale, "header.clients", { value: game.resources.clients })}</span>
+        <span>{t(locale, "header.debt", { value: game.resources.debt })}</span>
+        <span>{t(locale, "header.budget", { value: game.resources.budget })}</span>
+        <span title={sessionId}>{t(locale, "menu.session", { value: formatSessionId(sessionId) })}</span>
+      </div>
+    </section>
   );
 }
 
@@ -1902,20 +1980,6 @@ function deadlineTone(ratio: number): "deadline-safe" | "deadline-warning" | "de
   if (ratio <= 0.18) return "deadline-urgent";
   if (ratio <= 0.42) return "deadline-warning";
   return "deadline-safe";
-}
-
-function EventItem({ event, locale }: { event: RtEvent; locale: Locale }) {
-  return (
-    <article className="event-item">
-      <strong>{event.at} {localizeEventTitle(event.title, locale)}</strong>
-      <p>{localizeEventBody(event.body, locale)}</p>
-      <div>
-        {event.effects.slice(0, 4).map((effect) => (
-          <span key={effect}>{localizeEffect(effect, locale)}</span>
-        ))}
-      </div>
-    </article>
-  );
 }
 
 function LossReport({

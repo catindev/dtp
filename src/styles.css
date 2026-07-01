@@ -43,8 +43,8 @@ button {
   background: #ffffff;
   border: 1px solid #c8c8c0;
   display: grid;
-  gap: 28px;
-  min-width: min(420px, calc(100vw - 32px));
+  gap: 18px;
+  min-width: min(480px, calc(100vw - 32px));
   padding: 28px;
 }
 
@@ -73,6 +73,74 @@ button {
   min-height: 44px;
   padding: 10px 14px;
   text-transform: uppercase;
+}
+
+.menu-settings {
+  align-items: center;
+  border-top: 1px solid #dfdfd8;
+  display: flex;
+  justify-content: space-between;
+  padding-top: 14px;
+}
+
+.menu-settings > span {
+  color: #66665f;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.menu-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.menu-actions button {
+  flex: 1;
+}
+
+.menu-new-run {
+  min-height: 44px;
+}
+
+.resume-card {
+  background: #f8f8f4;
+  border: 1px solid #dfdfd8;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.resume-card header {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.resume-card header span,
+.resume-card header strong {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.resume-card header span {
+  color: #66665f;
+}
+
+.resume-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.resume-facts span {
+  background: #ffffff;
+  border: 1px solid #dfdfd8;
+  color: #55554d;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 6px;
 }
 
 .language-switch {
