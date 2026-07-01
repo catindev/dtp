@@ -5,7 +5,6 @@ import {
   DONE_REWORK_TRUST_COST,
   OUTSOURCE_COST_BY_IMPORTANCE,
   RT_COLUMNS,
-  TICK_MS,
   cancelTaskWork,
   createRealtimeState,
   formatGameTime,
@@ -15,7 +14,6 @@ import {
   releaseReadiness,
   startDayAfterMorningReport,
   taskDeadlineRatio,
-  tickRealtime,
   type RtCharacter,
   type RtColumn,
   type RtEvent,
@@ -59,20 +57,24 @@ import {
 } from "./save";
 import { formatReleaseCountdown, formatSessionId } from "./formatting";
 import {
-  BACKEND_LOG_FLUSH_INTERVAL_MS,
   buildDebugSnapshot,
   copyDebugSnapshot,
   createLogEntry,
   createSessionId,
-  flushBackendLogQueue,
   gameEventKey,
   logAction,
   postBackendLog,
-  postDebugSnapshot,
   type FrontendLogEntry,
 } from "./frontendLogging";
 import { useTaskFeedback } from "./hooks/useTaskFeedback";
 import { useGameDragAndDrop } from "./hooks/useGameDragAndDrop";
+import {
+  useAutosaveRun,
+  useBackendLogPump,
+  useDebugSnapshotPoster,
+  useRealtimeTicker,
+  useStatusDebugSnapshot,
+} from "./hooks/useRuntimeEffects";
 import { USER_DOCS } from "./userdocs";
 import "./styles.css";
 
@@ -124,7 +126,6 @@ export function App() {
     shakePauseButton,
     resetFeedback,
   } = useTaskFeedback();
-  const autosaveTimer = useRef<number | null>(null);
   const latestGameRef = useRef(game);
   const sessionIdRef = useRef(restoredSave?.sessionId ?? createSessionId());
   const loggedEventKeysRef = useRef(
@@ -161,38 +162,11 @@ export function App() {
     shakePauseButton,
   });
 
-  useEffect(() => {
-    flushBackendLogQueue();
-    const id = window.setInterval(flushBackendLogQueue, BACKEND_LOG_FLUSH_INTERVAL_MS);
-    window.addEventListener("online", flushBackendLogQueue);
-
-    return () => {
-      window.clearInterval(id);
-      window.removeEventListener("online", flushBackendLogQueue);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (screen !== "game") return;
-    const id = window.setInterval(() => {
-      setGame((current) => {
-        const draft = structuredClone(current) as RtGameState;
-        const normalized = normalizeRealtimeState(draft);
-        if (draft.paused || draft.status !== "running") return normalized ? draft : current;
-        tickRealtime(draft, TICK_MS);
-        return draft;
-      });
-    }, TICK_MS);
-
-    return () => window.clearInterval(id);
-  }, [screen]);
-
-  useEffect(
-    () => () => {
-      if (autosaveTimer.current) window.clearTimeout(autosaveTimer.current);
-    },
-    [],
-  );
+  useBackendLogPump();
+  useRealtimeTicker(screen, setGame);
+  useDebugSnapshotPoster(screen, latestGameRef, sessionIdRef);
+  useAutosaveRun(game, screen, latestGameRef, sessionIdRef);
+  useStatusDebugSnapshot(game, screen, sessionIdRef);
 
   useEffect(() => {
     latestGameRef.current = game;
@@ -214,30 +188,6 @@ export function App() {
       return normalizeRealtimeState(draft) ? draft : current;
     });
   }, []);
-
-  useEffect(() => {
-    if (screen !== "game") return;
-    const id = window.setInterval(() => {
-      postDebugSnapshot(latestGameRef.current, sessionIdRef.current);
-    }, 1000);
-
-    return () => window.clearInterval(id);
-  }, [screen]);
-
-  useEffect(() => {
-    if (screen !== "game") return;
-    if (autosaveTimer.current) window.clearTimeout(autosaveTimer.current);
-    autosaveTimer.current = window.setTimeout(() => {
-      saveRun(latestGameRef.current, sessionIdRef.current);
-    }, 120);
-
-    return () => {
-      if (autosaveTimer.current) {
-        window.clearTimeout(autosaveTimer.current);
-        autosaveTimer.current = null;
-      }
-    };
-  }, [game, screen]);
 
   useEffect(() => {
     if (screen !== "game" || initialAutosaveRef.current?.status !== "loaded") return;
@@ -282,11 +232,6 @@ export function App() {
       if (game.tasks[taskId]) bounceTask(taskId);
     }
   }, [game.log, game.tasks, screen]);
-
-  useEffect(() => {
-    if (screen !== "game") return;
-    postDebugSnapshot(game, sessionIdRef.current);
-  }, [game.status, game.lossReason, screen]);
 
   useEffect(() => {
     if (selectedTaskId && !game.tasks[selectedTaskId]) {
