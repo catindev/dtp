@@ -5,14 +5,12 @@ import {
   DONE_REWORK_TRUST_COST,
   OUTSOURCE_COST_BY_IMPORTANCE,
   RT_COLUMNS,
-  cancelTaskWork,
   createRealtimeState,
   formatGameTime,
   formatOverdueGameTime,
   lateReleaseReport,
   normalizeRealtimeState,
   releaseReadiness,
-  startDayAfterMorningReport,
   taskDeadlineRatio,
   type RtCharacter,
   type RtColumn,
@@ -51,9 +49,7 @@ import {
   APP_COMMIT,
   AUTOSAVE_KEY,
   SAVE_SCHEMA_VERSION,
-  clearSavedRun,
   loadSavedRun,
-  saveRun,
 } from "./save";
 import { formatReleaseCountdown, formatSessionId } from "./formatting";
 import {
@@ -61,11 +57,11 @@ import {
   copyDebugSnapshot,
   createSessionId,
   gameEventKey,
-  logAction,
 } from "./frontendLogging";
 import { useTaskFeedback } from "./hooks/useTaskFeedback";
 import { useGameDragAndDrop } from "./hooks/useGameDragAndDrop";
 import { useGameEventEffects } from "./hooks/useGameEventEffects";
+import { initialSelectedTaskId, useGameActions } from "./hooks/useGameActions";
 import {
   useAutosaveRun,
   useBackendLogPump,
@@ -159,6 +155,37 @@ export function App() {
     shakeColumn,
     shakePauseButton,
   });
+  const {
+    cancelSelectedTask,
+    continueRun,
+    openDocs,
+    openLinkedTask,
+    openMenu,
+    startBriefedDay,
+    startRun,
+    togglePause,
+  } = useGameActions({
+    game,
+    screen,
+    locale,
+    selectedDocId,
+    hasResumeCard,
+    selectedTaskId,
+    selectedTask,
+    latestGameRef,
+    sessionIdRef,
+    loggedEventKeysRef,
+    animatedWorkEventKeysRef,
+    mutate,
+    setGame,
+    setScreen,
+    setHasResumeCard,
+    setSelectedTaskId,
+    setProdView,
+    resetDrag,
+    resetFeedback,
+    flashTask,
+  });
 
   useBackendLogPump();
   useRealtimeTicker(screen, setGame);
@@ -216,138 +243,6 @@ export function App() {
       normalizeRealtimeState(draft);
       updater(draft);
       return draft;
-    });
-  }
-
-  function startRun(actionName = "start_run_clicked") {
-    clearSavedRun();
-    const next = createRealtimeState(Date.now(), locale);
-    const sessionId = createSessionId();
-    sessionIdRef.current = sessionId;
-    loggedEventKeysRef.current = new Set();
-    animatedWorkEventKeysRef.current = new Set();
-    resetDrag();
-    resetFeedback();
-    setGame(next);
-    setSelectedTaskId(next.board.backlog[0] ?? null);
-    setHasResumeCard(true);
-    setScreen("game");
-    saveRun(next, sessionId);
-    logAction(sessionId, actionName, {
-      seed: next.seed,
-      startedAt: new Date().toISOString(),
-      appCommit: APP_COMMIT,
-      saveSchemaVersion: SAVE_SCHEMA_VERSION,
-    });
-  }
-
-  function togglePause() {
-    if (game.morningReport) return;
-    const next = game.status === "running" ? { ...game, paused: !game.paused } : game;
-    latestGameRef.current = next;
-    setGame(next);
-    saveRun(next, sessionIdRef.current);
-    logAction(sessionIdRef.current, game.paused ? "resume_clicked" : "pause_clicked", {
-      gameTime: formatGameTime(game),
-      status: game.status,
-    });
-  }
-
-  function openMenu() {
-    const next = game.status === "running" && !game.morningReport ? { ...game, paused: true } : game;
-    latestGameRef.current = next;
-    setGame(next);
-    setHasResumeCard(true);
-    setScreen("menu");
-    saveRun(next, sessionIdRef.current);
-    logAction(sessionIdRef.current, "menu_opened", {
-      gameTime: formatGameTime(game),
-      status: game.status,
-    });
-  }
-
-  function continueRun() {
-    const next = game.status === "running" ? { ...game, paused: false } : game;
-    latestGameRef.current = next;
-    setGame(next);
-    setSelectedTaskId((current) => (current && next.tasks[current] ? current : initialSelectedTaskId(next)));
-    setScreen("game");
-    saveRun(next, sessionIdRef.current);
-    logAction(sessionIdRef.current, "continue_run_clicked", {
-      gameTime: formatGameTime(next),
-      status: next.status,
-      appCommit: APP_COMMIT,
-    });
-  }
-
-  function openDocs() {
-    setScreen("docs");
-    logAction(sessionIdRef.current, "rtfm_opened", {
-      locale,
-      selectedDocId,
-      hasSavedRun: hasResumeCard,
-    });
-  }
-
-  function startBriefedDay() {
-    const currentReport = latestGameRef.current.morningReport;
-    if (!currentReport) return;
-    setGame((current) => {
-      const draft = structuredClone(current) as RtGameState;
-      normalizeRealtimeState(draft);
-      const continued = startDayAfterMorningReport(draft);
-      return continued ? draft : current;
-    });
-    logAction(sessionIdRef.current, "morning_report_start_day_clicked", {
-      reportId: currentReport.id,
-      quarter: currentReport.quarter,
-      day: currentReport.day,
-      previousDay: currentReport.previousDay,
-      shippedTaskIds: currentReport.shippedTaskIds,
-      effects: currentReport.effects,
-      consequences: currentReport.consequences,
-    });
-  }
-
-  function cancelSelectedTask() {
-    if (!selectedTask?.assignedCharacterId) return;
-    const character = game.characters[selectedTask.assignedCharacterId];
-    mutate((draft) => {
-      cancelTaskWork(draft, selectedTask.id);
-    });
-    logAction(sessionIdRef.current, "cancel_task_clicked", {
-      taskId: selectedTask.id,
-      taskTitle: selectedTask.title,
-      characterId: character?.id,
-      characterName: character?.name,
-      stageProgress: selectedTask.stageProgress,
-      gameTime: formatGameTime(game),
-    });
-    flashTask(selectedTask.id);
-  }
-
-  function openLinkedTask(taskId: string) {
-    const linkedTask = game.tasks[taskId];
-    if (!linkedTask) return;
-    if (game.board.released.includes(taskId)) {
-      setProdView("released");
-    } else if (linkedTask.resolved) {
-      setProdView("unfinished");
-    }
-    setSelectedTaskId(taskId);
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        const card = document.querySelector<HTMLElement>(`[data-task-card-id="${taskId}"]`);
-        if (card) {
-          card.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-        }
-        flashTask(taskId);
-      });
-    });
-    logAction(sessionIdRef.current, "linked_task_opened", {
-      taskId,
-      fromTaskId: selectedTaskId,
-      gameTime: formatGameTime(game),
     });
   }
 
@@ -1237,16 +1132,6 @@ function SubtaskList({ locale, task }: { locale: Locale; task: RtTask }) {
         </div>
       ) : null}
     </div>
-  );
-}
-
-function initialSelectedTaskId(game: RtGameState): string | null {
-  return (
-    game.board.inProgress[0] ??
-    game.board.backlog[0] ??
-    game.board.done[0] ??
-    game.board.released[0] ??
-    null
   );
 }
 
