@@ -15,7 +15,7 @@ import {
   type GameState,
   type TaskCard,
   type WorkTrack,
-} from "../core";
+} from "../archive/core";
 
 const seedArg = Number(process.argv[2]);
 const seed = Number.isFinite(seedArg) ? seedArg : 184;

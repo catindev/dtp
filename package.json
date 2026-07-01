@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "check": "tsc --noEmit",
-    "debug": "tsx src/debug/run.ts",
+    "debug": "tsx src/debug/realtime.ts",
+    "debug:legacy": "tsx src/debug/legacy.ts",
     "debug:rt": "tsx src/debug/realtime.ts",
     "debug:ab": "tsx src/debug/ab.ts"
   },

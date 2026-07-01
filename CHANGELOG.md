@@ -622,8 +622,8 @@ src/save.ts
 Legacy runtime:
 
 ```txt
-src/core
-src/debug/run.ts
+src/archive/core
+src/debug/legacy.ts
 ```
 
 ---

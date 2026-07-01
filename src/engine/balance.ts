@@ -1,0 +1,44 @@
+export const TICK_MS = 500;
+export const GAME_MINUTES_PER_REAL_SECOND = 1;
+export const GAME_MINUTES_PER_TICK = 0.5;
+export const GAME_DAY_START_MINUTE = 8 * 60;
+export const RELEASE_TRAIN_GAME_MINUTE = 18 * 60;
+export const GAME_DAY_MINUTES = RELEASE_TRAIN_GAME_MINUTE - GAME_DAY_START_MINUTE;
+export const DAYS_PER_QUARTER = 5;
+export const DONE_REWORK_TRUST_COST = 4;
+
+export const OUTSOURCE_COST_BY_IMPORTANCE = {
+  optional: 3,
+  important: 4,
+  critical: 6,
+} as const;
+
+export const NIGHT_STAMINA_MIN_RECOVERY = 55;
+export const NIGHT_STAMINA_RECOVERY_RATIO = 0.8;
+
+export const FIRST_SPAWN_MIN_MS = 80000;
+export const FIRST_SPAWN_MAX_MS = 120000;
+export const SPAWN_INTERVAL_MIN_MS = 90000;
+export const SPAWN_INTERVAL_MAX_MS = 150000;
+export const LOW_WORK_SPAWN_MIN_MS = 25000;
+export const LOW_WORK_SPAWN_MAX_MS = 45000;
+export const BURST_INTERVAL_MIN_MS = 420000;
+export const BURST_INTERVAL_MAX_MS = 660000;
+
+export const WORK_SPEED_MULTIPLIER = 0.38;
+export const ANALYSIS_SPEED_MULTIPLIER = 0.24;
+export const WORK_STAMINA_DRAIN_BASE = 0.28;
+export const WORK_PRESSURE_STAMINA_DRAIN = 0.045;
+export const WORK_COMPLEXITY_STAMINA_DRAIN = 0.02;
+export const OFF_ROLE_STAMINA_DRAIN = 0.12;
+export const ANALYSIS_STAMINA_DRAIN_BASE = 0.23;
+export const ANALYSIS_PRESSURE_STAMINA_DRAIN = 0.025;
+export const ANALYSIS_COMPLEXITY_STAMINA_DRAIN = 0.012;
+
+export const BACKLOG_LIMIT = 5;
+export const FALLOUT_BACKLOG_EXTRA_SLOTS = 2;
+export const MAX_FALLOUT_CHAIN_DEPTH = 2;
+export const LATE_RELEASE_GRACE_MS = 30000;
+
+export const FRONTEND_GUARDRAIL_WINDOW = 7;
+export const FRONTEND_GUARDRAIL_MIN_MAJOR_WORK = 1;
