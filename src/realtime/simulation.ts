@@ -4,6 +4,7 @@ export const GAME_MINUTES_PER_TICK = 0.5;
 export const GAME_DAY_START_MINUTE = 8 * 60;
 export const RELEASE_TRAIN_GAME_MINUTE = 18 * 60;
 export const GAME_DAY_MINUTES = RELEASE_TRAIN_GAME_MINUTE - GAME_DAY_START_MINUTE;
+export const DAYS_PER_QUARTER = 5;
 export const DONE_REWORK_TRUST_COST = 4;
 export const OUTSOURCE_COST_BY_IMPORTANCE: Record<RtSubtaskImportance, number> = {
   optional: 3,
@@ -457,7 +458,7 @@ export function createRealtimeState(seed = Date.now()): RtGameState {
     day: 1,
     quarter: 1,
     dayInQuarter: 1,
-    daysPerQuarter: 1,
+    daysPerQuarter: DAYS_PER_QUARTER,
     resources: {
       trust: 70,
       debt: 20,
@@ -585,6 +586,14 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
       state.gameMinuteOfDay = GAME_DAY_START_MINUTE;
       changed = true;
     }
+  }
+  if (
+    typeof state.daysPerQuarter !== "number" ||
+    !Number.isFinite(state.daysPerQuarter) ||
+    state.daysPerQuarter < DAYS_PER_QUARTER
+  ) {
+    state.daysPerQuarter = DAYS_PER_QUARTER;
+    changed = true;
   }
 
   for (const column of RT_COLUMNS) {

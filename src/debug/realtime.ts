@@ -10,6 +10,7 @@ import {
 const seedArg = Number(process.argv[2]);
 const seed = Number.isFinite(seedArg) ? seedArg : 184;
 const state = createRealtimeState(seed);
+assertQuarterCadence(state);
 
 const taskId = state.board.backlog[0];
 const analystId = Object.values(state.characters).find((character) => character.role === "analyst")?.id;
@@ -57,6 +58,12 @@ function tickUntilTaskIdle(taskId: string, limit: number): void {
     const task = state.tasks[taskId];
     if (!task?.assignedCharacterId) return;
     tickRealtime(state, 500);
+  }
+}
+
+function assertQuarterCadence(currentState: typeof state): void {
+  if (currentState.daysPerQuarter < 5) {
+    throw new Error(`Expected daysPerQuarter >= 5, got ${currentState.daysPerQuarter}.`);
   }
 }
 
