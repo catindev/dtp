@@ -285,6 +285,8 @@ const UI: Record<Locale, Record<string, string>> = {
     "inspector.late": "Late {time} / Value -{value}%",
     "inspector.queued": "Queued for release. Reopening costs Trust -{cost}.",
     "inspector.cancel": "Cancel task",
+    "inspector.causedBy": "Triggered by",
+    "inspector.missingSource": "Source {id}",
     "inspector.postmortem": "Postmortem",
     "work.character": "{name} is working",
     "work.outsource": "Outsource is working",
@@ -398,6 +400,8 @@ const UI: Record<Locale, Record<string, string>> = {
     "inspector.late": "Просрочка {time} / Value -{value}%",
     "inspector.queued": "В очереди на релиз. Вернуть в работу стоит Trust -{cost}.",
     "inspector.cancel": "Отменить задачу",
+    "inspector.causedBy": "Спровоцировано задачей",
+    "inspector.missingSource": "Источник {id}",
     "inspector.postmortem": "Постмортем",
     "work.character": "{name} работает",
     "work.outsource": "Аутсорс работает",
@@ -719,9 +723,13 @@ export function localizeText(raw: string | null | undefined, locale: Locale): st
     [/^(?<name>.+) is exhausted and cannot continue today\.$/, (_all, name) => `${name} выдохся и сегодня больше не может продолжать.`],
     [/^Missed work resolved as (?<resolution>.+)\.$/, (_all, resolution) => `Пропущенная работа закрыта как ${resolution}.`],
     [/^(?<area>.+): (?<failure>.+) after (?<id>[A-Z]+-\d+)$/, (_all, area, failure, id) => `${translateConsequenceArea(area)}: ${translateConsequenceFailure(failure)} после ${id}`],
+    [/^(?<area>.+): (?<failure>known bug is still visible|regressed after untested late changes|started failing without QA coverage|created production instability|does not match the business request|broke after unfinished release work)$/, (_all, area, failure) => `${translateConsequenceArea(area)}: ${translateConsequenceFailure(failure)}`],
     [/^(?<area>.+): escalation after unfinished work on (?<id>[A-Z]+-\d+)$/, (_all, area, id) => `${translateConsequenceArea(area)}: эскалация после незавершенной работы по ${id}`],
+    [/^(?<area>.+): escalation after unfinished work$/, (_all, area) => `${translateConsequenceArea(area)}: эскалация после незавершенной работы`],
     [/^(?<area>.+): escalation after (?<id>[A-Z]+-\d+) missed release$/, (_all, area, id) => `${translateConsequenceArea(area)}: эскалация после сорванного релиза ${id}`],
+    [/^(?<area>.+): missed commitment escalated$/, (_all, area) => `${translateConsequenceArea(area)}: эскалация сорванного обязательства`],
     [/^(?<area>.+): small slip after (?<id>[A-Z]+-\d+)$/, (_all, area, id) => `${translateConsequenceArea(area)}: небольшой срыв после ${id}`],
+    [/^(?<area>.+): small slip$/, (_all, area) => `${translateConsequenceArea(area)}: небольшой срыв`],
   ];
 
   return applyRegexReplacements(raw, replacements);

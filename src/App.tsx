@@ -604,6 +604,23 @@ export function App() {
     flashTask(selectedTask.id);
   }
 
+  function openLinkedTask(taskId: string) {
+    if (!game.tasks[taskId]) return;
+    setSelectedTaskId(taskId);
+    window.requestAnimationFrame(() => {
+      const card = document.querySelector<HTMLElement>(`[data-task-card-id="${taskId}"]`);
+      if (card) {
+        card.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      }
+      flashTask(taskId);
+    });
+    logAction(sessionIdRef.current, "linked_task_opened", {
+      taskId,
+      fromTaskId: selectedTaskId,
+      gameTime: formatGameTime(game),
+    });
+  }
+
   function flashTask(taskId: string) {
     setFlashTaskId(taskId);
     if (flashTimer.current) window.clearTimeout(flashTimer.current);
@@ -971,8 +988,10 @@ export function App() {
                   assigned={selectedAssigned}
                   canCancelWork={Boolean(selectedAssigned && !morningReport)}
                   cancelDisabled={interactionBlocked}
+                  game={game}
                   locale={locale}
                   onCancelWork={cancelSelectedTask}
+                  onOpenLinkedTask={openLinkedTask}
                   task={selectedTask}
                 />
               ) : (
@@ -1365,6 +1384,7 @@ function TaskCard({
         flash ? "drop-flash" : "",
         reject ? "reject-shake" : "",
       ].join(" ")}
+      data-task-card-id={task.id}
       draggable={!dragBlocked}
       onClick={onClick}
       onDragEnd={onDragEnd}
@@ -1442,19 +1462,27 @@ function TaskInspector({
   assigned,
   canCancelWork,
   cancelDisabled,
+  game,
   locale,
   onCancelWork,
+  onOpenLinkedTask,
   task,
 }: {
   assigned: RtCharacter | null;
   canCancelWork: boolean;
   cancelDisabled: boolean;
+  game: RtGameState;
   locale: Locale;
   onCancelWork: () => void;
+  onOpenLinkedTask: (taskId: string) => void;
   task: RtTask;
 }) {
   const readiness = releaseReadiness(task);
   const late = lateReleaseReport(task);
+  const sourceTask = task.sourceTaskId ? game.tasks[task.sourceTaskId] : null;
+  const visiblePostmortem = task.postmortem.filter(
+    (note) => !/^Source task:/.test(note) && !/^Root cause:/.test(note),
+  );
   return (
     <div className="task-inspector">
       <strong>{localizeTaskTitle(task.title, locale)}</strong>
@@ -1507,10 +1535,28 @@ function TaskInspector({
         </button>
       ) : null}
       <p>{localizeText(task.lastNote, locale)}</p>
-      {task.postmortem.length > 0 ? (
+      {task.sourceTaskId ? (
+        <div className="source-link-panel">
+          <h3>{t(locale, "inspector.causedBy")}</h3>
+          {sourceTask ? (
+            <button
+              className="task-link-chip"
+              onClick={() => onOpenLinkedTask(sourceTask.id)}
+              type="button"
+            >
+              {localizeTaskTitle(sourceTask.title, locale)}
+            </button>
+          ) : (
+            <span className="task-link-chip disabled">
+              {t(locale, "inspector.missingSource", { id: task.sourceTaskId })}
+            </span>
+          )}
+        </div>
+      ) : null}
+      {visiblePostmortem.length > 0 ? (
         <div className="postmortem">
           <h3>{t(locale, "inspector.postmortem")}</h3>
-          {task.postmortem.map((note) => (
+          {visiblePostmortem.map((note) => (
             <p key={note}>{localizeText(note, locale)}</p>
           ))}
         </div>

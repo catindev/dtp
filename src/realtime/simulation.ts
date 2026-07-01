@@ -429,6 +429,13 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
       task.sourceTaskId = null;
       changed = true;
     }
+    if (task.sourceTaskId) {
+      const normalizedTitle = normalizeConsequenceTaskTitle(task.title, task.sourceTaskId);
+      if (normalizedTitle !== task.title) {
+        task.title = normalizedTitle;
+        changed = true;
+      }
+    }
     if (typeof taskWithChain.chainDepth !== "number") {
       task.chainDepth = 0;
       changed = true;
@@ -449,7 +456,9 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
       task.postmortem = [];
       changed = true;
     } else {
-      const postmortem = uniqueStrings(task.postmortem);
+      const postmortem = uniqueStrings(task.postmortem).filter(
+        (note) => !/^Source task:/.test(note) && !/^Root cause:/.test(note),
+      );
       if (postmortem.length !== task.postmortem.length) {
         task.postmortem = postmortem;
         changed = true;
@@ -1163,8 +1172,6 @@ function createTailConsequence(
   followUp.blastRadius = sourceTask.blastRadius === "high" ? "high" : "medium";
   followUp.lastNote = `Caused by yesterday's ${sourceTask.id}: ${consequenceCauseText(cause)}.`;
   followUp.postmortem = [
-    `Source task: ${sourceTask.id}.`,
-    `Root cause: ${rootCauseTaskId}.`,
     `Cause: ${consequenceCauseText(cause)}.`,
     ...(source === "missed_in_progress" ? ["Some prior work carried forward as context."] : []),
   ];
@@ -1389,7 +1396,7 @@ function releaseConsequenceSymptom(
             : cause === "low_clarity"
               ? "does not match the business request"
               : "broke after unfinished release work";
-  return `${area}: ${failure} after ${task.id}`;
+  return `${area}: ${failure}`;
 }
 
 function missedConsequenceSymptom(
@@ -1409,11 +1416,11 @@ function missedConsequenceSymptom(
             : task.domain === "reports"
               ? "Reporting request"
               : "Notification request";
-  if (!createsWork) return `${area}: small slip after ${task.id}`;
+  if (!createsWork) return `${area}: small slip`;
   if (source === "missed_in_progress") {
-    return `${area}: escalation after unfinished work on ${task.id}`;
+    return `${area}: escalation after unfinished work`;
   }
-  return `${area}: escalation after ${task.id} missed release`;
+  return `${area}: missed commitment escalated`;
 }
 
 function consequenceCauseText(cause: RtReleaseConsequenceCause): string {
@@ -2648,6 +2655,19 @@ function inferBlastRadius(task: RtTask): RtBlastRadius {
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values));
+}
+
+function normalizeConsequenceTaskTitle(title: string, sourceTaskId: string): string {
+  const source = escapeRegExp(sourceTaskId);
+  return title
+    .replace(new RegExp(`: escalation after ${source} missed release$`), ": missed commitment escalated")
+    .replace(new RegExp(`: small slip after ${source}$`), ": small slip")
+    .replace(new RegExp(` after unfinished work on ${source}$`), " after unfinished work")
+    .replace(new RegExp(` after ${source}$`), "");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function checkRunState(state: RtGameState): void {

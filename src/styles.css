@@ -1153,6 +1153,7 @@ button:disabled {
 }
 
 .subtask-list,
+.source-link-panel,
 .postmortem {
   border: 1px solid #dfdfd8;
   display: grid;
@@ -1161,10 +1162,36 @@ button:disabled {
 }
 
 .subtask-list h3,
+.source-link-panel h3,
 .postmortem h3 {
   font-size: 12px;
   margin: 0;
   text-transform: uppercase;
+}
+
+.task-link-chip {
+  background: #f8f8f4;
+  border: 1px solid #7b8f58;
+  color: #245d45;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  justify-self: start;
+  max-width: 100%;
+  padding: 5px 7px;
+  text-align: left;
+}
+
+.task-link-chip:hover {
+  background: rgba(36, 93, 69, 0.08);
+}
+
+.task-link-chip.disabled {
+  border-color: #dfdfd8;
+  color: #77776d;
+  cursor: default;
 }
 
 .subtask-row {
