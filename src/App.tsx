@@ -8,7 +8,6 @@ import { MorningReportPage } from "./components/MorningReportPage";
 import { TeamPanel } from "./components/TeamPanel";
 import { TaskInspector } from "./components/TaskInspector";
 import {
-  createRealtimeState,
   formatGameTime,
   normalizeRealtimeState,
   type RtGameState,
@@ -17,20 +16,15 @@ import {
   localizeLossExplanation,
   localizeLossHeadline,
   localizeText,
-  normalizeLocale,
   t,
   type Locale,
 } from "./i18n";
-import { loadSavedRun } from "./save";
-import {
-  createSessionId,
-  gameEventKey,
-} from "./frontendLogging";
 import { useTaskFeedback } from "./hooks/useTaskFeedback";
 import { useGameDragAndDrop } from "./hooks/useGameDragAndDrop";
 import { useGameEventEffects } from "./hooks/useGameEventEffects";
 import { initialSelectedTaskId, useGameActions } from "./hooks/useGameActions";
-import { loadStoredLocale, useLocaleGameSync } from "./hooks/useLocaleSync";
+import { useGameBoot } from "./hooks/useGameBoot";
+import { useLocaleGameSync } from "./hooks/useLocaleSync";
 import {
   useAutosaveRun,
   useBackendLogPump,
@@ -49,28 +43,17 @@ type AppScreen = "menu" | "game" | "docs";
 type ProdView = "released" | "unfinished";
 
 export function App() {
-  const initialLocaleRef = useRef<Locale | null>(null);
-  if (!initialLocaleRef.current) {
-    initialLocaleRef.current = loadStoredLocale();
-  }
-  const initialAutosaveRef = useRef<ReturnType<typeof loadSavedRun> | null>(null);
-  if (!initialAutosaveRef.current) {
-    initialAutosaveRef.current = loadSavedRun();
-  }
-  const restoredSave =
-    initialAutosaveRef.current.status === "loaded" ? initialAutosaveRef.current.save : null;
-  const bootGameRef = useRef<RtGameState | null>(null);
-  if (!bootGameRef.current) {
-    const initialGame = restoredSave?.game ?? createRealtimeState(184, initialLocaleRef.current);
-    initialGame.locale = normalizeLocale(initialGame.locale ?? initialLocaleRef.current);
-    if (restoredSave && initialGame.status === "running" && !initialGame.morningReport) {
-      initialGame.paused = true;
-    }
-    bootGameRef.current = initialGame;
-  }
-  const bootGame = bootGameRef.current;
+  const {
+    animatedWorkEventKeysRef,
+    bootGame,
+    initialAutosaveRef,
+    initialLocale,
+    loggedEventKeysRef,
+    restoredSave,
+    sessionIdRef,
+  } = useGameBoot();
 
-  const [locale, setLocale] = useState<Locale>(() => initialLocaleRef.current ?? "en");
+  const [locale, setLocale] = useState<Locale>(() => initialLocale);
   const [game, setGame] = useState<RtGameState>(() => bootGame);
   const [screen, setScreen] = useState<AppScreen>("menu");
   const [hasResumeCard, setHasResumeCard] = useState(Boolean(restoredSave));
@@ -93,13 +76,6 @@ export function App() {
     resetFeedback,
   } = useTaskFeedback();
   const latestGameRef = useRef(game);
-  const sessionIdRef = useRef(restoredSave?.sessionId ?? createSessionId());
-  const loggedEventKeysRef = useRef(
-    new Set<string>(restoredSave?.game.log.map(gameEventKey) ?? []),
-  );
-  const animatedWorkEventKeysRef = useRef(
-    new Set<string>(restoredSave?.game.log.map(gameEventKey) ?? []),
-  );
   const selectedTask = selectedTaskId ? game.tasks[selectedTaskId] : null;
   const morningReport = game.morningReport;
   const interactionBlocked =
