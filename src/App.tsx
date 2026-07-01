@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { BoardPanel } from "./components/BoardPanel";
 import { DocsScreen } from "./components/DocsScreen";
 import { GameHeader } from "./components/GameHeader";
+import { LossReport } from "./components/LossReport";
 import { MenuScreen } from "./components/MenuScreen";
 import { MorningReportPage } from "./components/MorningReportPage";
 import { TeamPanel } from "./components/TeamPanel";
 import { TaskInspector } from "./components/TaskInspector";
-import { TinyBar } from "./components/TinyBar";
 import {
   createRealtimeState,
   formatGameTime,
@@ -15,26 +15,15 @@ import {
 } from "./realtime/simulation";
 import {
   LOCALE_STORAGE_KEY,
-  localizeEffect,
-  localizeEventTitle,
   localizeLossExplanation,
   localizeLossHeadline,
-  localizeLossSuggestion,
   localizeText,
   normalizeLocale,
   t,
   type Locale,
 } from "./i18n";
+import { loadSavedRun } from "./save";
 import {
-  APP_COMMIT,
-  AUTOSAVE_KEY,
-  SAVE_SCHEMA_VERSION,
-  loadSavedRun,
-} from "./save";
-import { formatSessionId } from "./formatting";
-import {
-  buildDebugSnapshot,
-  copyDebugSnapshot,
   createSessionId,
   gameEventKey,
 } from "./frontendLogging";
@@ -350,90 +339,6 @@ export function App() {
         </section>
       )}
     </main>
-  );
-}
-
-function LossReport({
-  locale,
-  report,
-}: {
-  locale: Locale;
-  report: NonNullable<RtGameState["lossReport"]>;
-}) {
-  return (
-    <section className="panel loss-report">
-      <h2>{t(locale, "loss.title")}</h2>
-      <strong>{localizeLossHeadline(report.headline, locale)}</strong>
-      <p>{localizeLossExplanation(report.explanation, locale)}</p>
-      <div className="loss-grid">
-        <span>{t(locale, "header.trust", { value: report.resourceSnapshot.trust })}</span>
-        <span>{t(locale, "header.clients", { value: report.resourceSnapshot.clients })}</span>
-        <span>{t(locale, "header.debt", { value: report.resourceSnapshot.debt })}</span>
-      </div>
-      {report.lastMissedTasks.length > 0 ? (
-        <>
-          <h3>{t(locale, "loss.recentMisses")}</h3>
-          {report.lastMissedTasks.slice(0, 4).map((event) => (
-            <p key={`${event.at}-${event.title}`}>
-              {event.at} {localizeEventTitle(event.title, locale)} (
-              {event.effects.map((effect) => localizeEffect(effect, locale)).join(", ")})
-            </p>
-          ))}
-        </>
-      ) : null}
-      {report.lastBadReleases.length > 0 ? (
-        <>
-          <h3>{t(locale, "loss.badReleases")}</h3>
-          {report.lastBadReleases.slice(0, 3).map((event) => (
-            <p key={`${event.at}-${event.title}`}>
-              {event.at} {localizeEventTitle(event.title, locale)} (
-              {event.effects.map((effect) => localizeEffect(effect, locale)).join(", ")})
-            </p>
-          ))}
-        </>
-      ) : null}
-      <h3>{t(locale, "loss.read")}</h3>
-      <p>{localizeLossSuggestion(report.suggestion, locale)}</p>
-    </section>
-  );
-}
-
-function DebugPanel({
-  game,
-  locale,
-  sessionId,
-}: {
-  game: RtGameState;
-  locale: Locale;
-  sessionId: string;
-}) {
-  const snapshot = buildDebugSnapshot(game);
-  return (
-    <section className="panel debug-panel">
-      <h2>{t(locale, "debug.title")}</h2>
-      <div className="debug-facts">
-        <span>{t(locale, "debug.status", { value: snapshot.status })}</span>
-        <span>{t(locale, "debug.events", { value: snapshot.events.length })}</span>
-        <span>{t(locale, "debug.tasks", { value: snapshot.taskCount })}</span>
-        <span>{t(locale, "debug.save", { value: SAVE_SCHEMA_VERSION })}</span>
-        <span>{t(locale, "debug.commit", { value: APP_COMMIT })}</span>
-        <span title={sessionId}>{t(locale, "debug.session", { value: formatSessionId(sessionId) })}</span>
-      </div>
-      <p>
-        {t(locale, "debug.autosave", {
-          key: AUTOSAVE_KEY,
-          path: ".dtp-debug/latest-run.json",
-        })}
-      </p>
-      {game.lossReason ? <p>{t(locale, "debug.stopReason", { reason: localizeText(game.lossReason, locale) })}</p> : null}
-      <button
-        className="ghost-button"
-        onClick={() => copyDebugSnapshot(game)}
-        type="button"
-      >
-        {t(locale, "debug.copy")}
-      </button>
-    </section>
   );
 }
 
