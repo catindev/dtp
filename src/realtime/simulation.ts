@@ -1,3 +1,11 @@
+import {
+  DEFAULT_LOCALE,
+  SIM_TEXT,
+  TASK_TITLES,
+  normalizeLocale,
+  type Locale,
+} from "../i18n";
+
 export const TICK_MS = 500;
 export const GAME_MINUTES_PER_REAL_SECOND = 1;
 export const GAME_MINUTES_PER_TICK = 0.5;
@@ -34,6 +42,8 @@ const BACKLOG_LIMIT = 5;
 const FALLOUT_BACKLOG_EXTRA_SLOTS = 2;
 const MAX_FALLOUT_CHAIN_DEPTH = 2;
 const LATE_RELEASE_GRACE_MS = 30000;
+const FRONTEND_GUARDRAIL_WINDOW = 7;
+const FRONTEND_GUARDRAIL_MIN_MAJOR_WORK = 1;
 
 export const RT_COLUMNS = ["backlog", "inProgress", "done", "released"] as const;
 export type RtColumn = (typeof RT_COLUMNS)[number];
@@ -167,6 +177,21 @@ export interface RtDaySummary {
   terminalConsequences: number;
 }
 
+export interface RtQuarterReviewReport {
+  quarter: number;
+  hitGoal: boolean;
+  valueActual: number;
+  valueTarget: number;
+  valueMet: boolean;
+  trustActual: number;
+  trustTarget: number;
+  trustMet: boolean;
+  resourceBefore: RtResources;
+  resourceAfter: RtResources;
+  resourceDelta: RtResources;
+  effects: string[];
+}
+
 export interface RtMorningReport {
   id: string;
   quarter: number;
@@ -177,6 +202,9 @@ export interface RtMorningReport {
   resourceBefore: RtResources;
   resourceAfter: RtResources;
   resourceDelta: RtResources;
+  releaseDelta: RtResources;
+  consequenceDelta: RtResources;
+  quarterReview: RtQuarterReviewReport | null;
   empty: boolean;
   effects: string[];
   missedTaskIds: string[];
@@ -330,6 +358,7 @@ export interface RtSpawnState {
 export interface RtGameState {
   seed: number;
   rngState: number;
+  locale: Locale;
   paused: boolean;
   status: RtRunStatus;
   lossReason: string | null;
@@ -355,65 +384,6 @@ export interface RtGameState {
 }
 
 const domains = ["payments", "auth", "admin", "search", "reports", "notifications"];
-
-const titles: Record<RtTaskKind, string[]> = {
-  feature: [
-    "Add bonus payments",
-    "Add CSV export",
-    "Add user roles",
-    "Add weekly report",
-    "Add saved search",
-    "Add notification preferences",
-  ],
-  bug: [
-    "Fix login loop",
-    "Fix duplicate charge",
-    "Fix broken export",
-    "Fix missing email",
-    "Fix search timeout",
-    "Fix permission error",
-  ],
-  techDebt: [
-    "Refactor legacy payment module",
-    "Clean old admin API",
-    "Remove deprecated auth flow",
-    "Improve test coverage",
-    "Split report service",
-    "Reduce frontend state hacks",
-  ],
-  integration: [
-    "Connect billing provider",
-    "Sync CRM contacts",
-    "Import partner catalog",
-    "Connect email gateway",
-    "Add webhook receiver",
-    "Sync analytics events",
-  ],
-  incident: [
-    "Payment failures spike",
-    "Login errors spike",
-    "Emails stuck in queue",
-    "Reports timeout in production",
-    "Admin panel unavailable",
-    "Search latency incident",
-  ],
-  performance: [
-    "Optimize payment history query",
-    "Reduce search latency",
-    "Speed up report generation",
-    "Cache admin dashboard",
-    "Optimize notification worker",
-    "Reduce auth DB load",
-  ],
-  compliance: [
-    "Add audit log",
-    "Export user data by request",
-    "Mask sensitive fields",
-    "Add permission review",
-    "Add retention policy",
-    "Add admin action history",
-  ],
-};
 
 const domainPrefixes: Record<string, string> = {
   payments: "PAY",
@@ -444,10 +414,11 @@ const baseSpecialties: Record<RtRole, Record<RtSubtaskRole, number>> = {
   sre: { backend: 3, frontend: 0, design: 0, qa: 3, sre: 5, bugfix: 3 },
 };
 
-export function createRealtimeState(seed = Date.now()): RtGameState {
+export function createRealtimeState(seed = Date.now(), locale: Locale = DEFAULT_LOCALE): RtGameState {
   const state: RtGameState = {
     seed: seed >>> 0 || 1,
     rngState: seed >>> 0 || 1,
+    locale,
     paused: false,
     status: "running",
     lossReason: null,
@@ -519,7 +490,14 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
   const legacyState = state as RtGameState & {
     releaseReview?: RtMorningReport | null;
     morningReport?: RtMorningReport | null;
+    locale?: Locale;
   };
+
+  const normalizedLocale = normalizeLocale(legacyState.locale);
+  if (state.locale !== normalizedLocale) {
+    state.locale = normalizedLocale;
+    changed = true;
+  }
 
   if (!("morningReport" in legacyState)) {
     state.morningReport = null;
@@ -530,6 +508,16 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
       ...legacyState.releaseReview,
       previousDay: legacyState.releaseReview.previousDay ?? legacyState.releaseReview.day,
       at: "08:00",
+      releaseDelta:
+        (legacyState.releaseReview as RtMorningReport & { releaseDelta?: RtResources })
+          .releaseDelta ?? emptyResourceDelta(),
+      consequenceDelta:
+        (legacyState.releaseReview as RtMorningReport & { consequenceDelta?: RtResources })
+          .consequenceDelta ?? emptyResourceDelta(),
+      quarterReview:
+        (legacyState.releaseReview as RtMorningReport & {
+          quarterReview?: RtQuarterReviewReport | null;
+        }).quarterReview ?? null,
       missedTaskIds: legacyState.releaseReview.missedTaskIds ?? [],
       consequences: legacyState.releaseReview.consequences ?? [],
       daySummary:
@@ -539,12 +527,29 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
     changed = true;
   }
   if (state.morningReport) {
+    const legacyMorningReport = state.morningReport as RtMorningReport & {
+      releaseDelta?: RtResources;
+      consequenceDelta?: RtResources;
+      quarterReview?: RtQuarterReviewReport | null;
+    };
     if (!Array.isArray(state.morningReport.missedTaskIds)) {
       state.morningReport.missedTaskIds = [];
       changed = true;
     }
     if (!state.morningReport.daySummary) {
       state.morningReport.daySummary = emptyDaySummary(state.morningReport.previousDay);
+      changed = true;
+    }
+    if (!legacyMorningReport.releaseDelta) {
+      legacyMorningReport.releaseDelta = emptyResourceDelta();
+      changed = true;
+    }
+    if (!legacyMorningReport.consequenceDelta) {
+      legacyMorningReport.consequenceDelta = emptyResourceDelta();
+      changed = true;
+    }
+    if (legacyMorningReport.quarterReview === undefined) {
+      legacyMorningReport.quarterReview = null;
       changed = true;
     }
     for (const consequence of state.morningReport.consequences) {
@@ -1199,12 +1204,16 @@ function openMorningReport(state: RtGameState): void {
   const releaseDay = state.day;
   const resourceBefore = copyResources(state.resources);
   const shippedTaskIds = runDailyReleaseTrain(state);
+  const resourceAfterRelease = copyResources(state.resources);
+  const releaseDelta = diffResources(resourceBefore, resourceAfterRelease);
   const missedTaskIds = collectMissedTaskIds(state);
-  advanceDay(state);
+  const quarterReview = advanceDay(state);
+  const resourceAfterQuarter = copyResources(state.resources);
   state.gameMinuteOfDay = GAME_DAY_START_MINUTE;
   const consequences = generateMorningConsequences(state, shippedTaskIds, missedTaskIds);
   const resourceAfter = copyResources(state.resources);
   const resourceDelta = diffResources(resourceBefore, resourceAfter);
+  const consequenceDelta = diffResources(resourceAfterQuarter, resourceAfter);
   const effects = morningReportEffects(resourceDelta);
   const daySummary = buildDaySummary(
     state,
@@ -1224,6 +1233,9 @@ function openMorningReport(state: RtGameState): void {
     resourceBefore,
     resourceAfter,
     resourceDelta,
+    releaseDelta,
+    consequenceDelta,
+    quarterReview,
     empty: shippedTaskIds.length === 0 && missedTaskIds.length === 0,
     effects,
     missedTaskIds,
@@ -1266,6 +1278,17 @@ function openMorningReport(state: RtGameState): void {
 
 function copyResources(resources: RtResources): RtResources {
   return { ...resources };
+}
+
+function emptyResourceDelta(): RtResources {
+  return {
+    trust: 0,
+    debt: 0,
+    value: 0,
+    clients: 0,
+    budget: 0,
+    processBoost: 0,
+  };
 }
 
 function diffResources(before: RtResources, after: RtResources): RtResources {
@@ -2035,6 +2058,7 @@ function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTask {
   const id = `${domainPrefixes[domain]}-${String(state.nextTaskId++).padStart(3, "0")}`;
   const pressure = kind === "incident" ? randomInt(state, 4, 6) : randomInt(state, 1, 5);
   const complexity = randomInt(state, 1, 5);
+  const blastRadius = chooseBlastRadius(state, kind, complexity, pressure);
   const trustNoise = (100 - state.resources.trust) * 0.45;
   const debtNoise = state.resources.debt * 0.1;
   const clarity = clamp(randomInt(state, 48, 88) - trustNoise - debtNoise, 8, 92);
@@ -2042,15 +2066,24 @@ function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTask {
     randomBetween(state, 520000, 780000) + complexity * 45000 - pressure * 15000,
   );
   const value = Math.round((8 + complexity * 4 + pressure * 3) * kindValueMultiplier(kind));
-  const subtasks = generateSubtasks(state, id, kind, complexity);
+  const locale = normalizeLocale(state.locale);
+  const subtasks = generateSubtasks(
+    state,
+    id,
+    domain,
+    kind,
+    complexity,
+    blastRadius,
+    forcedKind ? false : shouldBiasFrontendWork(state),
+  );
   revealInitialSubtasks(state, subtasks, Math.round(clarity));
 
   return {
     id,
-    title: `${id}: ${pickOne(state, titles[kind])}`,
+    title: `${id}: ${pickOne(state, TASK_TITLES[locale][kind])}`,
     kind,
     domain,
-    blastRadius: chooseBlastRadius(state, kind, complexity, pressure),
+    blastRadius,
     column: "backlog",
     pressure,
     complexity,
@@ -2090,8 +2123,11 @@ function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTask {
 function generateSubtasks(
   state: RtGameState,
   taskId: string,
+  domain: string,
   kind: RtTaskKind,
   complexity: number,
+  blastRadius: RtBlastRadius,
+  frontendBias: boolean,
 ): RtSubtask[] {
   const specs: Array<{
     role: RtSubtaskRole;
@@ -2104,51 +2140,88 @@ function generateSubtasks(
     importance: RtSubtaskImportance,
     title: string,
   ) => specs.push({ role, importance, title });
+  const text = SIM_TEXT[normalizeLocale(state.locale)].subtasks;
 
   if (kind === "feature") {
-    add("backend", "critical", "Build server-side behavior");
-    add("frontend", "important", "Wire UI state");
-    add("qa", "important", "Validate happy path and edge cases");
-    if (complexity >= 3) add("design", "important", "Clarify product interaction");
-    if (complexity >= 4 || chance(state, 0.35)) add("sre", "optional", "Prepare rollout safety");
+    const frontendLed = frontendBias || (frontendDomain(domain) && chance(state, 0.22));
+    add(
+      frontendLed ? "frontend" : "backend",
+      "critical",
+      frontendLed ? text.buildUserFacingWorkflow : text.buildServerSideBehavior,
+    );
+    add(
+      frontendLed ? "backend" : "frontend",
+      "important",
+      frontendLed ? text.supportUiWithServerBehavior : text.wireUiState,
+    );
+    add("qa", "important", text.validateHappyPath);
+    if (complexity >= 3) add("design", "important", text.clarifyProductInteraction);
+    if (complexity >= 4 || chance(state, 0.35)) add("sre", "optional", text.prepareRolloutSafety);
   }
 
   if (kind === "bug") {
-    add(chance(state, 0.5) ? "backend" : "frontend", "critical", "Fix root cause");
-    add("qa", "important", "Reproduce and verify fix");
-    if (chance(state, 0.35)) add("sre", "optional", "Add alert for recurrence");
+    const frontendBugChance = frontendBias ? 0.82 : frontendDomain(domain) ? 0.68 : 0.5;
+    add(chance(state, frontendBugChance) ? "frontend" : "backend", "critical", text.fixRootCause);
+    add("qa", "important", text.reproduceAndVerifyFix);
+    if (chance(state, 0.35)) add("sre", "optional", text.addAlertForRecurrence);
   }
 
   if (kind === "techDebt") {
-    add("backend", "critical", "Refactor risky module");
-    add("qa", complexity >= 3 ? "important" : "optional", "Run regression pass");
-    if (chance(state, 0.45)) add("sre", "optional", "Clean operational config");
+    const frontendDebt = frontendBias || (frontendDomain(domain) && chance(state, 0.55));
+    if (frontendDebt) {
+      add("frontend", "critical", text.refactorClientFlow);
+      if (complexity >= 4) add("backend", "optional", text.alignServerContract);
+    } else {
+      add("backend", "critical", text.refactorRiskyModule);
+    }
+    add("qa", complexity >= 3 ? "important" : "optional", text.runRegressionPass);
+    if (chance(state, 0.45)) add("sre", "optional", text.cleanOperationalConfig);
   }
 
   if (kind === "integration") {
-    add("backend", "critical", "Implement integration contract");
-    add("sre", "important", "Handle timeouts and retries");
-    add("qa", "important", "Validate failure modes");
-    if (chance(state, 0.4)) add("frontend", "optional", "Expose integration status");
+    const frontendIntegration = frontendBias || chance(state, frontendDomain(domain) ? 0.55 : 0.4);
+    add("backend", "critical", text.implementIntegrationContract);
+    add(
+      "sre",
+      frontendIntegration && blastRadius !== "high" ? "optional" : "important",
+      text.handleTimeoutsAndRetries,
+    );
+    add("qa", "important", text.validateFailureModes);
+    if (frontendIntegration) add("frontend", "important", text.exposeIntegrationStatus);
   }
 
   if (kind === "incident") {
-    add("sre", "critical", "Stabilize production path");
-    add("backend", "important", "Patch service behavior");
-    add("qa", "optional", "Smoke test recovery");
+    add("sre", "critical", text.stabilizeProductionPath);
+    add("backend", "important", text.patchServiceBehavior);
+    add("qa", "optional", text.smokeTestRecovery);
   }
 
   if (kind === "performance") {
-    add("sre", "critical", "Reduce production pressure");
-    add("backend", "important", "Optimize hot path");
-    add("qa", "important", "Load-test critical scenario");
+    const frontendPerformance = frontendBias || (frontendDomain(domain) && chance(state, 0.55));
+    if (frontendPerformance) {
+      add("frontend", "critical", text.reduceClientSideLatency);
+      add("sre", blastRadius === "high" ? "important" : "optional", text.watchProductionPressure);
+      if (complexity >= 4) add("backend", "important", text.optimizeHotPath);
+    } else {
+      add("sre", "critical", text.reduceProductionPressure);
+      add("backend", "important", text.optimizeHotPath);
+    }
+    add("qa", "important", text.loadTestCriticalScenario);
   }
 
   if (kind === "compliance") {
-    add("qa", "critical", "Verify compliance scenario");
-    add("backend", "important", "Implement policy enforcement");
-    add("sre", "important", "Add audit/retention safety");
-    if (chance(state, 0.35)) add("frontend", "optional", "Show compliant UI copy");
+    const frontendCompliance = frontendBias || chance(state, frontendDomain(domain) ? 0.45 : 0.25);
+    add("qa", "critical", text.verifyComplianceScenario);
+    add("backend", "important", text.implementPolicyEnforcement);
+    if (blastRadius === "high") {
+      add("sre", "important", text.addAuditRetentionSafety);
+      if (frontendCompliance) add("frontend", "optional", text.showCompliantUiCopy);
+    } else if (frontendCompliance) {
+      add("frontend", "important", text.showCompliantUiCopy);
+      if (chance(state, 0.25)) add("sre", "optional", text.addAuditRetentionSafety);
+    } else {
+      add("sre", "important", text.addAuditRetentionSafety);
+    }
   }
 
   return specs.map((spec, index) => ({
@@ -2792,16 +2865,19 @@ function addBugfixSubtasks(
 ): RtSubtask[] {
   const added: RtSubtask[] = [];
   const rolePool = shuffle(state, bugfixRoleCandidates(task));
+  const text = SIM_TEXT[normalizeLocale(state.locale)].subtasks;
   for (let index = 0; index < count; index += 1) {
     const role = rolePool[index % rolePool.length];
     const subtask: RtSubtask = {
       id: `${task.id}-B${task.subtasks.length + 1}`,
       title:
         role === "sre"
-          ? "Stabilize production failure mode"
+          ? text.stabilizeProductionFailureMode
           : role === "design"
-            ? "Fix product interaction defect"
-          : `Fix ${role} defect found by QA`,
+            ? text.fixProductInteractionDefect
+            : normalizeLocale(state.locale) === "ru"
+              ? `Починить ${role}-дефект, найденный QA`
+              : `Fix ${role} defect found by QA`,
       role,
       importance: "important",
       revealed: true,
@@ -2898,6 +2974,37 @@ function addPostmortemNote(task: RtTask, note: string): void {
   }
 }
 
+function frontendDomain(domain: string): boolean {
+  return (
+    domain === "admin" ||
+    domain === "auth" ||
+    domain === "search" ||
+    domain === "reports" ||
+    domain === "notifications"
+  );
+}
+
+function shouldBiasFrontendWork(state: RtGameState): boolean {
+  const recentTasks = Object.values(state.tasks)
+    .filter((task) => !task.rootCauseTaskId && !task.sourceTaskId)
+    .sort((a, b) => taskSequenceNumber(b) - taskSequenceNumber(a))
+    .slice(0, FRONTEND_GUARDRAIL_WINDOW);
+  if (recentTasks.length < FRONTEND_GUARDRAIL_WINDOW) return false;
+
+  const majorFrontendWork = recentTasks.filter((task) =>
+    task.subtasks.some(
+      (subtask) =>
+        subtask.role === "frontend" &&
+        (subtask.importance === "critical" || subtask.importance === "important"),
+    ),
+  ).length;
+  return majorFrontendWork < FRONTEND_GUARDRAIL_MIN_MAJOR_WORK;
+}
+
+function taskSequenceNumber(task: RtTask): number {
+  return Number(task.id.match(/-(\d+)$/)?.[1] ?? 0);
+}
+
 function updateSpawner(state: RtGameState, tickMs: number): void {
   if (state.board.backlog.length >= BACKLOG_LIMIT) return;
 
@@ -2942,7 +3049,7 @@ function crossedReleaseTrain(previousMinute: number, nextMinute: number): boolea
   return previousMinute < RELEASE_TRAIN_GAME_MINUTE && nextMinute >= RELEASE_TRAIN_GAME_MINUTE;
 }
 
-function advanceDay(state: RtGameState): void {
+function advanceDay(state: RtGameState): RtQuarterReviewReport | null {
   restTeamForNewDay(state);
   state.day += 1;
   state.dayInQuarter += 1;
@@ -2954,8 +3061,9 @@ function advanceDay(state: RtGameState): void {
   });
 
   if (state.dayInQuarter > state.daysPerQuarter) {
-    resolveQuarter(state);
+    return resolveQuarter(state);
   }
+  return null;
 }
 
 function restTeamForNewDay(state: RtGameState): void {
@@ -2971,25 +3079,49 @@ function restTeamForNewDay(state: RtGameState): void {
   }
 }
 
-function resolveQuarter(state: RtGameState): void {
+function resolveQuarter(state: RtGameState): RtQuarterReviewReport {
+  const reviewedQuarter = state.quarter;
+  const valueActual = state.quarterValue;
+  const valueTarget = state.quarterGoal.value;
+  const trustActual = state.resources.trust;
+  const trustTarget = state.quarterGoal.trust;
+  const valueMet = valueActual >= valueTarget;
+  const trustMet = trustActual >= trustTarget;
+  const resourceBefore = copyResources(state.resources);
   const hitGoal =
-    state.quarterValue >= state.quarterGoal.value &&
-    state.resources.trust >= state.quarterGoal.trust;
+    valueMet &&
+    trustMet;
   if (hitGoal) {
     state.resources.budget += state.quarterGoal.rewardBudget;
     state.resources.processBoost = clamp(state.resources.processBoost + 5, 0, 25);
   } else {
     state.resources.trust = clamp(state.resources.trust - 8, 0, 100);
   }
+  const resourceAfter = copyResources(state.resources);
+  const resourceDelta = diffResources(resourceBefore, resourceAfter);
+  const effects = morningReportEffects(resourceDelta);
 
   pushEvent(state, {
     type: "quarter_review",
-    title: `Quarter ${state.quarter} review`,
+    title: `Quarter ${reviewedQuarter} review`,
     body: hitGoal ? "Business goals were met." : "Business goals were missed.",
-    effects: hitGoal
-      ? [`budget +${state.quarterGoal.rewardBudget}`, "process boost +5%"]
-      : ["trust -8"],
+    effects,
   });
+
+  const report: RtQuarterReviewReport = {
+    quarter: reviewedQuarter,
+    hitGoal,
+    valueActual,
+    valueTarget,
+    valueMet,
+    trustActual,
+    trustTarget,
+    trustMet,
+    resourceBefore,
+    resourceAfter,
+    resourceDelta,
+    effects,
+  };
 
   state.quarter += 1;
   state.dayInQuarter = 1;
@@ -2999,6 +3131,8 @@ function resolveQuarter(state: RtGameState): void {
     trust: Math.min(70, state.quarterGoal.trust + 3),
     rewardBudget: state.quarterGoal.rewardBudget,
   };
+
+  return report;
 }
 
 function chooseBlastRadius(

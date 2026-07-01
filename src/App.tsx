@@ -28,11 +28,36 @@ import {
   type RtGameState,
   type RtMorningReport,
   type RtOutsourceStatus,
+  type RtQuarterReviewReport,
   type RtReadinessReport,
   type RtRiskReason,
   type RtSubtask,
   type RtTask,
 } from "./realtime/simulation";
+import {
+  LOCALE_LABELS,
+  LOCALE_STORAGE_KEY,
+  labelBlastRadius,
+  labelConsequenceCause,
+  labelImportance,
+  labelReadiness,
+  labelRiskReason,
+  labelRole,
+  labelTaskKind,
+  localizeEffect,
+  localizeEventBody,
+  localizeEventTitle,
+  localizeLossExplanation,
+  localizeLossHeadline,
+  localizeLossSuggestion,
+  localizeSubtaskTitle,
+  localizeTaskName,
+  localizeTaskTitle,
+  localizeText,
+  normalizeLocale,
+  t,
+  type Locale,
+} from "./i18n";
 import {
   APP_COMMIT,
   AUTOSAVE_KEY,
@@ -42,13 +67,6 @@ import {
   saveRun,
 } from "./save";
 import "./styles.css";
-
-const COLUMN_LABELS: Record<RtColumn, string> = {
-  backlog: "Backlog",
-  inProgress: "In Progress",
-  done: "Done",
-  released: "Released",
-};
 
 const BACKEND_BASE_URL = import.meta.env.VITE_DTP_BACKEND_URL ?? "http://127.0.0.1:8787";
 const BACKEND_LOG_URL = `${BACKEND_BASE_URL}/api/log`;
@@ -88,6 +106,10 @@ type ActiveDrag =
   | null;
 
 export function App() {
+  const initialLocaleRef = useRef<Locale | null>(null);
+  if (!initialLocaleRef.current) {
+    initialLocaleRef.current = loadLocale();
+  }
   const initialAutosaveRef = useRef<ReturnType<typeof loadSavedRun> | null>(null);
   if (!initialAutosaveRef.current) {
     initialAutosaveRef.current = loadSavedRun();
@@ -96,10 +118,12 @@ export function App() {
     initialAutosaveRef.current.status === "loaded" ? initialAutosaveRef.current.save : null;
   const bootGameRef = useRef<RtGameState | null>(null);
   if (!bootGameRef.current) {
-    bootGameRef.current = restoredSave?.game ?? createRealtimeState(184);
+    bootGameRef.current = restoredSave?.game ?? createRealtimeState(184, initialLocaleRef.current);
+    bootGameRef.current.locale = normalizeLocale(bootGameRef.current.locale ?? initialLocaleRef.current);
   }
   const bootGame = bootGameRef.current;
 
+  const [locale, setLocale] = useState<Locale>(() => initialLocaleRef.current ?? "en");
   const [game, setGame] = useState<RtGameState>(() => bootGame);
   const [screen, setScreen] = useState<AppScreen>(() => (restoredSave ? "game" : "menu"));
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
@@ -169,6 +193,16 @@ export function App() {
   useEffect(() => {
     latestGameRef.current = game;
   }, [game]);
+
+  useEffect(() => {
+    saveLocale(locale);
+    setGame((current) => {
+      if (current.locale === locale) return current;
+      const next = { ...current, locale };
+      latestGameRef.current = next;
+      return next;
+    });
+  }, [locale]);
 
   useEffect(() => {
     setGame((current) => {
@@ -275,7 +309,7 @@ export function App() {
 
   function startRun(actionName = "start_run_clicked") {
     clearSavedRun();
-    const next = createRealtimeState(Date.now());
+    const next = createRealtimeState(Date.now(), locale);
     const sessionId = createSessionId();
     sessionIdRef.current = sessionId;
     loggedEventKeysRef.current = new Set();
@@ -364,7 +398,7 @@ export function App() {
     activeDragRef.current = { type: "character", characterId: character.id };
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("application/dtp-character", character.id);
-    setDragGhost(event, character);
+    setDragGhost(event, character, locale);
     logAction(sessionIdRef.current, "character_drag_started", {
       characterId: character.id,
       characterName: character.name,
@@ -502,7 +536,7 @@ export function App() {
           taskTitle: task.title,
           column: task.column,
           budget: game.resources.budget,
-          reason: outsourceStatusText(outsourceStatus),
+          reason: outsourceStatusText(outsourceStatus, locale),
           blocker: outsourceStatus.reason,
           neededBudget: outsourceStatus.neededBudget,
           subtaskRole: outsourceStatus.subtask?.role,
@@ -684,17 +718,22 @@ export function App() {
   const clockText = morningReport ? "08:00" : formatGameTime(game);
   const displayedDay = morningReport?.day ?? game.day;
   const displayedQuarter = morningReport?.quarter ?? game.quarter;
+  const quarterValueDelta = Math.max(0, game.quarterGoal.value - game.quarterValue);
+  const quarterTrustDelta = Math.max(0, game.quarterGoal.trust - game.resources.trust);
+  const quarterGoalText = quarterGoalProgressText(locale, quarterValueDelta, quarterTrustDelta);
+  const quarterReviewText = quarterReviewLabel(locale, game);
 
   if (screen === "menu") {
     return (
       <main className="shell menu-shell">
         <section className="main-menu">
+          <LanguageSwitch locale={locale} onChange={setLocale} />
           <div className="menu-title">
             <strong>Don&apos;t Touch Prod</strong>
-            <span>Q1 / Day 1</span>
+            <span>{t(locale, "menu.subtitle")}</span>
           </div>
           <button className="start-button" onClick={() => startRun()} type="button">
-            Start run
+            {t(locale, "menu.start")}
           </button>
         </section>
       </main>
@@ -713,36 +752,49 @@ export function App() {
       <header className="game-header">
         <div className="brand-block">
           <strong>Don&apos;t Touch Prod</strong>
-          <span>Q{displayedQuarter} / Day {displayedDay}</span>
-          <span className="session-id" title={sessionIdRef.current}>
-            Session {formatSessionId(sessionIdRef.current)}
+          <span>
+            {t(locale, "header.day", {
+              quarter: displayedQuarter,
+              day: displayedDay,
+              daysPerQuarter: game.daysPerQuarter,
+            })}
           </span>
+          <span>{quarterReviewText}</span>
         </div>
         <div className="clock-block">
           <span className="clock">{clockText}</span>
-          <span>Goal {game.quarterValue}/{game.quarterGoal.value}</span>
+          <span>
+            {t(locale, "header.goal", {
+              value: game.quarterValue,
+              goal: game.quarterGoal.value,
+              trust: game.resources.trust,
+              trustGoal: game.quarterGoal.trust,
+            })}
+          </span>
+          <span>{quarterGoalText}</span>
           <span>
             {morningReport
-              ? `Morning briefing / Fallout ${morningReport.consequences.length}`
-              : `Release in ${releaseCountdown} / Done ${game.board.done.length}`}
+              ? t(locale, "header.morningLine", { count: morningReport.consequences.length })
+              : t(locale, "header.releaseLine", { time: releaseCountdown, done: game.board.done.length })}
           </span>
         </div>
         <div className="stat-strip">
           <span className={`status-pill ${morningReport ? "morning-report" : game.status}`}>
             {morningReport
-              ? "MORNING"
+              ? t(locale, "status.morning")
               : game.status === "running" && game.paused
-                ? "PAUSED"
+                ? t(locale, "status.paused")
                 : game.status.toUpperCase()}
           </span>
-          <span className="stat-pill primary">Trust {game.resources.trust}</span>
-          <span className="stat-pill primary">Clients {game.resources.clients}</span>
-          <span className="stat-pill value">Value {game.resources.value}</span>
-          <span className="stat-pill muted">Debt {game.resources.debt}</span>
-          <span className="stat-pill muted">Budget {game.resources.budget}</span>
-          <span className="stat-pill muted">Boost {game.resources.processBoost}%</span>
+          <span className="stat-pill primary">{t(locale, "header.trust", { value: game.resources.trust })}</span>
+          <span className="stat-pill primary">{t(locale, "header.clients", { value: game.resources.clients })}</span>
+          <span className="stat-pill value">{t(locale, "header.value", { value: game.resources.value })}</span>
+          <span className="stat-pill muted">{t(locale, "header.debt", { value: game.resources.debt })}</span>
+          <span className="stat-pill muted">{t(locale, "header.budget", { value: game.resources.budget })}</span>
+          <span className="stat-pill muted">{t(locale, "header.boost", { value: game.resources.processBoost })}</span>
         </div>
         <div className="header-actions">
+          <LanguageSwitch locale={locale} onChange={setLocale} />
           <button
             className={`pause-button ${pauseShake ? "reject-shake" : ""}`}
             disabled={game.status !== "running" || Boolean(morningReport)}
@@ -750,36 +802,41 @@ export function App() {
             type="button"
           >
             {game.status !== "running"
-              ? "Stopped"
+              ? t(locale, "header.stopped")
               : morningReport
-                ? "Paused"
+                ? t(locale, "header.paused")
                 : game.paused
-                  ? "Resume"
-                  : "Pause"}
+                  ? t(locale, "header.resume")
+                  : t(locale, "header.pause")}
           </button>
           <button className="ghost-button" onClick={newRun} type="button">
-            New run
+            {t(locale, "header.newRun")}
           </button>
         </div>
       </header>
 
       {game.status !== "running" ? (
         <section className="run-banner">
-          <strong>{game.lossReport?.headline ?? "Игра остановилась"}</strong>
-          <span>{game.lossReport?.explanation ?? game.lossReason}</span>
+          <strong>{game.lossReport ? localizeLossHeadline(game.lossReport.headline, locale) : t(locale, "run.stopped")}</strong>
+          <span>
+            {game.lossReport
+              ? localizeLossExplanation(game.lossReport.explanation, locale)
+              : localizeText(game.lossReason, locale)}
+          </span>
         </section>
       ) : null}
 
       {morningReport ? (
         <MorningReportPage
           game={game}
+          locale={locale}
           onContinue={startBriefedDay}
           report={morningReport}
         />
       ) : (
         <section className="playfield">
           <aside className="team-panel panel">
-            <h2>Team</h2>
+            <h2>{t(locale, "team.title")}</h2>
             <div className="team-scroll">
               {Object.values(game.characters).map((character) => {
                 const assignedTask = character.assignedTaskId
@@ -810,21 +867,21 @@ export function App() {
                     </div>
                     <div className="character-state">
                       {character.exhaustedToday ? (
-                        <span>Exhausted</span>
+                        <span>{t(locale, "team.exhausted")}</span>
                       ) : character.assignedTaskId ? (
-                        <span>On {character.assignedTaskId}</span>
+                        <span>{t(locale, "team.onTask", { taskId: character.assignedTaskId })}</span>
                       ) : (
-                        <span>Available</span>
+                        <span>{t(locale, "team.available")}</span>
                       )}
                       {character.shockGameMinutes > 0 ? (
-                        <span>Shock {Math.ceil(character.shockGameMinutes)}m</span>
+                        <span>{t(locale, "team.shock", { minutes: Math.ceil(character.shockGameMinutes) })}</span>
                       ) : null}
                     </div>
                     {assignedTask ? (
                       <div className="character-work">
                         <div>
                           <span>
-                            {assignedTask.id} {currentWorkLabel(assignedTask)}
+                            {assignedTask.id} {currentWorkLabel(assignedTask, locale)}
                           </span>
                           <b>{Math.round(assignedTask.stageProgress)}%</b>
                         </div>
@@ -833,9 +890,11 @@ export function App() {
                         </div>
                       </div>
                     ) : null}
-                    <MetricBar label="Stamina" tone="stamina" value={character.stamina} />
+                    <MetricBar label={t(locale, "team.stamina")} tone="stamina" value={character.stamina} />
                     {character.burnout > 0 ? (
-                      <span className="burnout-badge">Burnout {Math.round(character.burnout)}</span>
+                      <span className="burnout-badge">
+                        {t(locale, "team.burnout", { value: Math.round(character.burnout) })}
+                      </span>
                     ) : null}
                   </article>
                 );
@@ -856,16 +915,16 @@ export function App() {
                 onDragStart={beginOutsourceDrag}
               >
                 <div>
-                  <strong>Outsource</strong>
-                  <span>contractor</span>
+                  <strong>{t(locale, "outsourcing.title")}</strong>
+                  <span>{t(locale, "outsourcing.role")}</span>
                 </div>
-                <p>Expensive fallback for missing competence.</p>
+                <p>{t(locale, "outsourcing.description")}</p>
                 <div className="outsourcing-costs">
-                  <span>Optional {OUTSOURCE_COST_BY_IMPORTANCE.optional}</span>
-                  <span>Important {OUTSOURCE_COST_BY_IMPORTANCE.important}</span>
-                  <span>Critical {OUTSOURCE_COST_BY_IMPORTANCE.critical}</span>
+                  <span>{t(locale, "outsourcing.optional", { cost: OUTSOURCE_COST_BY_IMPORTANCE.optional })}</span>
+                  <span>{t(locale, "outsourcing.important", { cost: OUTSOURCE_COST_BY_IMPORTANCE.important })}</span>
+                  <span>{t(locale, "outsourcing.critical", { cost: OUTSOURCE_COST_BY_IMPORTANCE.critical })}</span>
                 </div>
-                <b>Team Budget {game.resources.budget}</b>
+                <b>{t(locale, "outsourcing.budget", { budget: game.resources.budget })}</b>
               </article>
             </div>
           </aside>
@@ -883,7 +942,7 @@ export function App() {
                 onDragOver={allowDrop}
                 onDrop={(event) => dropOnColumn(event, column)}
               >
-                <h2>{COLUMN_LABELS[column]}</h2>
+                <h2>{columnLabel(locale, column)}</h2>
                 {game.board[column].map((taskId) => {
                   const task = game.tasks[taskId];
                   if (!task) return null;
@@ -893,6 +952,7 @@ export function App() {
                       flash={flashTaskId === task.id}
                       game={game}
                       key={task.id}
+                      locale={locale}
                       onClick={() => setSelectedTaskId(task.id)}
                       onDragEnd={finishDrag}
                       onDragStart={beginTaskDrag}
@@ -909,30 +969,31 @@ export function App() {
 
           <aside className="side-stack">
             <section className="panel inspector">
-              <h2>Selected Task</h2>
+              <h2>{t(locale, "inspector.title")}</h2>
               {selectedTask ? (
                 <TaskInspector
                   assigned={selectedAssigned}
                   canCancelWork={Boolean(selectedAssigned && !morningReport)}
                   cancelDisabled={interactionBlocked}
+                  locale={locale}
                   onCancelWork={cancelSelectedTask}
                   task={selectedTask}
                 />
               ) : (
-                <p className="empty">No task selected.</p>
+                <p className="empty">{t(locale, "inspector.empty")}</p>
               )}
             </section>
 
-            {game.lossReport ? <LossReport report={game.lossReport} /> : null}
+            {game.lossReport ? <LossReport locale={locale} report={game.lossReport} /> : null}
 
             <section className="panel log-panel">
-              <h2>Event Log</h2>
+              <h2>{t(locale, "log.title")}</h2>
               {game.log.slice(0, 24).map((event, index) => (
-                <EventItem event={event} key={`${event.at}-${event.title}-${index}`} />
+                <EventItem event={event} key={`${event.at}-${event.title}-${index}`} locale={locale} />
               ))}
             </section>
 
-            <DebugPanel game={game} />
+            <DebugPanel game={game} locale={locale} sessionId={sessionIdRef.current} />
           </aside>
         </section>
       )}
@@ -940,12 +1001,60 @@ export function App() {
   );
 }
 
+function LanguageSwitch({
+  locale,
+  onChange,
+}: {
+  locale: Locale;
+  onChange: (locale: Locale) => void;
+}) {
+  return (
+    <div className="language-switch" aria-label={t(locale, "header.language")}>
+      {(["en", "ru"] as Locale[]).map((candidate) => (
+        <button
+          className={candidate === locale ? "active" : ""}
+          key={candidate}
+          onClick={() => onChange(candidate)}
+          type="button"
+        >
+          {LOCALE_LABELS[candidate]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function quarterReviewLabel(locale: Locale, game: RtGameState): string {
+  const daysLeft = Math.max(0, game.daysPerQuarter - game.dayInQuarter);
+  if (daysLeft === 0) return t(locale, "header.quarterReviewTomorrow");
+  return t(locale, "header.quarterReviewInDays", { days: daysLeft });
+}
+
+function quarterGoalProgressText(
+  locale: Locale,
+  valueDelta: number,
+  trustDelta: number,
+): string {
+  if (valueDelta === 0 && trustDelta === 0) return t(locale, "header.goalMet");
+  if (valueDelta > 0 && trustDelta > 0) {
+    return t(locale, "header.needValueAndTrust", { value: valueDelta, trust: trustDelta });
+  }
+  if (valueDelta > 0) return t(locale, "header.needValue", { value: valueDelta });
+  return t(locale, "header.needTrust", { value: trustDelta });
+}
+
+function columnLabel(locale: Locale, column: RtColumn): string {
+  return t(locale, `columns.${column}`);
+}
+
 function MorningReportPage({
   game,
+  locale,
   onContinue,
   report,
 }: {
   game: RtGameState;
+  locale: Locale;
   onContinue: () => void;
   report: RtMorningReport;
 }) {
@@ -959,12 +1068,22 @@ function MorningReportPage({
     <section className="morning-report-page">
       <div className="morning-report-hero">
         <div>
-          <span>Q{report.quarter} / Day {report.day} / {report.at}</span>
-          <h1>Morning Briefing</h1>
+          <span>
+            {t(locale, "header.day", {
+              quarter: report.quarter,
+              day: report.day,
+              daysPerQuarter: game.daysPerQuarter,
+            })}{" "}
+            / {report.at}
+          </span>
+          <h1>{t(locale, "morning.title")}</h1>
           <p>
             {report.empty
-              ? "Nothing shipped or expired yesterday. Today's work starts from the existing backlog."
-              : `${report.shippedTaskIds.length} shipped, ${report.missedTaskIds.length} missed. Today's backlog reflects the consequences.`}
+              ? t(locale, "morning.empty")
+              : t(locale, "morning.summary", {
+                  shipped: report.shippedTaskIds.length,
+                  missed: report.missedTaskIds.length,
+                })}
           </p>
         </div>
         <button
@@ -973,7 +1092,7 @@ function MorningReportPage({
           onClick={onContinue}
           type="button"
         >
-          Начать день
+          {t(locale, "morning.startDay")}
         </button>
       </div>
 
@@ -982,48 +1101,57 @@ function MorningReportPage({
           after={report.resourceAfter.value}
           before={report.resourceBefore.value}
           delta={report.resourceDelta.value}
-          label="Value"
+          label={t(locale, "header.value", { value: "" }).trim()}
+          locale={locale}
         />
         <ReleaseMetric
           after={report.resourceAfter.budget}
           before={report.resourceBefore.budget}
           delta={report.resourceDelta.budget}
-          label="Team Budget"
+          label={t(locale, "outsourcing.budget", { budget: "" }).trim()}
+          locale={locale}
         />
         <ReleaseMetric
           after={report.resourceAfter.trust}
           before={report.resourceBefore.trust}
           delta={report.resourceDelta.trust}
-          label="Trust"
+          label={t(locale, "header.trust", { value: "" }).trim()}
+          locale={locale}
         />
         <ReleaseMetric
           after={report.resourceAfter.clients}
           before={report.resourceBefore.clients}
           delta={report.resourceDelta.clients}
-          label="Clients"
+          label={t(locale, "header.clients", { value: "" }).trim()}
+          locale={locale}
         />
         <ReleaseMetric
           after={report.resourceAfter.debt}
           before={report.resourceBefore.debt}
           delta={report.resourceDelta.debt}
-          label="Debt"
+          label={t(locale, "header.debt", { value: "" }).trim()}
+          locale={locale}
           reverseTone
         />
       </div>
 
       <div className="morning-flow-strip">
-        <span>Clean {summary.releasedClean}</span>
-        <span>Risky {summary.releasedRisky}</span>
-        <span>Dirty {summary.releasedDirty}</span>
-        <span>Missed {summary.missedBacklog + summary.missedInProgress}</span>
-        <span>Fallout +{summary.falloutCreated}</span>
-        <span>Unresolved {summary.unresolvedFallout}</span>
+        <span>{t(locale, "morning.clean", { value: summary.releasedClean })}</span>
+        <span>{t(locale, "morning.risky", { value: summary.releasedRisky })}</span>
+        <span>{t(locale, "morning.dirty", { value: summary.releasedDirty })}</span>
+        <span>{t(locale, "morning.missed", { value: summary.missedBacklog + summary.missedInProgress })}</span>
+        <span>{t(locale, "morning.fallout", { value: summary.falloutCreated })}</span>
+        <span>{t(locale, "morning.unresolved", { value: summary.unresolvedFallout })}</span>
       </div>
 
+      {report.quarterReview ? (
+        <QuarterReviewPanel locale={locale} review={report.quarterReview} />
+      ) : null}
+
       <section className="morning-report-section">
-        <h2>Consequences</h2>
+        <h2>{t(locale, "morning.consequences")}</h2>
         {report.consequences.length === 0 ? (
-          <p className="empty">No visible release or missed-work fallout hit the team this morning.</p>
+          <p className="empty">{t(locale, "morning.noFallout")}</p>
         ) : (
           <div className="morning-consequence-list">
             {report.consequences.map((consequence) => (
@@ -1031,19 +1159,19 @@ function MorningReportPage({
                 <header>
                   <div>
                     <span>{consequence.sourceTaskId}</span>
-                    <strong>{consequence.symptom}</strong>
+                    <strong>{localizeText(consequence.symptom, locale)}</strong>
                   </div>
                   <b>
                     {consequence.terminal
-                      ? "terminal"
-                      : consequence.generatedTaskId ?? consequenceFallbackLabel(consequence)}
+                      ? localizeEffect("terminal", locale)
+                      : consequence.generatedTaskId ?? consequenceFallbackLabel(consequence, locale)}
                   </b>
                 </header>
-                <p>{consequenceText(consequence)}</p>
+                <p>{consequenceText(consequence, locale)}</p>
                 <div className="release-effect-strip">
                   {consequence.effects.map((effect) => (
                     <span className={`release-effect ${effectTone(effect)}`} key={effect}>
-                      {effect}
+                      {localizeEffect(effect, locale)}
                     </span>
                   ))}
                 </div>
@@ -1054,9 +1182,9 @@ function MorningReportPage({
       </section>
 
       <section className="morning-report-section">
-        <h2>Yesterday&apos;s Shipments</h2>
+        <h2>{t(locale, "morning.shipments")}</h2>
         {shippedTasks.length === 0 ? (
-          <p className="empty">No cards were queued in Done before the release train.</p>
+          <p className="empty">{t(locale, "morning.noShipments")}</p>
         ) : (
           <div className="release-task-list">
             {shippedTasks.map((task) => {
@@ -1070,22 +1198,22 @@ function MorningReportPage({
                   <header>
                     <div>
                       <span>{task.id}</span>
-                      <strong>{task.title.replace(`${task.id}: `, "")}</strong>
+                      <strong>{localizeTaskName(task.title, locale)}</strong>
                     </div>
-                    <b>{task.kind}</b>
+                    <b>{labelTaskKind(locale, task.kind)}</b>
                   </header>
-                  <ReadinessBadge report={readiness} />
+                  <ReadinessBadge locale={locale} report={readiness} />
                   <div className="release-effect-strip">
                     {releaseEffects.map((effect) => (
                       <span className={`release-effect ${effectTone(effect)}`} key={effect}>
-                        {effect}
+                        {localizeEffect(effect, locale)}
                       </span>
                     ))}
                   </div>
                   {task.postmortem.length > 0 ? (
                     <div className="release-postmortem">
                       {task.postmortem.slice(0, 4).map((note) => (
-                        <p key={note}>{note}</p>
+                        <p key={note}>{localizeText(note, locale)}</p>
                       ))}
                     </div>
                   ) : null}
@@ -1098,9 +1226,54 @@ function MorningReportPage({
 
       {!canContinue ? (
         <p className="release-stop-note">
-          Run stopped after this release. Start a new run from the header.
+          {t(locale, "morning.runStopped")}
         </p>
       ) : null}
+    </section>
+  );
+}
+
+function QuarterReviewPanel({
+  locale,
+  review,
+}: {
+  locale: Locale;
+  review: RtQuarterReviewReport;
+}) {
+  return (
+    <section className={`quarter-review-card ${review.hitGoal ? "met" : "missed"}`}>
+      <header>
+        <div>
+          <span>{t(locale, "quarterReview.title", { quarter: review.quarter })}</span>
+          <strong>
+            {review.hitGoal
+              ? t(locale, "quarterReview.met")
+              : t(locale, "quarterReview.missed")}
+          </strong>
+        </div>
+        <div className="quarter-review-goals">
+          <span className={review.valueMet ? "met" : "missed"}>
+            {t(locale, review.valueMet ? "quarterReview.valueMet" : "quarterReview.valueMissed", {
+              actual: review.valueActual,
+              target: review.valueTarget,
+            })}
+          </span>
+          <span className={review.trustMet ? "met" : "missed"}>
+            {t(locale, review.trustMet ? "quarterReview.trustMet" : "quarterReview.trustMissed", {
+              actual: review.trustActual,
+              target: review.trustTarget,
+            })}
+          </span>
+        </div>
+      </header>
+      <div className="release-effect-strip">
+        <span className="release-effect neutral">{t(locale, "quarterReview.effect")}</span>
+        {review.effects.map((effect) => (
+          <span className={`release-effect ${effectTone(effect)}`} key={effect}>
+            {localizeEffect(effect, locale)}
+          </span>
+        ))}
+      </div>
     </section>
   );
 }
@@ -1110,12 +1283,14 @@ function ReleaseMetric({
   before,
   delta,
   label,
+  locale,
   reverseTone = false,
 }: {
   after: number;
   before: number;
   delta: number;
   label: string;
+  locale: Locale;
   reverseTone?: boolean;
 }) {
   const tone =
@@ -1134,7 +1309,7 @@ function ReleaseMetric({
       <span>{label}</span>
       <strong>{after}</strong>
       <em>
-        {formatSignedNumber(delta)} from {before}
+        {t(locale, "releaseMetric.from", { delta: formatSignedNumber(delta), before })}
       </em>
     </article>
   );
@@ -1144,6 +1319,7 @@ function TaskCard({
   attention,
   flash,
   game,
+  locale,
   onClick,
   onDragEnd,
   onDragStart,
@@ -1155,6 +1331,7 @@ function TaskCard({
   attention: boolean;
   flash: boolean;
   game: RtGameState;
+  locale: Locale;
   onClick: () => void;
   onDragEnd: () => void;
   onDragStart: (event: DragEvent<HTMLElement>, task: RtTask) => void;
@@ -1187,14 +1364,14 @@ function TaskCard({
   const needsAttention =
     task.stageComplete && task.column === "inProgress" && !task.assignedCharacterId && !task.released;
   const readyForDone = needsAttention && taskReadyForDone(task);
-  const neededRoles = taskNeededRoleChips(task);
+  const neededRoles = taskNeededRoleChips(task, locale);
   const cardStatus = task.released
-    ? "Released"
+    ? t(locale, "task.released")
     : task.column === "done"
-      ? "Ships 18:00"
+      ? t(locale, "task.ships")
       : null;
   const readinessClass = taskCardReadinessClass(task, readiness, readyForDone);
-  const title = task.title.replace(`${task.id}: `, "");
+  const title = localizeTaskName(task.title, locale);
 
   return (
     <article
@@ -1228,24 +1405,24 @@ function TaskCard({
       <header className="task-card-top">
         <div>
           <span>{task.id}</span>
-          <b>{task.kind}</b>
+          <b>{labelTaskKind(locale, task.kind)}</b>
         </div>
         <i
-          aria-label={`Impact ${blastRadiusLabel(task.blastRadius)}`}
+          aria-label={t(locale, "task.impact", { value: blastRadiusLabel(task.blastRadius, locale) })}
           className={`impact-dot ${task.blastRadius}`}
-          title={`Impact ${blastRadiusLabel(task.blastRadius)}`}
+          title={t(locale, "task.impact", { value: blastRadiusLabel(task.blastRadius, locale) })}
         />
       </header>
       <strong className="task-title">{title}</strong>
       <div className="task-scan-row">
-        <ReadinessBadge report={readiness} compact />
+        <ReadinessBadge locale={locale} report={readiness} compact />
         {late.valuePenaltyPercent > 0 ? (
-          <span className="late-chip">Late -{late.valuePenaltyPercent}%</span>
+          <span className="late-chip">{t(locale, "task.lateChip", { value: late.valuePenaltyPercent })}</span>
         ) : null}
         {cardStatus ? <span className="card-status-chip">{cardStatus}</span> : null}
       </div>
       {neededRoles.length > 0 ? (
-        <div className="role-chip-row" aria-label="Needed roles">
+        <div className="role-chip-row" aria-label={t(locale, "task.neededRoles")}>
           {neededRoles.map((role) => (
             <span className={`role-chip ${role.kind}`} key={role.key}>
               {role.label}
@@ -1254,14 +1431,14 @@ function TaskCard({
         </div>
       ) : null}
       {!task.released && task.column !== "done" ? (
-        <TinyBar label="Deadline" ratio={deadlineRatio} tone={deadlineTone(deadlineRatio)} />
+        <TinyBar label={t(locale, "task.deadline")} ratio={deadlineRatio} tone={deadlineTone(deadlineRatio)} />
       ) : null}
       {task.column === "done" && !task.released ? (
-        <span className="queue-note">Reopen costs Trust -{DONE_REWORK_TRUST_COST}</span>
+        <span className="queue-note">{t(locale, "task.reopenCost", { cost: DONE_REWORK_TRUST_COST })}</span>
       ) : null}
       {assigned ? (
         <div className="work-chip">
-          <span>{assigned.name} {currentWorkLabel(task)}</span>
+          <span>{assigned.name} {currentWorkLabel(task, locale)}</span>
           <div className="work-track">
             <i style={{ width: `${task.stageProgress}%` }} />
           </div>
@@ -1269,7 +1446,10 @@ function TaskCard({
       ) : null}
       {task.outsourcing ? (
         <div className="work-chip outsourcing-work">
-          <span>Outsource {outsourcingSubtask ? `-> ${subtaskRoleLabel(outsourcingSubtask.role)}` : ""}</span>
+          <span>
+            {t(locale, "task.outsource")}{" "}
+            {outsourcingSubtask ? `-> ${subtaskRoleLabel(outsourcingSubtask.role, locale)}` : ""}
+          </span>
           <div className="work-track">
             <i style={{ width: `${task.outsourcing.progress}%` }} />
           </div>
@@ -1283,12 +1463,14 @@ function TaskInspector({
   assigned,
   canCancelWork,
   cancelDisabled,
+  locale,
   onCancelWork,
   task,
 }: {
   assigned: RtCharacter | null;
   canCancelWork: boolean;
   cancelDisabled: boolean;
+  locale: Locale;
   onCancelWork: () => void;
   task: RtTask;
 }) {
@@ -1296,38 +1478,43 @@ function TaskInspector({
   const late = lateReleaseReport(task);
   return (
     <div className="task-inspector">
-      <strong>{task.title}</strong>
+      <strong>{localizeTaskTitle(task.title, locale)}</strong>
       <div className="inspector-grid">
-        <span>Column {COLUMN_LABELS[task.column]}</span>
-        <span>Pressure {task.pressure}</span>
-        <span>Complexity {task.complexity}</span>
-        <span>Value {task.value}</span>
-        <span>Clarity {task.clarity}</span>
-        <span>Quality {task.quality}</span>
-        <span>QA {task.testCoverage}</span>
-        <span>Bugs {task.bugs}</span>
-        <span>Impact {blastRadiusLabel(task.blastRadius)}</span>
+        <span>{t(locale, "inspector.column", { column: columnLabel(locale, task.column) })}</span>
+        <span>{t(locale, "inspector.pressure", { value: task.pressure })}</span>
+        <span>{t(locale, "inspector.complexity", { value: task.complexity })}</span>
+        <span>{t(locale, "inspector.value", { value: task.value })}</span>
+        <span>{t(locale, "inspector.clarity", { value: task.clarity })}</span>
+        <span>{t(locale, "inspector.quality", { value: task.quality })}</span>
+        <span>{t(locale, "inspector.qa", { value: task.testCoverage })}</span>
+        <span>{t(locale, "inspector.bugs", { value: task.bugs })}</span>
+        <span>{t(locale, "inspector.impact", { value: blastRadiusLabel(task.blastRadius, locale) })}</span>
         {late.valuePenaltyPercent > 0 ? (
-          <span>Late {formatOverdueGameTime(late.overdueMs)} / Value -{late.valuePenaltyPercent}%</span>
+          <span>
+            {t(locale, "inspector.late", {
+              time: formatOverdueGameTime(late.overdueMs),
+              value: late.valuePenaltyPercent,
+            })}
+          </span>
         ) : null}
       </div>
-      <ReadinessBadge report={readiness} />
-      <SubtaskList task={task} />
+      <ReadinessBadge locale={locale} report={readiness} />
+      <SubtaskList locale={locale} task={task} />
       {task.column === "done" && !task.released ? (
-        <p>Queued for release. Reopening costs Trust -{DONE_REWORK_TRUST_COST}.</p>
+        <p>{t(locale, "inspector.queued", { cost: DONE_REWORK_TRUST_COST })}</p>
       ) : (
-        <TinyBar label="Deadline" ratio={taskDeadlineRatio(task)} tone="deadline" />
+        <TinyBar label={t(locale, "task.deadline")} ratio={taskDeadlineRatio(task)} tone="deadline" />
       )}
       {assigned ? (
         <div className="current-work">
-          <span>{assigned.name} is working</span>
-          <TinyBar label="Progress" ratio={task.stageProgress / 100} tone="progress" />
+          <span>{t(locale, "work.character", { name: assigned.name })}</span>
+          <TinyBar label={t(locale, "work.progress")} ratio={task.stageProgress / 100} tone="progress" />
         </div>
       ) : null}
       {task.outsourcing ? (
         <div className="current-work">
-          <span>Outsource is working</span>
-          <TinyBar label="Progress" ratio={task.outsourcing.progress / 100} tone="progress" />
+          <span>{t(locale, "work.outsource")}</span>
+          <TinyBar label={t(locale, "work.progress")} ratio={task.outsourcing.progress / 100} tone="progress" />
         </div>
       ) : null}
       {canCancelWork ? (
@@ -1337,15 +1524,15 @@ function TaskInspector({
           onClick={onCancelWork}
           type="button"
         >
-          Отменить задачу
+          {t(locale, "inspector.cancel")}
         </button>
       ) : null}
-      <p>{task.lastNote}</p>
+      <p>{localizeText(task.lastNote, locale)}</p>
       {task.postmortem.length > 0 ? (
         <div className="postmortem">
-          <h3>Postmortem</h3>
+          <h3>{t(locale, "inspector.postmortem")}</h3>
           {task.postmortem.map((note) => (
-            <p key={note}>{note}</p>
+            <p key={note}>{localizeText(note, locale)}</p>
           ))}
         </div>
       ) : null}
@@ -1353,12 +1540,12 @@ function TaskInspector({
   );
 }
 
-function SubtaskList({ task }: { task: RtTask }) {
+function SubtaskList({ locale, task }: { locale: Locale; task: RtTask }) {
   const revealedSubtasks = task.subtasks.filter((subtask) => subtask.revealed);
   const hasHiddenWork = task.subtasks.some((subtask) => !subtask.revealed && !subtask.done);
   return (
     <div className="subtask-list">
-      <h3>Checklist</h3>
+      <h3>{t(locale, "subtasks.title")}</h3>
       {revealedSubtasks.map((subtask) => (
         <div
           className={[
@@ -1369,17 +1556,17 @@ function SubtaskList({ task }: { task: RtTask }) {
           key={subtask.id}
         >
           <span>{subtask.done ? "✓" : subtask.revealed ? "□" : "?"}</span>
-          <strong>{subtask.revealed ? subtask.title : "Unknown work"}</strong>
-          <em>{subtaskRoleLabel(subtask.role)}</em>
-          <b>{subtask.importance}</b>
+          <strong>{subtask.revealed ? localizeSubtaskTitle(subtask.title, locale) : t(locale, "subtasks.unknown")}</strong>
+          <em>{subtaskRoleLabel(subtask.role, locale)}</em>
+          <b>{labelImportance(locale, subtask.importance)}</b>
         </div>
       ))}
       {hasHiddenWork ? (
         <div className="subtask-row hidden">
           <span>?</span>
-          <strong>Unknown work</strong>
-          <em>analysis needed</em>
-          <b>unknown</b>
+          <strong>{t(locale, "subtasks.unknown")}</strong>
+          <em>{t(locale, "subtasks.analysisNeeded")}</em>
+          <b>{t(locale, "subtasks.unknownImportance")}</b>
         </div>
       ) : null}
     </div>
@@ -1428,24 +1615,26 @@ function taskCardReadinessClass(
 
 function ReadinessBadge({
   compact = false,
+  locale,
   report,
 }: {
   compact?: boolean;
+  locale: Locale;
   report: RtReadinessReport;
 }) {
   const reasons = compact ? report.reasons.slice(0, 2) : report.reasons;
   return (
     <div className={`readiness-box ${report.readiness} ${compact ? "compact" : ""}`}>
-      <strong>{readinessLabel(report.readiness)}</strong>
+      <strong>{readinessLabel(report.readiness, locale)}</strong>
       {!compact && reasons.length > 0 ? (
         <div>
           {reasons.map((reason) => (
-            <span key={reason}>{riskReasonLabel(reason)}</span>
+            <span key={reason}>{riskReasonLabel(reason, locale)}</span>
           ))}
         </div>
       ) : !compact ? (
         <div>
-          <span>No visible release risks</span>
+          <span>{t(locale, "readiness.noRisks")}</span>
         </div>
       ) : null}
     </div>
@@ -1462,26 +1651,32 @@ function effectTone(effect: string): "positive" | "negative" | "neutral" {
   return "neutral";
 }
 
-function outsourceStatusText(status: RtOutsourceStatus): string {
+function outsourceStatusText(status: RtOutsourceStatus, locale: Locale): string {
   const subtask = status.subtask;
-  const work = subtask ? `${subtaskRoleLabel(subtask.role)} ${subtask.importance}` : "known work";
+  const work = subtask
+    ? `${subtaskRoleLabel(subtask.role, locale)} ${labelImportance(locale, subtask.importance)}`
+    : localizeText("known work", locale);
   switch (status.reason) {
     case "ready":
-      return `Can take ${work} for Budget ${status.cost}.`;
+      return locale === "ru"
+        ? `Можно взять ${work} за Budget ${status.cost}.`
+        : `Can take ${work} for Budget ${status.cost}.`;
     case "insufficient_budget":
-      return `Need Budget ${status.neededBudget} for ${work}; current ${status.currentBudget}.`;
+      return locale === "ru"
+        ? `Нужно Budget ${status.neededBudget} для ${work}; сейчас ${status.currentBudget}.`
+        : `Need Budget ${status.neededBudget} for ${work}; current ${status.currentBudget}.`;
     case "needs_analysis":
-      return "Needs analysis first: no visible open work.";
+      return localizeText("Needs analysis first: no visible open work.", locale);
     case "no_open_work":
-      return "No visible open work for outsourcing.";
+      return localizeText("No visible open work for outsourcing.", locale);
     case "task_busy":
-      return "Task is already in work.";
+      return localizeText("Task is already in work.", locale);
     case "task_released":
-      return "Task is already released.";
+      return localizeText("Task is already released.", locale);
     case "wrong_column":
-      return "Move task to In Progress first.";
+      return localizeText("Move task to In Progress first.", locale);
     case "task_missing":
-      return "Task is no longer on the board.";
+      return localizeText("Task is no longer on the board.", locale);
   }
 }
 
@@ -1504,51 +1699,41 @@ function formatSignedNumber(value: number): string {
   return `${value}`;
 }
 
-function readinessLabel(readiness: RtReadinessReport["readiness"]): string {
-  if (readiness === "clean") return "Clean";
-  if (readiness === "risky") return "Risky";
-  return "Dirty";
+function readinessLabel(readiness: RtReadinessReport["readiness"], locale: Locale): string {
+  return labelReadiness(locale, readiness);
 }
 
-function riskReasonLabel(reason: RtRiskReason): string {
-  switch (reason) {
-    case "no_qa":
-      return "No QA pass";
-    case "no_sre":
-      return "SRE safety missing";
-    case "known_bug":
-      return "Known bugs";
-    case "low_clarity":
-      return "Low clarity";
-    case "critical_open":
-      return "Critical work open";
-    case "important_open":
-      return "Important work open";
-    case "deadline_pressure":
-      return "Deadline pressure";
-    case "blast_radius_high":
-      return "High impact area";
-    case "blast_radius_uncovered":
-      return "High impact not protected";
-    case "changed_after_qa":
-      return "Changed after QA";
-    case "not_implemented":
-      return "Implementation incomplete";
-  }
+function riskReasonLabel(reason: RtRiskReason, locale: Locale): string {
+  return labelRiskReason(locale, reason);
 }
 
-function blastRadiusLabel(blastRadius: RtTask["blastRadius"]): string {
-  if (blastRadius === "high") return "High";
-  if (blastRadius === "medium") return "Medium";
-  return "Low";
+function blastRadiusLabel(blastRadius: RtTask["blastRadius"], locale: Locale): string {
+  return labelBlastRadius(locale, blastRadius);
 }
 
 function consequenceText(
   consequence: RtMorningReport["consequences"][number],
+  locale: Locale,
 ): string {
+  if (locale === "ru") {
+    if (consequence.source === "release") {
+      return `Потому что вчерашняя ${consequence.sourceTaskId} уехала с проблемой: ${consequenceCauseLabel(
+        consequence.cause,
+        locale,
+      )}.`;
+    }
+    if (consequence.source === "missed_backlog") {
+      return `Потому что ${consequence.sourceTaskId} осталась в бэклоге после дедлайна.`;
+    }
+    if (consequence.source === "missed_in_progress") {
+      return `Потому что ${consequence.sourceTaskId} была в работе, когда день закончился.`;
+    }
+    return `Потому что цепочка последствий от ${consequence.rootCauseTaskId} дошла до лимита.`;
+  }
   if (consequence.source === "release") {
     return `Because yesterday's ${consequence.sourceTaskId} shipped with ${consequenceCauseLabel(
       consequence.cause,
+      locale,
     )}.`;
   }
   if (consequence.source === "missed_backlog") {
@@ -1562,38 +1747,17 @@ function consequenceText(
 
 function consequenceFallbackLabel(
   consequence: RtMorningReport["consequences"][number],
+  locale: Locale,
 ): string {
-  if (consequence.effects.includes("minor hit")) return "hit";
-  return "blocked";
+  if (consequence.effects.includes("minor hit")) return localizeEffect("hit", locale);
+  return localizeEffect("blocked", locale);
 }
 
 function consequenceCauseLabel(
   cause: RtMorningReport["consequences"][number]["cause"],
+  locale: Locale,
 ): string {
-  switch (cause) {
-    case "known_bug":
-      return "known bugs";
-    case "changed_after_qa":
-      return "changes after QA";
-    case "no_qa":
-      return "no QA pass";
-    case "no_sre":
-      return "missing SRE safety";
-    case "critical_open":
-      return "open critical work";
-    case "important_open":
-      return "open important work";
-    case "low_clarity":
-      return "low clarity";
-    case "deadline_pressure":
-      return "deadline pressure";
-    case "ignored_work":
-      return "ignored work";
-    case "missed_deadline":
-      return "missed deadline";
-    case "terminal_chain":
-      return "terminal fallout";
-  }
+  return labelConsequenceCause(locale, cause);
 }
 
 function MetricBar({
@@ -1647,89 +1811,108 @@ function deadlineTone(ratio: number): "deadline-safe" | "deadline-warning" | "de
   return "deadline-safe";
 }
 
-function EventItem({ event }: { event: RtEvent }) {
+function EventItem({ event, locale }: { event: RtEvent; locale: Locale }) {
   return (
     <article className="event-item">
-      <strong>{event.at} {event.title}</strong>
-      <p>{event.body}</p>
+      <strong>{event.at} {localizeEventTitle(event.title, locale)}</strong>
+      <p>{localizeEventBody(event.body, locale)}</p>
       <div>
         {event.effects.slice(0, 4).map((effect) => (
-          <span key={effect}>{effect}</span>
+          <span key={effect}>{localizeEffect(effect, locale)}</span>
         ))}
       </div>
     </article>
   );
 }
 
-function LossReport({ report }: { report: NonNullable<RtGameState["lossReport"]> }) {
+function LossReport({
+  locale,
+  report,
+}: {
+  locale: Locale;
+  report: NonNullable<RtGameState["lossReport"]>;
+}) {
   return (
     <section className="panel loss-report">
-      <h2>Why You Lost</h2>
-      <strong>{report.headline}</strong>
-      <p>{report.explanation}</p>
+      <h2>{t(locale, "loss.title")}</h2>
+      <strong>{localizeLossHeadline(report.headline, locale)}</strong>
+      <p>{localizeLossExplanation(report.explanation, locale)}</p>
       <div className="loss-grid">
-        <span>Trust {report.resourceSnapshot.trust}</span>
-        <span>Clients {report.resourceSnapshot.clients}</span>
-        <span>Debt {report.resourceSnapshot.debt}</span>
+        <span>{t(locale, "header.trust", { value: report.resourceSnapshot.trust })}</span>
+        <span>{t(locale, "header.clients", { value: report.resourceSnapshot.clients })}</span>
+        <span>{t(locale, "header.debt", { value: report.resourceSnapshot.debt })}</span>
       </div>
       {report.lastMissedTasks.length > 0 ? (
         <>
-          <h3>Recent misses</h3>
+          <h3>{t(locale, "loss.recentMisses")}</h3>
           {report.lastMissedTasks.slice(0, 4).map((event) => (
             <p key={`${event.at}-${event.title}`}>
-              {event.at} {event.title} ({event.effects.join(", ")})
+              {event.at} {localizeEventTitle(event.title, locale)} (
+              {event.effects.map((effect) => localizeEffect(effect, locale)).join(", ")})
             </p>
           ))}
         </>
       ) : null}
       {report.lastBadReleases.length > 0 ? (
         <>
-          <h3>Bad releases</h3>
+          <h3>{t(locale, "loss.badReleases")}</h3>
           {report.lastBadReleases.slice(0, 3).map((event) => (
             <p key={`${event.at}-${event.title}`}>
-              {event.at} {event.title} ({event.effects.join(", ")})
+              {event.at} {localizeEventTitle(event.title, locale)} (
+              {event.effects.map((effect) => localizeEffect(effect, locale)).join(", ")})
             </p>
           ))}
         </>
       ) : null}
-      <h3>Read</h3>
-      <p>{report.suggestion}</p>
+      <h3>{t(locale, "loss.read")}</h3>
+      <p>{localizeLossSuggestion(report.suggestion, locale)}</p>
     </section>
   );
 }
 
-function DebugPanel({ game }: { game: RtGameState }) {
+function DebugPanel({
+  game,
+  locale,
+  sessionId,
+}: {
+  game: RtGameState;
+  locale: Locale;
+  sessionId: string;
+}) {
   const snapshot = buildDebugSnapshot(game);
   return (
     <section className="panel debug-panel">
-      <h2>Debug Trace</h2>
+      <h2>{t(locale, "debug.title")}</h2>
       <div className="debug-facts">
-        <span>Status {snapshot.status}</span>
-        <span>Events {snapshot.events.length}</span>
-        <span>Tasks {snapshot.taskCount}</span>
-        <span>Save {SAVE_SCHEMA_VERSION}</span>
-        <span>Commit {APP_COMMIT}</span>
+        <span>{t(locale, "debug.status", { value: snapshot.status })}</span>
+        <span>{t(locale, "debug.events", { value: snapshot.events.length })}</span>
+        <span>{t(locale, "debug.tasks", { value: snapshot.taskCount })}</span>
+        <span>{t(locale, "debug.save", { value: SAVE_SCHEMA_VERSION })}</span>
+        <span>{t(locale, "debug.commit", { value: APP_COMMIT })}</span>
+        <span title={sessionId}>{t(locale, "debug.session", { value: formatSessionId(sessionId) })}</span>
       </div>
       <p>
-        Autosave uses <code>{AUTOSAVE_KEY}</code>. Snapshot writes to{" "}
-        <code>.dtp-debug/latest-run.json</code>.
+        {t(locale, "debug.autosave", {
+          key: AUTOSAVE_KEY,
+          path: ".dtp-debug/latest-run.json",
+        })}
       </p>
-      {game.lossReason ? <p>Stop reason: {game.lossReason}</p> : null}
+      {game.lossReason ? <p>{t(locale, "debug.stopReason", { reason: localizeText(game.lossReason, locale) })}</p> : null}
       <button
         className="ghost-button"
         onClick={() => copyDebugSnapshot(game)}
         type="button"
       >
-        Copy snapshot
+        {t(locale, "debug.copy")}
       </button>
     </section>
   );
 }
 
-function setDragGhost(event: DragEvent<HTMLElement>, character: RtCharacter) {
+function setDragGhost(event: DragEvent<HTMLElement>, character: RtCharacter, locale: Locale) {
   const ghost = document.createElement("div");
   ghost.className = "drag-ghost";
-  ghost.textContent = `${character.name} -> task`;
+  ghost.textContent = locale === "ru" ? `${character.name} -> задача` : `${character.name} -> task`;
   document.body.appendChild(ghost);
   event.dataTransfer.setDragImage(ghost, 24, 18);
   window.setTimeout(() => document.body.removeChild(ghost), 0);
@@ -1742,6 +1925,7 @@ function buildDebugSnapshot(game: RtGameState, sessionId?: string) {
     savedAt: new Date().toISOString(),
     sessionId: sessionId ?? null,
     seed: game.seed,
+    locale: game.locale,
     status: game.paused && game.status === "running" ? "paused" : game.status,
     lossReason: game.lossReason,
     time: {
@@ -1839,15 +2023,15 @@ function summarizeTask(task: RtTask | undefined) {
   };
 }
 
-function currentWorkLabel(task: RtTask): string {
+function currentWorkLabel(task: RtTask, locale: Locale): string {
   const subtask = task.currentSubtaskId
     ? task.subtasks.find((candidate) => candidate.id === task.currentSubtaskId)
     : null;
-  if (subtask) return `-> ${subtaskRoleLabel(subtask.role)}`;
-  return task.assignedCharacterId ? "-> analysis" : "";
+  if (subtask) return `-> ${subtaskRoleLabel(subtask.role, locale)}`;
+  return task.assignedCharacterId ? (locale === "ru" ? "-> анализ" : "-> analysis") : "";
 }
 
-function taskNeededRoleChips(task: RtTask): Array<{
+function taskNeededRoleChips(task: RtTask, locale: Locale): Array<{
   key: string;
   kind: "known" | "unknown";
   label: string;
@@ -1865,23 +2049,21 @@ function taskNeededRoleChips(task: RtTask): Array<{
   }> = Array.from(roles).map((role) => ({
     key: role,
     kind: "known",
-    label: subtaskRoleLabel(role),
+    label: subtaskRoleLabel(role, locale),
   }));
   const hasHiddenOpenWork = task.subtasks.some((subtask) => !subtask.revealed && !subtask.done);
   if (hasHiddenOpenWork) {
     chips.push({
       key: "unknown",
       kind: "unknown",
-      label: "unknown",
+      label: t(locale, "subtasks.unknownImportance"),
     });
   }
   return chips;
 }
 
-function subtaskRoleLabel(role: RtSubtask["role"]): string {
-  if (role === "bugfix") return "bugfix";
-  if (role === "design") return "design";
-  return role;
+function subtaskRoleLabel(role: RtSubtask["role"], locale: Locale): string {
+  return labelRole(locale, role);
 }
 
 function formatReleaseCountdown(game: RtGameState): string {
@@ -1914,6 +2096,7 @@ function buildBackendSnapshot(snapshot: ReturnType<typeof buildDebugSnapshot>) {
     savedAt: snapshot.savedAt,
     sessionId: snapshot.sessionId,
     seed: snapshot.seed,
+    locale: snapshot.locale,
     status: snapshot.status,
     lossReason: snapshot.lossReason,
     time: snapshot.time,
@@ -1977,6 +2160,21 @@ function formatSessionId(sessionId: string): string {
 
 function createSessionId(): string {
   return `dtp-${Date.now()}-${crypto.randomUUID?.() ?? Math.random().toString(16).slice(2)}`;
+}
+
+function loadLocale(): Locale {
+  const storage = getBrowserStorage();
+  return normalizeLocale(storage?.getItem(LOCALE_STORAGE_KEY));
+}
+
+function saveLocale(locale: Locale): void {
+  const storage = getBrowserStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(LOCALE_STORAGE_KEY, locale);
+  } catch {
+    // Locale selection is a convenience setting.
+  }
 }
 
 function createLogEntry(

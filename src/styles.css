@@ -75,6 +75,27 @@ button {
   text-transform: uppercase;
 }
 
+.language-switch {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.language-switch button {
+  background: #ffffff;
+  border: 1px solid #bdbdb5;
+  color: #66665f;
+  font-size: 12px;
+  font-weight: 800;
+  min-height: 34px;
+  min-width: 38px;
+  padding: 5px 7px;
+}
+
+.language-switch button.active {
+  border-color: #245d45;
+  color: #245d45;
+}
+
 .shell.paused .board,
 .shell.paused .team-panel {
   filter: grayscale(0.35);
@@ -204,6 +225,7 @@ button {
 }
 
 .header-actions {
+  align-items: center;
   display: flex;
   gap: 8px;
 }
@@ -323,6 +345,66 @@ button:disabled {
   font-weight: 800;
   padding: 5px 7px;
   text-transform: uppercase;
+}
+
+.quarter-review-card {
+  border: 1px solid #dfdfd8;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.quarter-review-card.met {
+  background: rgba(36, 93, 69, 0.04);
+  border-color: #245d45;
+}
+
+.quarter-review-card.missed {
+  background: rgba(159, 63, 47, 0.04);
+  border-color: #9f3f2f;
+}
+
+.quarter-review-card header {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.quarter-review-card header > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.quarter-review-card header span {
+  color: #66665f;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.quarter-review-card header strong {
+  font-size: 16px;
+}
+
+.quarter-review-goals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.quarter-review-goals span {
+  border: 1px solid currentColor;
+  padding: 4px 6px;
+}
+
+.quarter-review-goals .met {
+  color: #245d45;
+}
+
+.quarter-review-goals .missed {
+  color: #9f3f2f;
 }
 
 .release-metric {
