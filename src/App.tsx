@@ -884,9 +884,14 @@ export function App() {
           ) : null}
           <div className="menu-actions">
             {hasResumeCard ? (
-              <button className="start-button" onClick={continueRun} type="button">
-                {t(locale, "menu.continue")}
-              </button>
+              <>
+                <button className="start-button" onClick={continueRun} type="button">
+                  {t(locale, "menu.continue")}
+                </button>
+                <button className="ghost-button" onClick={() => startRun("menu_new_run_clicked")} type="button">
+                  {t(locale, "menu.newRun")}
+                </button>
+              </>
             ) : (
               <button className="start-button" onClick={() => startRun()} type="button">
                 {t(locale, "menu.start")}
