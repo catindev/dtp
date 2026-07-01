@@ -561,6 +561,40 @@ button:disabled {
   text-transform: uppercase;
 }
 
+.column-header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.column-header h2 {
+  margin: 0;
+}
+
+.prod-view-switch {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 3px;
+}
+
+.prod-view-switch button {
+  background: #ffffff;
+  border: 1px solid #d8d8d0;
+  color: #66665f;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 4px 5px;
+  text-transform: uppercase;
+}
+
+.prod-view-switch button.active {
+  border-color: #245d45;
+  color: #245d45;
+}
+
 .team-panel {
   align-self: start;
   display: grid;

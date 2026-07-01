@@ -99,6 +99,8 @@ interface BackendLogQueue {
 
 type AppScreen = "menu" | "game";
 
+type ProdView = "released" | "unfinished";
+
 type ActiveDrag =
   | { type: "task"; taskId: string }
   | { type: "character"; characterId: string }
@@ -126,6 +128,7 @@ export function App() {
   const [locale, setLocale] = useState<Locale>(() => initialLocaleRef.current ?? "en");
   const [game, setGame] = useState<RtGameState>(() => bootGame);
   const [screen, setScreen] = useState<AppScreen>(() => (restoredSave ? "game" : "menu"));
+  const [prodView, setProdView] = useState<ProdView>("released");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
     initialSelectedTaskId(bootGame),
   );
@@ -605,14 +608,22 @@ export function App() {
   }
 
   function openLinkedTask(taskId: string) {
-    if (!game.tasks[taskId]) return;
+    const linkedTask = game.tasks[taskId];
+    if (!linkedTask) return;
+    if (game.board.released.includes(taskId)) {
+      setProdView("released");
+    } else if (linkedTask.resolved) {
+      setProdView("unfinished");
+    }
     setSelectedTaskId(taskId);
     window.requestAnimationFrame(() => {
-      const card = document.querySelector<HTMLElement>(`[data-task-card-id="${taskId}"]`);
-      if (card) {
-        card.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-      }
-      flashTask(taskId);
+      window.requestAnimationFrame(() => {
+        const card = document.querySelector<HTMLElement>(`[data-task-card-id="${taskId}"]`);
+        if (card) {
+          card.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+        }
+        flashTask(taskId);
+      });
     });
     logAction(sessionIdRef.current, "linked_task_opened", {
       taskId,
@@ -736,6 +747,7 @@ export function App() {
   const displayedDay = morningReport?.day ?? game.day;
   const displayedQuarter = morningReport?.quarter ?? game.quarter;
   const quarterReviewText = quarterReviewLabel(locale, game);
+  const prodTaskIds = prodView === "released" ? game.board.released : archivedUnfinishedTaskIds(game);
 
   if (screen === "menu") {
     return (
@@ -943,41 +955,60 @@ export function App() {
           </aside>
 
           <section className="board">
-            {RT_COLUMNS.map((column) => (
-              <div
-                className={[
-                  "column",
-                  column === "done" ? "done-column" : "",
-                  column === "released" ? "released-column" : "",
-                  shakeColumnIds.has(column) ? "reject-shake" : "",
-                ].join(" ")}
-                key={column}
-                onDragOver={allowDrop}
-                onDrop={(event) => dropOnColumn(event, column)}
-              >
-                <h2>{columnLabel(locale, column)}</h2>
-                {game.board[column].map((taskId) => {
-                  const task = game.tasks[taskId];
-                  if (!task) return null;
-                  return (
-                    <TaskCard
-                      attention={bounceTaskIds.has(task.id)}
-                      flash={flashTaskId === task.id}
-                      game={game}
-                      key={task.id}
-                      locale={locale}
-                      onClick={() => setSelectedTaskId(task.id)}
-                      onDragEnd={finishDrag}
-                      onDragStart={beginTaskDrag}
-                      onDropCharacter={dropOnTask}
-                      reject={shakeTaskIds.has(task.id)}
-                      selected={selectedTaskId === task.id}
-                      task={task}
-                    />
-                  );
-                })}
-              </div>
-            ))}
+            {RT_COLUMNS.map((column) => {
+              const taskIds = column === "released" ? prodTaskIds : game.board[column];
+              return (
+                <div
+                  className={[
+                    "column",
+                    column === "done" ? "done-column" : "",
+                    column === "released" ? "released-column" : "",
+                    shakeColumnIds.has(column) ? "reject-shake" : "",
+                  ].join(" ")}
+                  key={column}
+                  onDragOver={allowDrop}
+                  onDrop={(event) => dropOnColumn(event, column)}
+                >
+                  <div className="column-header">
+                    <h2>{columnLabel(locale, column)}</h2>
+                    {column === "released" ? (
+                      <div className="prod-view-switch" aria-label={t(locale, "prodView.label")}>
+                        {(["released", "unfinished"] as ProdView[]).map((view) => (
+                          <button
+                            className={prodView === view ? "active" : ""}
+                            key={view}
+                            onClick={() => setProdView(view)}
+                            type="button"
+                          >
+                            {t(locale, `prodView.${view}`)}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  {taskIds.map((taskId) => {
+                    const task = game.tasks[taskId];
+                    if (!task) return null;
+                    return (
+                      <TaskCard
+                        attention={bounceTaskIds.has(task.id)}
+                        flash={flashTaskId === task.id}
+                        game={game}
+                        key={task.id}
+                        locale={locale}
+                        onClick={() => setSelectedTaskId(task.id)}
+                        onDragEnd={finishDrag}
+                        onDragStart={beginTaskDrag}
+                        onDropCharacter={dropOnTask}
+                        reject={shakeTaskIds.has(task.id)}
+                        selected={selectedTaskId === task.id}
+                        task={task}
+                      />
+                    );
+                  })}
+                </div>
+              );
+            })}
           </section>
 
           <aside className="side-stack">
@@ -1356,12 +1387,14 @@ function TaskCard({
     Boolean(task.assignedCharacterId) ||
     Boolean(task.outsourcing) ||
     game.status !== "running" ||
+    task.resolved ||
     task.released;
   const locked =
     Boolean(task.assignedCharacterId) ||
     Boolean(task.outsourcing) ||
     game.paused ||
     game.status !== "running" ||
+    task.resolved ||
     task.released;
   const needsAttention =
     task.stageComplete && task.column === "inProgress" && !task.assignedCharacterId && !task.released;
@@ -1626,6 +1659,21 @@ function initialSelectedTaskId(game: RtGameState): string | null {
     game.board.released[0] ??
     null
   );
+}
+
+function archivedUnfinishedTaskIds(game: RtGameState): string[] {
+  return Object.values(game.tasks)
+    .filter((task) => task.resolved && !task.released)
+    .sort((left, right) => {
+      const dayDelta = (right.resolutionDay ?? 0) - (left.resolutionDay ?? 0);
+      if (dayDelta !== 0) return dayDelta;
+      return taskIdSequence(right.id) - taskIdSequence(left.id);
+    })
+    .map((task) => task.id);
+}
+
+function taskIdSequence(taskId: string): number {
+  return Number(taskId.match(/\d+$/)?.[0] ?? 0);
 }
 
 function isWorkPassDoneEvent(event: RtEvent): boolean {
