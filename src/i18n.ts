@@ -523,6 +523,10 @@ const EXACT_TEXTS: Record<Locale, Record<string, string>> = {
     "Waiting in backlog.": "Ждет в бэклоге.",
     "Ready for analysis, implementation, or QA.": "Готово к анализу, реализации или QA.",
     "Queued for the daily release train.": "В очереди на дневной релиз.",
+    "Strong release. Customers got what they needed.": "Сильный релиз. Клиенты получили то, что им нужно.",
+    "Acceptable release. Some rough edges remain.": "Нормальный релиз. Остались шероховатости.",
+    "Risky release. Support will feel this.": "Рискованный релиз. Поддержка это почувствует.",
+    "Bad release. Customers are frustrated.": "Плохой релиз. Клиенты недовольны.",
     "Pulled back from Done for rework.": "Возвращено из Готово на доработку.",
     "Work was interrupted.": "Работа была прервана.",
     "QA pass complete.": "QA-проход завершен.",
@@ -547,6 +551,7 @@ const EXACT_TEXTS: Record<Locale, Record<string, string>> = {
     "QA coverage was low.": "QA-покрытие было низким.",
     "SRE safety was missing, so blast radius was higher.":
       "SRE-защиты не было, поэтому влияние поломки было выше.",
+    "Some prior work carried forward as context.": "Часть предыдущей работы перешла как контекст.",
     "blocked until tomorrow": "заблокирован до завтра",
     "context shock 20m": "контекстный шок 20м",
     "stage progress -8": "прогресс этапа -8",
@@ -676,7 +681,8 @@ export function localizeTaskTitle(raw: string, locale: Locale): string {
   const match = raw.match(/^([A-Z]+-\d+):\s(.+)$/);
   if (!match) return localizeText(raw, locale);
   const [, id, title] = match;
-  return `${id}: ${translateKnownText(title, locale, taskTitleMap)}`;
+  const translated = translateKnownText(title, locale, taskTitleMap);
+  return `${id}: ${translated === title ? localizeText(title, locale) : translated}`;
 }
 
 export function localizeTaskName(raw: string, locale: Locale): string {
@@ -724,6 +730,8 @@ export function localizeText(raw: string | null | undefined, locale: Locale): st
     [/^Outsource is working on (?<role>\w+): (?<title>.+)\.$/, (_all, role, title) => `Аутсорс делает ${labelRole(locale, role as LocalizedSubtaskRole)}: ${localizeSubtaskTitle(title, locale)}.`],
     [/^(?<name>.+) is exhausted and cannot continue today\.$/, (_all, name) => `${name} выдохся и сегодня больше не может продолжать.`],
     [/^Missed work resolved as (?<resolution>.+)\.$/, (_all, resolution) => `Пропущенная работа закрыта как ${resolution}.`],
+    [/^Cause: (?<cause>.+)\.$/, (_all, cause) => `Причина: ${translateCauseText(cause, locale)}.`],
+    [/^Caused by yesterday's (?<id>[A-Z]+-\d+): (?<cause>.+)\.$/, (_all, id, cause) => `Спровоцировано вчерашней ${id}: ${translateCauseText(cause, locale)}.`],
     [/^(?<area>.+): (?<failure>.+) after (?<id>[A-Z]+-\d+)$/, (_all, area, failure, id) => `${translateConsequenceArea(area)}: ${translateConsequenceFailure(failure)} после ${id}`],
     [/^(?<area>.+): (?<failure>known bug is still visible|regressed after untested late changes|started failing without QA coverage|created production instability|does not match the business request|broke after unfinished release work)$/, (_all, area, failure) => `${translateConsequenceArea(area)}: ${translateConsequenceFailure(failure)}`],
     [/^(?<area>.+): escalation after unfinished work on (?<id>[A-Z]+-\d+)$/, (_all, area, id) => `${translateConsequenceArea(area)}: эскалация после незавершенной работы по ${id}`],
