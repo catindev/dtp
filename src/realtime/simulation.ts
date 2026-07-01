@@ -4,19 +4,10 @@ import {
   type Locale,
 } from "../i18n";
 import {
-  BACKLOG_LIMIT,
-  BURST_INTERVAL_MAX_MS,
-  BURST_INTERVAL_MIN_MS,
   DAYS_PER_QUARTER,
-  FIRST_SPAWN_MAX_MS,
-  FIRST_SPAWN_MIN_MS,
   GAME_DAY_START_MINUTE,
   GAME_MINUTES_PER_REAL_SECOND,
-  LOW_WORK_SPAWN_MAX_MS,
-  LOW_WORK_SPAWN_MIN_MS,
   RELEASE_TRAIN_GAME_MINUTE,
-  SPAWN_INTERVAL_MAX_MS,
-  SPAWN_INTERVAL_MIN_MS,
   TICK_MS,
 } from "../engine/balance";
 import {
@@ -25,18 +16,10 @@ import {
   moveTaskOnBoard,
   removeTaskFromBoard,
 } from "../engine/board";
-import {
-  BASE_SKILLS,
-  BASE_SPECIALTIES,
-  CHARACTER_NAMES,
-} from "../engine/catalog";
 import { clamp } from "../engine/math";
 import {
   checkRunState as checkRunStateInternal,
 } from "../engine/loss";
-import {
-  randomBetween,
-} from "../engine/rng";
 import {
   collectMissedTaskIds,
   generateMorningConsequences as generateMorningConsequencesInternal,
@@ -47,7 +30,14 @@ import {
   outsourceTaskWork as outsourceTaskWorkInternal,
   updateOutsourcing,
 } from "../engine/outsourcing";
-import { generateTask, inferBlastRadius } from "../engine/taskFactory";
+import {
+  addTaskToBacklog,
+  createInitialSpawnState,
+  seedInitialTasks,
+  seedInitialTeam,
+  updateSpawner,
+} from "../engine/spawn";
+import { inferBlastRadius } from "../engine/taskFactory";
 import {
   assignCharacterToTaskWork,
   canAssignCharacterToTaskWork,
@@ -201,29 +191,12 @@ export function createRealtimeState(seed = Date.now(), locale: Locale = DEFAULT_
     characters: {},
     nextTaskId: 1,
     nextCharacterId: 1,
-    spawn: {
-      nextInMs: randomBetween(
-        { rngState: seed >>> 0 || 1 },
-        FIRST_SPAWN_MIN_MS,
-        FIRST_SPAWN_MAX_MS,
-      ),
-      nextBurstInMs: randomBetween(
-        { rngState: seed >>> 0 || 1 },
-        BURST_INTERVAL_MIN_MS,
-        BURST_INTERVAL_MAX_MS,
-      ),
-    },
+    spawn: createInitialSpawnState(seed),
     log: [],
   };
 
-  for (const role of ["analyst", "backend", "frontend", "qa", "sre"] as RtRole[]) {
-    const character = createCharacter(state, role);
-    state.characters[character.id] = character;
-  }
-
-  for (let index = 0; index < 2; index += 1) {
-    addTask(state, generateTask(state));
-  }
+  seedInitialTeam(state);
+  seedInitialTasks(state, 2, (event) => pushEvent(state, event));
 
   pushEvent(state, {
     type: "run_started",
@@ -552,7 +525,7 @@ export function tickRealtime(state: RtGameState, tickMs = TICK_MS): void {
   updateTaskTimers(state, tickMs);
   updateOutsourcing(state, tickMs, (event) => pushEvent(state, event));
   updateAssignments(state, tickMs, (event) => pushEvent(state, event));
-  updateSpawner(state, tickMs);
+  updateSpawner(state, tickMs, (event) => pushEvent(state, event));
   checkRunStateInternal(state, (event) => pushEvent(state, event));
 }
 
@@ -632,7 +605,8 @@ function openMorningReport(state: RtGameState): void {
   const resourceAfterQuarter = copyResources(state.resources);
   state.gameMinuteOfDay = GAME_DAY_START_MINUTE;
   const consequences = generateMorningConsequencesInternal(state, shippedTaskIds, missedTaskIds, {
-    addTask: (task, backlogLimit) => addTask(state, task, backlogLimit),
+    addTask: (task, backlogLimit) =>
+      addTaskToBacklog(state, task, (event) => pushEvent(state, event), backlogLimit),
     emit: (event) => pushEvent(state, event),
   });
   const resourceAfter = copyResources(state.resources);
@@ -767,87 +741,8 @@ export function isWorkColumn(column: RtColumn): column is RtWorkColumn {
   return column === "inProgress";
 }
 
-function createCharacter(state: RtGameState, role: RtRole): RtCharacter {
-  return {
-    id: `C-${state.nextCharacterId++}`,
-    name:
-      CHARACTER_NAMES[
-        (state.nextCharacterId + Object.keys(state.characters).length) % CHARACTER_NAMES.length
-      ],
-    role,
-    skill: { ...BASE_SKILLS[role] },
-    specialty: { ...BASE_SPECIALTIES[role] },
-    xp: { backend: 0, frontend: 0, design: 0, qa: 0, sre: 0, bugfix: 0 },
-    stamina: 100,
-    burnout: 0,
-    assignedTaskId: null,
-    shockGameMinutes: 0,
-    exhaustedToday: false,
-  };
-}
-
-function addTask(state: RtGameState, task: RtTask, backlogLimit = BACKLOG_LIMIT): boolean {
-  if (state.board.backlog.length >= backlogLimit) return false;
-  state.tasks[task.id] = task;
-  state.board.backlog.unshift(task.id);
-  pushEvent(state, {
-    type: "task_spawned",
-    title: `${task.id} arrived`,
-    body: task.title,
-    effects: [`clarity ${task.clarity}`, `deadline ${Math.round(task.deadlineMs / 1000)}s`],
-  });
-  return true;
-}
-
-function updateSpawner(state: RtGameState, tickMs: number): void {
-  if (state.board.backlog.length >= BACKLOG_LIMIT) return;
-
-  state.spawn.nextInMs -= tickMs;
-  state.spawn.nextBurstInMs -= tickMs;
-
-  const activeWorkCount = state.board.backlog.length + state.board.inProgress.length;
-  if (activeWorkCount <= 1 && state.spawn.nextInMs > LOW_WORK_SPAWN_MAX_MS) {
-    state.spawn.nextInMs = randomBetween(state, LOW_WORK_SPAWN_MIN_MS, LOW_WORK_SPAWN_MAX_MS);
-  }
-
-  if (state.spawn.nextBurstInMs <= 0) {
-    const count = Math.min(1, 5 - state.board.backlog.length);
-    for (let index = 0; index < count; index += 1) {
-      if (state.board.backlog.length < 5) addTask(state, generateTask(state));
-    }
-    state.spawn.nextBurstInMs = randomBetween(
-      state,
-      state.resources.trust < 40 ? 480000 : BURST_INTERVAL_MIN_MS,
-      state.resources.trust < 40 ? 600000 : BURST_INTERVAL_MAX_MS,
-    );
-    state.spawn.nextInMs = randomSpawnInterval(state);
-    return;
-  }
-
-  if (state.spawn.nextInMs <= 0) {
-    addTask(state, generateTask(state));
-    state.spawn.nextInMs = randomSpawnInterval(state);
-  }
-}
-
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values));
-}
-
-function randomSpawnInterval(state: RtGameState): number {
-  const trustPressure = state.resources.trust < 40 ? 0.85 : state.resources.trust < 60 ? 0.95 : 1;
-  const debtPressure = state.resources.debt > 60 ? 0.9 : 1;
-  const backlogRelief = state.board.backlog.length >= 4 ? 1.6 : state.board.backlog.length >= 3 ? 1.25 : 1;
-  const activeWorkCount = state.board.backlog.length + state.board.inProgress.length;
-  if (activeWorkCount <= 1) {
-    return Math.round(randomBetween(state, LOW_WORK_SPAWN_MIN_MS, LOW_WORK_SPAWN_MAX_MS));
-  }
-  return Math.round(
-    randomBetween(state, SPAWN_INTERVAL_MIN_MS, SPAWN_INTERVAL_MAX_MS) *
-      trustPressure *
-      debtPressure *
-      backlogRelief,
-  );
 }
 
 function pushEvent(state: RtGameState, event: Omit<RtEvent, "at">): void {
