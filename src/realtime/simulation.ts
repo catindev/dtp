@@ -13,7 +13,6 @@ import {
   BURST_INTERVAL_MAX_MS,
   BURST_INTERVAL_MIN_MS,
   DAYS_PER_QUARTER,
-  DONE_REWORK_TRUST_COST,
   FALLOUT_BACKLOG_EXTRA_SLOTS,
   FIRST_SPAWN_MAX_MS,
   FIRST_SPAWN_MIN_MS,
@@ -35,6 +34,14 @@ import {
   WORK_SPEED_MULTIPLIER,
   WORK_STAMINA_DRAIN_BASE,
 } from "../engine/balance";
+import {
+  canMoveTaskOnBoard,
+  createBoard,
+  getOpenTodoSubtasks,
+  moveTaskOnBoard,
+  removeTaskFromBoard,
+  taskBusy,
+} from "../engine/board";
 import {
   BASE_SKILLS,
   BASE_SPECIALTIES,
@@ -568,68 +575,7 @@ export function moveRealtimeTask(
   taskId: string,
   targetColumn: RtColumn,
 ): boolean {
-  const moveCheck = canMoveRealtimeTask(state, taskId, targetColumn);
-  if (!moveCheck.allowed && moveCheck.reason !== "same_column") return false;
-  const task = state.tasks[taskId];
-  if (task.column === targetColumn) return true;
-
-  if (task.column === "done") {
-    state.resources.trust = clamp(state.resources.trust - DONE_REWORK_TRUST_COST, 0, 100);
-    removeTaskFromBoard(state, taskId);
-    task.column = "inProgress";
-    task.stageProgress = 0;
-    task.currentSubtaskId = null;
-    task.stageComplete = taskReadyForDone(task);
-    task.queuedDeadlineMs = null;
-    task.lastNote = "Pulled back from Done for rework.";
-    state.board.inProgress.push(taskId);
-    pushEvent(state, {
-      type: "done_reopened",
-      title: `${task.id} reopened`,
-      body: `${task.title} was pulled back from the release queue.`,
-      effects: [`trust -${DONE_REWORK_TRUST_COST}`, "deadline resumes"],
-    });
-    return true;
-  }
-
-  if (targetColumn === "done") {
-    const readiness = releaseReadiness(task);
-    const late = lateReleaseReport(task);
-    removeTaskFromBoard(state, taskId);
-    task.column = "done";
-    task.stageProgress = 0;
-    task.currentSubtaskId = null;
-    task.stageComplete = true;
-    task.queuedDeadlineMs = Math.max(0, task.deadlineMs);
-    task.lastNote =
-      late.valuePenaltyPercent > 0
-        ? `Queued late for release. Value reduced by ${late.valuePenaltyPercent}%.`
-        : "Queued for the daily release train.";
-    state.board.done.unshift(taskId);
-    pushEvent(state, {
-      type: "queued_for_release",
-      title: `${task.id} queued`,
-      body: `${task.title} will ship with the daily release train.`,
-      effects: [
-        `${readiness.readiness} release`,
-        ...(late.valuePenaltyPercent > 0 ? [`late value -${late.valuePenaltyPercent}%`] : []),
-        ...readiness.reasons.slice(0, 4).map(formatRiskReason),
-        "deadline locked",
-        "business effects pending",
-      ],
-    });
-    return true;
-  }
-
-  removeTaskFromBoard(state, taskId);
-  task.column = targetColumn;
-  task.stageProgress = 0;
-  task.currentSubtaskId = null;
-  task.stageComplete = false;
-  task.queuedDeadlineMs = null;
-  task.lastNote = stageNote(targetColumn);
-  state.board[targetColumn].push(taskId);
-  return true;
+  return moveTaskOnBoard(state, taskId, targetColumn, (event) => pushEvent(state, event));
 }
 
 export function canMoveRealtimeTask(
@@ -637,19 +583,7 @@ export function canMoveRealtimeTask(
   taskId: string,
   targetColumn: RtColumn,
 ): RtMoveCheck {
-  const task = state.tasks[taskId];
-  if (!task) return { allowed: false, reason: "task_missing" };
-  if (task.released) return { allowed: false, reason: "task_released" };
-  if (taskBusy(task)) return { allowed: false, reason: "task_busy" };
-  if (task.column === targetColumn) return { allowed: true, reason: "same_column" };
-  if (targetColumn === "released") return { allowed: false, reason: "released_locked" };
-  if (task.column === "done" && targetColumn !== "inProgress") {
-    return { allowed: false, reason: "done_reopen_only_to_work" };
-  }
-  if (task.column === "backlog" && targetColumn === "done") {
-    return { allowed: false, reason: "backlog_to_done_forbidden" };
-  }
-  return { allowed: true };
+  return canMoveTaskOnBoard(state, taskId, targetColumn);
 }
 
 function getAssignmentPlan(
@@ -2010,18 +1944,6 @@ function preferredSubtaskRoles(character: RtCharacter): RtSubtaskRole[] {
   return roles;
 }
 
-function taskReadyForDone(task: RtTask): boolean {
-  return task.workDone && getOpenTodoSubtasks(task).length === 0 && task.bugs === 0;
-}
-
-function taskBusy(task: RtTask): boolean {
-  return Boolean(task.assignedCharacterId || task.outsourcing);
-}
-
-function getOpenTodoSubtasks(task: RtTask): RtSubtask[] {
-  return task.subtasks.filter((subtask) => subtask.revealed && !subtask.done);
-}
-
 function introduceImplementationBugs(
   state: RtGameState,
   task: RtTask,
@@ -2523,32 +2445,6 @@ function randomSpawnInterval(state: RtGameState): number {
   );
 }
 
-function createBoard(): Record<RtColumn, string[]> {
-  return {
-    backlog: [],
-    inProgress: [],
-    done: [],
-    released: [],
-  };
-}
-
-function stageNote(column: RtColumn): string {
-  if (column === "inProgress") return "Ready for analysis, implementation, or QA.";
-  if (column === "backlog") return "Waiting in backlog.";
-  if (column === "done") return "Queued for the daily release train.";
-  return "Released to business.";
-}
-
-function stageEffect(column: RtColumn): string {
-  if (column === "inProgress") return "task work";
-  return "work";
-}
-
-function columnLabel(column: RtColumn): string {
-  if (column === "inProgress") return "In Progress";
-  return column[0].toUpperCase() + column.slice(1);
-}
-
 function releaseNote(score: number): string {
   if (score >= 80) return "Strong release. Customers got what they needed.";
   if (score >= 60) return "Acceptable release. Some rough edges remain.";
@@ -2601,16 +2497,6 @@ function releaseClientDelta(
 function releaseBudgetGain(valueGain: number, score: number): number {
   if (score < 55) return 0;
   return Math.max(0, Math.floor(valueGain / 15));
-}
-
-function removeTaskFromBoard(state: RtGameState, taskId: string): void {
-  for (const column of RT_COLUMNS) {
-    const index = state.board[column].indexOf(taskId);
-    if (index >= 0) {
-      state.board[column].splice(index, 1);
-      return;
-    }
-  }
 }
 
 function pushEvent(state: RtGameState, event: Omit<RtEvent, "at">): void {
