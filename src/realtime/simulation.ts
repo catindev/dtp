@@ -55,6 +55,15 @@ import {
   weightedPick,
 } from "../engine/rng";
 import {
+  applyResourceDelta,
+  copyResources,
+  diffResources,
+  emptyResourceDelta,
+  formatDelta,
+  morningReportEffects,
+  resourceDeltaEffects,
+} from "../engine/resources";
+import {
   falloutWarningForTask,
   formatOverdueGameTime,
   formatRiskReason,
@@ -1020,44 +1029,6 @@ function openMorningReport(state: RtGameState): void {
   });
 }
 
-function copyResources(resources: RtResources): RtResources {
-  return { ...resources };
-}
-
-function emptyResourceDelta(): RtResources {
-  return {
-    trust: 0,
-    debt: 0,
-    value: 0,
-    clients: 0,
-    budget: 0,
-    processBoost: 0,
-  };
-}
-
-function diffResources(before: RtResources, after: RtResources): RtResources {
-  return {
-    trust: after.trust - before.trust,
-    debt: after.debt - before.debt,
-    value: after.value - before.value,
-    clients: after.clients - before.clients,
-    budget: after.budget - before.budget,
-    processBoost: after.processBoost - before.processBoost,
-  };
-}
-
-function morningReportEffects(delta: RtResources): string[] {
-  const effects = [
-    delta.value !== 0 ? `value ${formatDelta(delta.value)}` : null,
-    delta.budget !== 0 ? `budget ${formatDelta(delta.budget)}` : null,
-    delta.trust !== 0 ? `trust ${formatDelta(delta.trust)}` : null,
-    delta.clients !== 0 ? `clients ${formatDelta(delta.clients)}` : null,
-    delta.debt !== 0 ? `debt ${formatDelta(delta.debt)}` : null,
-    delta.processBoost !== 0 ? `boost ${formatDelta(delta.processBoost)}` : null,
-  ].filter((effect): effect is string => Boolean(effect));
-  return effects.length > 0 ? effects : ["no business effects"];
-}
-
 function collectMissedTaskIds(state: RtGameState): string[] {
   return [...state.board.backlog, ...state.board.inProgress].filter((taskId) => {
     const task = state.tasks[taskId];
@@ -1342,37 +1313,6 @@ function blockedTailResourceDelta(task: RtTask): Partial<RtResources> {
     trust: task.blastRadius === "high" ? -3 : -2,
     debt: task.kind === "techDebt" ? 3 : 2,
   };
-}
-
-function applyResourceDelta(
-  state: RtGameState,
-  delta: Partial<RtResources>,
-): Partial<RtResources> {
-  const applied: Partial<RtResources> = {};
-  for (const key of ["trust", "clients", "debt", "value", "budget", "processBoost"] as const) {
-    const value = delta[key];
-    if (!value) continue;
-    const before = state.resources[key];
-    const after =
-      key === "value" || key === "budget"
-        ? Math.max(0, before + value)
-        : clamp(before + value, 0, key === "processBoost" ? 25 : 100);
-    state.resources[key] = after;
-    const actual = after - before;
-    if (actual !== 0) applied[key] = actual;
-  }
-  return applied;
-}
-
-function resourceDeltaEffects(delta: Partial<RtResources>): string[] {
-  return (["trust", "clients", "debt", "value", "budget", "processBoost"] as const)
-    .map((key) => {
-      const value = delta[key];
-      if (!value) return null;
-      const label = key === "processBoost" ? "boost" : key;
-      return `${label} ${formatDelta(value)}`;
-    })
-    .filter((effect): effect is string => Boolean(effect));
 }
 
 function markTaskResolved(
@@ -2952,8 +2892,4 @@ function removeTaskFromBoard(state: RtGameState, taskId: string): void {
 function pushEvent(state: RtGameState, event: Omit<RtEvent, "at">): void {
   state.log.unshift({ at: formatGameTime(state), ...event });
   if (state.log.length > 500) state.log.length = 500;
-}
-
-function formatDelta(value: number): string {
-  return value >= 0 ? `+${value}` : `${value}`;
 }
