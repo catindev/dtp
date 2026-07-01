@@ -39,6 +39,14 @@ import {
   WORK_SPEED_MULTIPLIER,
   WORK_STAMINA_DRAIN_BASE,
 } from "../engine/balance";
+import {
+  chance,
+  pickOne,
+  randomBetween,
+  randomInt,
+  shuffle,
+  weightedPick,
+} from "../engine/rng";
 export {
   DAYS_PER_QUARTER,
   DONE_REWORK_TRUST_COST,
@@ -3452,59 +3460,6 @@ function removeTaskFromBoard(state: RtGameState, taskId: string): void {
 function pushEvent(state: RtGameState, event: Omit<RtEvent, "at">): void {
   state.log.unshift({ at: formatGameTime(state), ...event });
   if (state.log.length > 500) state.log.length = 500;
-}
-
-function normalizeRandomHost(host: { rngState: number }): { rngState: number } {
-  host.rngState = host.rngState >>> 0 || 1;
-  return host;
-}
-
-function nextRandom(host: { rngState: number }): number {
-  normalizeRandomHost(host);
-  let value = host.rngState >>> 0;
-  value += 0x6d2b79f5;
-  value = Math.imul(value ^ (value >>> 15), value | 1);
-  value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
-  host.rngState = value >>> 0;
-  return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
-}
-
-function randomBetween(host: { rngState: number }, min: number, max: number): number {
-  return min + nextRandom(host) * (max - min);
-}
-
-function randomInt(host: { rngState: number }, min: number, max: number): number {
-  return Math.floor(randomBetween(host, min, max + 1));
-}
-
-function chance(host: { rngState: number }, probability: number): boolean {
-  return nextRandom(host) < probability;
-}
-
-function pickOne<T>(host: { rngState: number }, items: readonly T[]): T {
-  return items[randomInt(host, 0, items.length - 1)];
-}
-
-function shuffle<T>(host: { rngState: number }, items: readonly T[]): T[] {
-  const copy = [...items];
-  for (let index = copy.length - 1; index > 0; index -= 1) {
-    const swapIndex = randomInt(host, 0, index);
-    [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
-  }
-  return copy;
-}
-
-function weightedPick<T>(
-  host: { rngState: number },
-  entries: Array<{ item: T; weight: number }>,
-): T {
-  const total = entries.reduce((sum, entry) => sum + Math.max(0, entry.weight), 0);
-  let cursor = nextRandom(host) * total;
-  for (const entry of entries) {
-    cursor -= Math.max(0, entry.weight);
-    if (cursor <= 0) return entry.item;
-  }
-  return entries[entries.length - 1].item;
 }
 
 function formatDelta(value: number): string {
