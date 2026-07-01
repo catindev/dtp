@@ -79,6 +79,7 @@ import {
   postDebugSnapshot,
   type FrontendLogEntry,
 } from "./frontendLogging";
+import { useTaskFeedback } from "./hooks/useTaskFeedback";
 import { USER_DOCS } from "./userdocs";
 import "./styles.css";
 
@@ -123,16 +124,19 @@ export function App() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
     initialSelectedTaskId(bootGame),
   );
-  const [flashTaskId, setFlashTaskId] = useState<string | null>(null);
-  const [bounceTaskIds, setBounceTaskIds] = useState<Set<string>>(() => new Set());
-  const [shakeTaskIds, setShakeTaskIds] = useState<Set<string>>(() => new Set());
-  const [shakeColumnIds, setShakeColumnIds] = useState<Set<RtColumn>>(() => new Set());
-  const [pauseShake, setPauseShake] = useState(false);
-  const flashTimer = useRef<number | null>(null);
-  const bounceTimers = useRef<Record<string, number>>({});
-  const shakeTaskTimers = useRef<Record<string, number>>({});
-  const shakeColumnTimers = useRef<Partial<Record<RtColumn, number>>>({});
-  const pauseShakeTimer = useRef<number | null>(null);
+  const {
+    flashTaskId,
+    bounceTaskIds,
+    shakeTaskIds,
+    shakeColumnIds,
+    pauseShake,
+    flashTask,
+    bounceTask,
+    shakeTask,
+    shakeColumn,
+    shakePauseButton,
+    resetFeedback,
+  } = useTaskFeedback();
   const autosaveTimer = useRef<number | null>(null);
   const latestGameRef = useRef(game);
   const sessionIdRef = useRef(restoredSave?.sessionId ?? createSessionId());
@@ -177,9 +181,6 @@ export function App() {
   useEffect(
     () => () => {
       if (autosaveTimer.current) window.clearTimeout(autosaveTimer.current);
-      if (pauseShakeTimer.current) window.clearTimeout(pauseShakeTimer.current);
-      clearBounceTimers();
-      clearShakeTimers();
     },
     [],
   );
@@ -309,8 +310,7 @@ export function App() {
     loggedEventKeysRef.current = new Set();
     animatedWorkEventKeysRef.current = new Set();
     activeDragRef.current = null;
-    clearBounceTimers();
-    setBounceTaskIds(new Set());
+    resetFeedback();
     setGame(next);
     setSelectedTaskId(next.board.backlog[0] ?? null);
     setHasResumeCard(true);
@@ -654,103 +654,6 @@ export function App() {
       taskId,
       fromTaskId: selectedTaskId,
       gameTime: formatGameTime(game),
-    });
-  }
-
-  function flashTask(taskId: string) {
-    setFlashTaskId(taskId);
-    if (flashTimer.current) window.clearTimeout(flashTimer.current);
-    flashTimer.current = window.setTimeout(() => setFlashTaskId(null), 420);
-  }
-
-  function clearBounceTimers() {
-    for (const timer of Object.values(bounceTimers.current)) {
-      window.clearTimeout(timer);
-    }
-    bounceTimers.current = {};
-  }
-
-  function bounceTask(taskId: string) {
-    setBounceTaskIds((current) => new Set(current).add(taskId));
-    if (bounceTimers.current[taskId]) {
-      window.clearTimeout(bounceTimers.current[taskId]);
-    }
-    bounceTimers.current[taskId] = window.setTimeout(() => {
-      setBounceTaskIds((current) => {
-        const next = new Set(current);
-        next.delete(taskId);
-        return next;
-      });
-      delete bounceTimers.current[taskId];
-    }, 720);
-  }
-
-  function clearShakeTimers() {
-    for (const timer of Object.values(shakeTaskTimers.current)) {
-      window.clearTimeout(timer);
-    }
-    for (const timer of Object.values(shakeColumnTimers.current)) {
-      if (timer) window.clearTimeout(timer);
-    }
-    shakeTaskTimers.current = {};
-    shakeColumnTimers.current = {};
-  }
-
-  function shakeTask(taskId: string) {
-    setShakeTaskIds((current) => {
-      const next = new Set(current);
-      next.delete(taskId);
-      return next;
-    });
-    if (shakeTaskTimers.current[taskId]) {
-      window.clearTimeout(shakeTaskTimers.current[taskId]);
-    }
-    window.requestAnimationFrame(() => {
-      setShakeTaskIds((current) => new Set(current).add(taskId));
-      shakeTaskTimers.current[taskId] = window.setTimeout(() => {
-        setShakeTaskIds((current) => {
-          const next = new Set(current);
-          next.delete(taskId);
-          return next;
-        });
-        delete shakeTaskTimers.current[taskId];
-      }, 420);
-    });
-  }
-
-  function shakeColumn(column: RtColumn) {
-    setShakeColumnIds((current) => {
-      const next = new Set(current);
-      next.delete(column);
-      return next;
-    });
-    if (shakeColumnTimers.current[column]) {
-      window.clearTimeout(shakeColumnTimers.current[column]);
-    }
-    window.requestAnimationFrame(() => {
-      setShakeColumnIds((current) => new Set(current).add(column));
-      shakeColumnTimers.current[column] = window.setTimeout(() => {
-        setShakeColumnIds((current) => {
-          const next = new Set(current);
-          next.delete(column);
-          return next;
-        });
-        delete shakeColumnTimers.current[column];
-      }, 420);
-    });
-  }
-
-  function shakePauseButton() {
-    setPauseShake(false);
-    if (pauseShakeTimer.current) {
-      window.clearTimeout(pauseShakeTimer.current);
-    }
-    window.requestAnimationFrame(() => {
-      setPauseShake(true);
-      pauseShakeTimer.current = window.setTimeout(() => {
-        setPauseShake(false);
-        pauseShakeTimer.current = null;
-      }, 420);
     });
   }
 
