@@ -1480,6 +1480,9 @@ function TaskInspector({
   const readiness = releaseReadiness(task);
   const late = lateReleaseReport(task);
   const sourceTask = task.sourceTaskId ? game.tasks[task.sourceTaskId] : null;
+  const consequenceTasks = Object.values(game.tasks)
+    .filter((candidate) => candidate.sourceTaskId === task.id)
+    .sort((left, right) => right.id.localeCompare(left.id));
   const visiblePostmortem = task.postmortem.filter(
     (note) => !/^Source task:/.test(note) && !/^Root cause:/.test(note),
   );
@@ -1551,6 +1554,23 @@ function TaskInspector({
               {t(locale, "inspector.missingSource", { id: task.sourceTaskId })}
             </span>
           )}
+        </div>
+      ) : null}
+      {consequenceTasks.length > 0 ? (
+        <div className="source-link-panel">
+          <h3>{t(locale, "inspector.consequences")}</h3>
+          <div className="task-link-list">
+            {consequenceTasks.map((consequenceTask) => (
+              <button
+                className="task-link-chip"
+                key={consequenceTask.id}
+                onClick={() => onOpenLinkedTask(consequenceTask.id)}
+                type="button"
+              >
+                {localizeTaskTitle(consequenceTask.title, locale)}
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
       {visiblePostmortem.length > 0 ? (

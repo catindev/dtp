@@ -1194,6 +1194,11 @@ button:disabled {
   cursor: default;
 }
 
+.task-link-list {
+  display: grid;
+  gap: 5px;
+}
+
 .subtask-row {
   align-items: center;
   display: grid;
