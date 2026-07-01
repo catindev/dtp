@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type DragEvent, type ReactElement } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
+import { DocsScreen } from "./components/DocsScreen";
+import { MenuScreen } from "./components/MenuScreen";
 import {
   DONE_REWORK_TRUST_COST,
   OUTSOURCE_COST_BY_IMPORTANCE,
-  RELEASE_TRAIN_GAME_MINUTE,
   RT_COLUMNS,
   TICK_MS,
   assignCharacterToTask,
@@ -35,7 +36,6 @@ import {
   type RtTask,
 } from "./realtime/simulation";
 import {
-  LOCALE_LABELS,
   LOCALE_STORAGE_KEY,
   labelBlastRadius,
   labelConsequenceCause,
@@ -65,14 +65,8 @@ import {
   loadSavedRun,
   saveRun,
 } from "./save";
-import enGameLoopDoc from "../userdocs/en/game-loop.md?raw";
-import enOverviewDoc from "../userdocs/en/overview.md?raw";
-import enRolesDoc from "../userdocs/en/roles.md?raw";
-import enTasksQualityDoc from "../userdocs/en/tasks-quality.md?raw";
-import ruGameLoopDoc from "../userdocs/ru/game-loop.md?raw";
-import ruOverviewDoc from "../userdocs/ru/overview.md?raw";
-import ruRolesDoc from "../userdocs/ru/roles.md?raw";
-import ruTasksQualityDoc from "../userdocs/ru/tasks-quality.md?raw";
+import { formatReleaseCountdown, formatSessionId } from "./formatting";
+import { USER_DOCS } from "./userdocs";
 import "./styles.css";
 
 const BACKEND_BASE_URL = import.meta.env.VITE_DTP_BACKEND_URL ?? "http://127.0.0.1:8787";
@@ -82,59 +76,6 @@ const BACKEND_LOG_QUEUE_KEY = "dtp.backendLogQueue.v1";
 const BACKEND_LOG_QUEUE_LIMIT = 1200;
 const BACKEND_LOG_BATCH_SIZE = 80;
 const BACKEND_LOG_FLUSH_INTERVAL_MS = 2500;
-
-interface UserDoc {
-  id: string;
-  title: Record<Locale, string>;
-  markdown: Record<Locale, string>;
-}
-
-const USER_DOCS: UserDoc[] = [
-  {
-    id: "overview",
-    title: {
-      en: "Game overview",
-      ru: "Об игре",
-    },
-    markdown: {
-      en: enOverviewDoc,
-      ru: ruOverviewDoc,
-    },
-  },
-  {
-    id: "game-loop",
-    title: {
-      en: "Game loop",
-      ru: "Игровой процесс",
-    },
-    markdown: {
-      en: enGameLoopDoc,
-      ru: ruGameLoopDoc,
-    },
-  },
-  {
-    id: "roles",
-    title: {
-      en: "Team roles",
-      ru: "Роли в команде",
-    },
-    markdown: {
-      en: enRolesDoc,
-      ru: ruRolesDoc,
-    },
-  },
-  {
-    id: "tasks-quality",
-    title: {
-      en: "Quality and risk",
-      ru: "Качество и риски",
-    },
-    markdown: {
-      en: enTasksQualityDoc,
-      ru: ruTasksQualityDoc,
-    },
-  },
-];
 
 let backendFlushInFlight = false;
 let backendFlushAgain = false;
@@ -865,41 +806,16 @@ export function App() {
 
   if (screen === "menu") {
     return (
-      <main className="shell menu-shell">
-        <section className="main-menu">
-          <div className="menu-title">
-            <strong>Don&apos;t Touch Prod</strong>
-            <span>{hasResumeCard ? t(locale, "menu.pauseSubtitle") : t(locale, "menu.subtitle")}</span>
-          </div>
-          <div className="menu-settings">
-            <span>{t(locale, "menu.language")}</span>
-            <LanguageSwitch locale={locale} onChange={setLocale} />
-          </div>
-          <button className="rtfm-button" onClick={openDocs} type="button">
-            <strong>{t(locale, "menu.rtfm")}</strong>
-            <span>{t(locale, "menu.rtfmDescription")}</span>
-          </button>
-          {hasResumeCard ? (
-            <ResumeCard game={game} locale={locale} sessionId={sessionIdRef.current} />
-          ) : null}
-          <div className="menu-actions">
-            {hasResumeCard ? (
-              <>
-                <button className="start-button" onClick={continueRun} type="button">
-                  {t(locale, "menu.continue")}
-                </button>
-                <button className="ghost-button" onClick={() => startRun("menu_new_run_clicked")} type="button">
-                  {t(locale, "menu.newRun")}
-                </button>
-              </>
-            ) : (
-              <button className="start-button" onClick={() => startRun()} type="button">
-                {t(locale, "menu.start")}
-              </button>
-            )}
-          </div>
-        </section>
-      </main>
+      <MenuScreen
+        game={game}
+        hasResumeCard={hasResumeCard}
+        locale={locale}
+        onContinueRun={continueRun}
+        onLocaleChange={setLocale}
+        onOpenDocs={openDocs}
+        onStartRun={startRun}
+        sessionId={sessionIdRef.current}
+      />
     );
   }
 
@@ -1171,188 +1087,6 @@ export function App() {
         </section>
       )}
     </main>
-  );
-}
-
-function LanguageSwitch({
-  locale,
-  onChange,
-}: {
-  locale: Locale;
-  onChange: (locale: Locale) => void;
-}) {
-  return (
-    <div className="language-switch" aria-label={t(locale, "header.language")}>
-      {(["en", "ru"] as Locale[]).map((candidate) => (
-        <button
-          className={candidate === locale ? "active" : ""}
-          key={candidate}
-          onClick={() => onChange(candidate)}
-          type="button"
-        >
-          {LOCALE_LABELS[candidate]}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function DocsScreen({
-  docs,
-  locale,
-  onBack,
-  onLocaleChange,
-  onSelectDoc,
-  selectedDoc,
-}: {
-  docs: UserDoc[];
-  locale: Locale;
-  onBack: () => void;
-  onLocaleChange: (locale: Locale) => void;
-  onSelectDoc: (docId: string) => void;
-  selectedDoc: UserDoc;
-}) {
-  return (
-    <main className="shell docs-shell">
-      <section className="docs-frame">
-        <header className="docs-header">
-          <div>
-            <strong>{t(locale, "docs.title")}</strong>
-            <span>{t(locale, "docs.subtitle")}</span>
-          </div>
-          <div className="docs-actions">
-            <LanguageSwitch locale={locale} onChange={onLocaleChange} />
-            <button className="ghost-button" onClick={onBack} type="button">
-              {t(locale, "docs.back")}
-            </button>
-          </div>
-        </header>
-        <div className="docs-body">
-          <nav className="docs-nav" aria-label={t(locale, "docs.nav")}>
-            {docs.map((doc) => (
-              <button
-                className={doc.id === selectedDoc.id ? "active" : ""}
-                key={doc.id}
-                onClick={() => onSelectDoc(doc.id)}
-                type="button"
-              >
-                {doc.title[locale]}
-              </button>
-            ))}
-          </nav>
-          <article className="docs-article">
-            <MarkdownArticle markdown={selectedDoc.markdown[locale]} />
-          </article>
-        </div>
-      </section>
-    </main>
-  );
-}
-
-function MarkdownArticle({ markdown }: { markdown: string }) {
-  const elements: ReactElement[] = [];
-  let listItems: string[] = [];
-  let paragraph: string[] = [];
-
-  function flushList() {
-    if (listItems.length === 0) return;
-    const key = `list-${elements.length}`;
-    elements.push(
-      <ul key={key}>
-        {listItems.map((item, index) => (
-          <li key={`${key}-${index}`}>{item}</li>
-        ))}
-      </ul>,
-    );
-    listItems = [];
-  }
-
-  function flushParagraph() {
-    if (paragraph.length === 0) return;
-    elements.push(<p key={`p-${elements.length}`}>{paragraph.join(" ")}</p>);
-    paragraph = [];
-  }
-
-  for (const rawLine of markdown.split("\n")) {
-    const line = rawLine.trim();
-    if (!line) {
-      flushParagraph();
-      flushList();
-      continue;
-    }
-    if (line.startsWith("- ")) {
-      flushParagraph();
-      listItems.push(line.slice(2));
-      continue;
-    }
-    flushList();
-    if (line.startsWith("### ")) {
-      flushParagraph();
-      elements.push(<h3 key={`h3-${elements.length}`}>{line.slice(4)}</h3>);
-    } else if (line.startsWith("## ")) {
-      flushParagraph();
-      elements.push(<h2 key={`h2-${elements.length}`}>{line.slice(3)}</h2>);
-    } else if (line.startsWith("# ")) {
-      flushParagraph();
-      elements.push(<h1 key={`h1-${elements.length}`}>{line.slice(2)}</h1>);
-    } else {
-      paragraph.push(line);
-    }
-  }
-  flushParagraph();
-  flushList();
-
-  return <>{elements}</>;
-}
-
-function ResumeCard({
-  game,
-  locale,
-  sessionId,
-}: {
-  game: RtGameState;
-  locale: Locale;
-  sessionId: string;
-}) {
-  const report = game.morningReport;
-  const quarter = report?.quarter ?? game.quarter;
-  const day = report?.day ?? game.day;
-  const releaseLine = report
-    ? t(locale, "header.morningLine", { count: report.consequences.length })
-    : t(locale, "header.releaseLine", {
-      time: formatReleaseCountdown(game),
-      done: game.board.done.length,
-    });
-  const statusLabel =
-    game.status !== "running"
-      ? t(locale, "header.stopped")
-      : report
-        ? t(locale, "status.morning")
-        : game.paused
-          ? t(locale, "status.paused")
-          : t(locale, "status.running");
-
-  return (
-    <section className="resume-card">
-      <header>
-        <span>{t(locale, "menu.savedRun")}</span>
-        <strong>{t(locale, "header.day", { quarter, day, daysPerQuarter: game.daysPerQuarter })}</strong>
-      </header>
-      <div className="resume-facts">
-        <span>{statusLabel}</span>
-        <span>{t(locale, "header.goal", {
-          value: game.quarterValue,
-          goal: game.quarterGoal.value,
-          trust: game.resources.trust,
-          trustGoal: game.quarterGoal.trust,
-        })}</span>
-        <span>{releaseLine}</span>
-        <span>{t(locale, "header.clients", { value: game.resources.clients })}</span>
-        <span>{t(locale, "header.debt", { value: game.resources.debt })}</span>
-        <span>{t(locale, "header.budget", { value: game.resources.budget })}</span>
-        <span title={sessionId}>{t(locale, "menu.session", { value: formatSessionId(sessionId) })}</span>
-      </div>
-    </section>
   );
 }
 
@@ -2429,15 +2163,6 @@ function subtaskRoleLabel(role: RtSubtask["role"], locale: Locale): string {
   return labelRole(locale, role);
 }
 
-function formatReleaseCountdown(game: RtGameState): string {
-  const minutesUntil = Math.max(0, RELEASE_TRAIN_GAME_MINUTE - game.gameMinuteOfDay);
-  const roundedMinutes = Math.max(0, Math.ceil(minutesUntil));
-  const hours = Math.floor(roundedMinutes / 60);
-  const minutes = roundedMinutes % 60;
-  if (hours <= 0) return `${minutes}m`;
-  return `${hours}h ${String(minutes).padStart(2, "0")}m`;
-}
-
 function postDebugSnapshot(game: RtGameState, sessionId?: string) {
   const snapshot = buildDebugSnapshot(game, sessionId);
   const body = JSON.stringify(snapshot, null, 2);
@@ -2512,13 +2237,6 @@ function buildBackendSnapshot(snapshot: ReturnType<typeof buildDebugSnapshot>) {
 
 function copyDebugSnapshot(game: RtGameState) {
   navigator.clipboard?.writeText(JSON.stringify(buildDebugSnapshot(game), null, 2));
-}
-
-function formatSessionId(sessionId: string): string {
-  const [prefix, timestamp, ...rest] = sessionId.split("-");
-  const suffix = rest.join("-").slice(-8);
-  if (!prefix || !timestamp || !suffix) return sessionId;
-  return `${prefix}-${timestamp}-${suffix}`;
 }
 
 function createSessionId(): string {
