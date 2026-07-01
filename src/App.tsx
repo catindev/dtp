@@ -59,15 +59,13 @@ import { formatReleaseCountdown, formatSessionId } from "./formatting";
 import {
   buildDebugSnapshot,
   copyDebugSnapshot,
-  createLogEntry,
   createSessionId,
   gameEventKey,
   logAction,
-  postBackendLog,
-  type FrontendLogEntry,
 } from "./frontendLogging";
 import { useTaskFeedback } from "./hooks/useTaskFeedback";
 import { useGameDragAndDrop } from "./hooks/useGameDragAndDrop";
+import { useGameEventEffects } from "./hooks/useGameEventEffects";
 import {
   useAutosaveRun,
   useBackendLogPump,
@@ -167,6 +165,15 @@ export function App() {
   useDebugSnapshotPoster(screen, latestGameRef, sessionIdRef);
   useAutosaveRun(game, screen, latestGameRef, sessionIdRef);
   useStatusDebugSnapshot(game, screen, sessionIdRef);
+  useGameEventEffects({
+    game,
+    screen,
+    initialAutosaveRef,
+    sessionIdRef,
+    loggedEventKeysRef,
+    animatedWorkEventKeysRef,
+    bounceTask,
+  });
 
   useEffect(() => {
     latestGameRef.current = game;
@@ -188,50 +195,6 @@ export function App() {
       return normalizeRealtimeState(draft) ? draft : current;
     });
   }, []);
-
-  useEffect(() => {
-    if (screen !== "game" || initialAutosaveRef.current?.status !== "loaded") return;
-    logAction(sessionIdRef.current, "autosave_restored", {
-      savedAt: initialAutosaveRef.current.save.savedAt,
-      savedCommit: initialAutosaveRef.current.save.appCommit,
-      currentCommit: APP_COMMIT,
-      normalized: initialAutosaveRef.current.normalized,
-    });
-  }, [screen]);
-
-  useEffect(() => {
-    if (screen !== "game") return;
-    const newEntries: FrontendLogEntry[] = [];
-    for (const event of game.log.slice().reverse()) {
-      const key = gameEventKey(event);
-      if (loggedEventKeysRef.current.has(key)) continue;
-      loggedEventKeysRef.current.add(key);
-      newEntries.push(
-        createLogEntry(sessionIdRef.current, "game_event", event.type, {
-          ...event,
-          gameTime: formatGameTime(game),
-          resources: game.resources,
-          status: game.status,
-          lossReason: game.lossReason,
-        }),
-      );
-    }
-    if (newEntries.length > 0) {
-      postBackendLog(newEntries);
-    }
-  }, [game, screen]);
-
-  useEffect(() => {
-    if (screen !== "game") return;
-    for (const event of game.log.slice().reverse()) {
-      if (!isWorkPassDoneEvent(event)) continue;
-      const key = gameEventKey(event);
-      if (animatedWorkEventKeysRef.current.has(key)) continue;
-      animatedWorkEventKeysRef.current.add(key);
-      const taskId = event.title.split(" ")[0];
-      if (game.tasks[taskId]) bounceTask(taskId);
-    }
-  }, [game.log, game.tasks, screen]);
 
   useEffect(() => {
     if (selectedTaskId && !game.tasks[selectedTaskId]) {
@@ -1300,15 +1263,6 @@ function archivedUnfinishedTaskIds(game: RtGameState): string[] {
 
 function taskIdSequence(taskId: string): number {
   return Number(taskId.match(/\d+$/)?.[0] ?? 0);
-}
-
-function isWorkPassDoneEvent(event: RtEvent): boolean {
-  return (
-    event.type === "analysis_done" ||
-    event.type === "subtask_done" ||
-    event.type === "bugfix_done" ||
-    event.type === "qa_done"
-  );
 }
 
 function taskReadyForDone(task: RtTask): boolean {
