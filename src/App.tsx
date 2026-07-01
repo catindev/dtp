@@ -6,19 +6,12 @@ import {
   OUTSOURCE_COST_BY_IMPORTANCE,
   RT_COLUMNS,
   TICK_MS,
-  assignCharacterToTask,
   cancelTaskWork,
-  canAssignCharacterToTask,
-  canMoveRealtimeTask,
   createRealtimeState,
   formatGameTime,
   formatOverdueGameTime,
-  getOutsourceTaskWorkStatus,
-  isWorkColumn,
   lateReleaseReport,
-  moveRealtimeTask,
   normalizeRealtimeState,
-  outsourceTaskWork,
   releaseReadiness,
   startDayAfterMorningReport,
   taskDeadlineRatio,
@@ -28,7 +21,6 @@ import {
   type RtEvent,
   type RtGameState,
   type RtMorningReport,
-  type RtOutsourceStatus,
   type RtQuarterReviewReport,
   type RtReadinessReport,
   type RtRiskReason,
@@ -80,18 +72,13 @@ import {
   type FrontendLogEntry,
 } from "./frontendLogging";
 import { useTaskFeedback } from "./hooks/useTaskFeedback";
+import { useGameDragAndDrop } from "./hooks/useGameDragAndDrop";
 import { USER_DOCS } from "./userdocs";
 import "./styles.css";
 
 type AppScreen = "menu" | "game" | "docs";
 
 type ProdView = "released" | "unfinished";
-
-type ActiveDrag =
-  | { type: "task"; taskId: string }
-  | { type: "character"; characterId: string }
-  | { type: "outsourcing" }
-  | null;
 
 export function App() {
   const initialLocaleRef = useRef<Locale | null>(null);
@@ -146,11 +133,33 @@ export function App() {
   const animatedWorkEventKeysRef = useRef(
     new Set<string>(restoredSave?.game.log.map(gameEventKey) ?? []),
   );
-  const activeDragRef = useRef<ActiveDrag>(null);
   const selectedTask = selectedTaskId ? game.tasks[selectedTaskId] : null;
   const morningReport = game.morningReport;
   const interactionBlocked =
     screen !== "game" || game.paused || game.status !== "running" || Boolean(morningReport);
+  const {
+    beginTaskDrag,
+    beginCharacterDrag,
+    beginOutsourceDrag,
+    allowDrop,
+    dropOnColumn,
+    dropOnTask,
+    finishDrag,
+    resetDrag,
+  } = useGameDragAndDrop({
+    game,
+    interactionBlocked,
+    isGameScreen: screen === "game",
+    locale,
+    morningReportActive: Boolean(morningReport),
+    sessionId: sessionIdRef.current,
+    mutate,
+    setSelectedTaskId,
+    flashTask,
+    shakeTask,
+    shakeColumn,
+    shakePauseButton,
+  });
 
   useEffect(() => {
     flushBackendLogQueue();
@@ -309,7 +318,7 @@ export function App() {
     sessionIdRef.current = sessionId;
     loggedEventKeysRef.current = new Set();
     animatedWorkEventKeysRef.current = new Set();
-    activeDragRef.current = null;
+    resetDrag();
     resetFeedback();
     setGame(next);
     setSelectedTaskId(next.board.backlog[0] ?? null);
@@ -392,229 +401,6 @@ export function App() {
     });
   }
 
-  function beginTaskDrag(event: DragEvent<HTMLElement>, task: RtTask) {
-    if (game.paused && screen === "game" && game.status === "running" && !morningReport) {
-      event.preventDefault();
-      shakePauseButton();
-      return;
-    }
-    if (interactionBlocked || task.assignedCharacterId || task.released) {
-      event.preventDefault();
-      return;
-    }
-    activeDragRef.current = { type: "task", taskId: task.id };
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("application/dtp-task", task.id);
-    event.dataTransfer.setData("text/plain", task.id);
-    logAction(sessionIdRef.current, "task_drag_started", {
-      taskId: task.id,
-      fromColumn: task.column,
-      gameTime: formatGameTime(game),
-    });
-  }
-
-  function beginCharacterDrag(event: DragEvent<HTMLElement>, character: RtCharacter) {
-    if (game.paused && screen === "game" && game.status === "running" && !morningReport) {
-      event.preventDefault();
-      shakePauseButton();
-      return;
-    }
-    if (interactionBlocked || character.assignedTaskId || character.exhaustedToday) {
-      event.preventDefault();
-      return;
-    }
-    activeDragRef.current = { type: "character", characterId: character.id };
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("application/dtp-character", character.id);
-    setDragGhost(event, character, locale);
-    logAction(sessionIdRef.current, "character_drag_started", {
-      characterId: character.id,
-      characterName: character.name,
-      role: character.role,
-      gameTime: formatGameTime(game),
-    });
-  }
-
-  function beginOutsourceDrag(event: DragEvent<HTMLElement>) {
-    if (game.paused && screen === "game" && game.status === "running" && !morningReport) {
-      event.preventDefault();
-      shakePauseButton();
-      return;
-    }
-    if (interactionBlocked || game.resources.budget <= 0) {
-      event.preventDefault();
-      return;
-    }
-    activeDragRef.current = { type: "outsourcing" };
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("application/dtp-outsourcing", "outsourcing");
-    event.dataTransfer.setData("text/plain", "outsourcing");
-    logAction(sessionIdRef.current, "outsourcing_drag_started", {
-      budget: game.resources.budget,
-      gameTime: formatGameTime(game),
-    });
-  }
-
-  function allowDrop(event: DragEvent<HTMLElement>) {
-    if (interactionBlocked) return;
-    if (
-      activeDragRef.current ||
-      event.dataTransfer.types.includes("application/dtp-task") ||
-      event.dataTransfer.types.includes("application/dtp-character") ||
-      event.dataTransfer.types.includes("application/dtp-outsourcing")
-    ) {
-      event.preventDefault();
-      event.dataTransfer.dropEffect = "move";
-    }
-  }
-
-  function dropOnColumn(event: DragEvent<HTMLElement>, column: RtColumn) {
-    event.preventDefault();
-    event.stopPropagation();
-    if (interactionBlocked) return;
-    const activeDrag = activeDragRef.current;
-    if (column === "released") {
-      shakeColumn(column);
-      activeDragRef.current = null;
-      return;
-    }
-    const taskId =
-      event.dataTransfer.getData("application/dtp-task") ||
-      (activeDrag?.type === "task" ? activeDrag.taskId : "");
-    if (!taskId) {
-      if (activeDrag) shakeColumn(column);
-      activeDragRef.current = null;
-      return;
-    }
-    moveDroppedTask(taskId, column);
-  }
-
-  function moveDroppedTask(taskId: string, column: RtColumn, rejectTargetTaskId?: string) {
-    const fromColumn = game.tasks[taskId]?.column;
-    const task = game.tasks[taskId];
-    const moveCheck = canMoveRealtimeTask(game, taskId, column);
-
-    if (!moveCheck.allowed) {
-      if (rejectTargetTaskId) {
-        shakeTask(rejectTargetTaskId);
-      } else {
-        shakeColumn(column);
-      }
-      logAction(sessionIdRef.current, "task_drop_rejected", {
-        taskId,
-        fromColumn,
-        toColumn: column,
-        reason: moveCheck.reason,
-        gameTime: formatGameTime(game),
-      });
-      activeDragRef.current = null;
-      return;
-    }
-
-    mutate((draft) => {
-      const moved = moveRealtimeTask(draft, taskId, column);
-      if (moved) setSelectedTaskId(taskId);
-    });
-    logAction(sessionIdRef.current, "task_dropped_on_column", {
-      taskId,
-      fromColumn,
-      toColumn: column,
-      ...(task && column === "done"
-        ? { releaseReadiness: releaseReadiness(task) }
-        : {}),
-      gameTime: formatGameTime(game),
-    });
-    flashTask(taskId);
-    activeDragRef.current = null;
-  }
-
-  function dropOnTask(event: DragEvent<HTMLElement>, task: RtTask) {
-    event.preventDefault();
-    event.stopPropagation();
-    if (interactionBlocked) return;
-    const activeDrag = activeDragRef.current;
-    const draggedTaskId =
-      event.dataTransfer.getData("application/dtp-task") ||
-      (activeDrag?.type === "task" ? activeDrag.taskId : "");
-    if (draggedTaskId) {
-      moveDroppedTask(draggedTaskId, task.column, task.id);
-      return;
-    }
-
-    const outsourcePayload =
-      event.dataTransfer.getData("application/dtp-outsourcing") ||
-      (activeDrag?.type === "outsourcing" ? "outsourcing" : "");
-    if (outsourcePayload) {
-      const outsourceStatus = getOutsourceTaskWorkStatus(game, task.id);
-      const canOutsource = outsourceStatus.allowed;
-      if (canOutsource) {
-        mutate((draft) => {
-          if (outsourceTaskWork(draft, task.id)) {
-            setSelectedTaskId(task.id);
-          }
-        });
-      } else {
-        shakeTask(task.id);
-      }
-      logAction(
-        sessionIdRef.current,
-        canOutsource ? "outsourcing_dropped_on_task" : "outsourcing_drop_rejected",
-        {
-          taskId: task.id,
-          taskTitle: task.title,
-          column: task.column,
-          budget: game.resources.budget,
-          reason: outsourceStatusText(outsourceStatus, locale),
-          blocker: outsourceStatus.reason,
-          neededBudget: outsourceStatus.neededBudget,
-          subtaskRole: outsourceStatus.subtask?.role,
-          subtaskImportance: outsourceStatus.subtask?.importance,
-          gameTime: formatGameTime(game),
-        },
-      );
-      if (canOutsource) flashTask(task.id);
-      activeDragRef.current = null;
-      return;
-    }
-
-    const characterId =
-      event.dataTransfer.getData("application/dtp-character") ||
-      (activeDrag?.type === "character" ? activeDrag.characterId : "");
-    if (!characterId) return;
-    const character = game.characters[characterId];
-    const canAssign = canAssignCharacterToTask(game, characterId, task.id);
-
-    if (canAssign) {
-      mutate((draft) => {
-        if (assignCharacterToTask(draft, characterId, task.id)) {
-          setSelectedTaskId(task.id);
-        }
-      });
-    } else {
-      shakeTask(task.id);
-    }
-    logAction(
-      sessionIdRef.current,
-      canAssign ? "character_dropped_on_task" : "character_drop_rejected",
-      {
-        characterId,
-        characterName: character?.name,
-        role: character?.role,
-        taskId: task.id,
-        taskTitle: task.title,
-        column: task.column,
-        reason: canAssign ? "assigned" : characterDropRejectReason(characterId, task),
-        gameTime: formatGameTime(game),
-      },
-    );
-    if (canAssign) flashTask(task.id);
-    activeDragRef.current = null;
-  }
-
-  function finishDrag() {
-    activeDragRef.current = null;
-  }
-
   function cancelSelectedTask() {
     if (!selectedTask?.assignedCharacterId) return;
     const character = game.characters[selectedTask.assignedCharacterId];
@@ -655,16 +441,6 @@ export function App() {
       fromTaskId: selectedTaskId,
       gameTime: formatGameTime(game),
     });
-  }
-
-  function characterDropRejectReason(characterId: string, task: RtTask): string {
-    const character = game.characters[characterId];
-    if (!character) return "character missing";
-    if (character.assignedTaskId) return "character already busy";
-    if (character.exhaustedToday) return "character exhausted";
-    if (!isWorkColumn(task.column)) return "wrong column";
-    if (task.assignedCharacterId || task.outsourcing) return "task already in work";
-    return "no matching visible work";
   }
 
   const selectedAssigned = selectedTask?.assignedCharacterId
@@ -1649,35 +1425,6 @@ function effectTone(effect: string): "positive" | "negative" | "neutral" {
   return "neutral";
 }
 
-function outsourceStatusText(status: RtOutsourceStatus, locale: Locale): string {
-  const subtask = status.subtask;
-  const work = subtask
-    ? `${subtaskRoleLabel(subtask.role, locale)} ${labelImportance(locale, subtask.importance)}`
-    : localizeText("known work", locale);
-  switch (status.reason) {
-    case "ready":
-      return locale === "ru"
-        ? `Можно взять ${work} за Budget ${status.cost}.`
-        : `Can take ${work} for Budget ${status.cost}.`;
-    case "insufficient_budget":
-      return locale === "ru"
-        ? `Нужно Budget ${status.neededBudget} для ${work}; сейчас ${status.currentBudget}.`
-        : `Need Budget ${status.neededBudget} for ${work}; current ${status.currentBudget}.`;
-    case "needs_analysis":
-      return localizeText("Needs analysis first: no visible open work.", locale);
-    case "no_open_work":
-      return localizeText("No visible open work for outsourcing.", locale);
-    case "task_busy":
-      return localizeText("Task is already in work.", locale);
-    case "task_released":
-      return localizeText("Task is already released.", locale);
-    case "wrong_column":
-      return localizeText("Move task to In Progress first.", locale);
-    case "task_missing":
-      return localizeText("Task is no longer on the board.", locale);
-  }
-}
-
 function releaseEffectsForTask(
   task: RtTask,
   releaseEvent: RtEvent | undefined,
@@ -1891,15 +1638,6 @@ function DebugPanel({
       </button>
     </section>
   );
-}
-
-function setDragGhost(event: DragEvent<HTMLElement>, character: RtCharacter, locale: Locale) {
-  const ghost = document.createElement("div");
-  ghost.className = "drag-ghost";
-  ghost.textContent = locale === "ru" ? `${character.name} -> задача` : `${character.name} -> task`;
-  document.body.appendChild(ghost);
-  event.dataTransfer.setDragImage(ghost, 24, 18);
-  window.setTimeout(() => document.body.removeChild(ghost), 0);
 }
 
 function currentWorkLabel(task: RtTask, locale: Locale): string {
