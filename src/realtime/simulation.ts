@@ -14,8 +14,6 @@ import {
   GAME_MINUTES_PER_REAL_SECOND,
   LOW_WORK_SPAWN_MAX_MS,
   LOW_WORK_SPAWN_MIN_MS,
-  NIGHT_STAMINA_MIN_RECOVERY,
-  NIGHT_STAMINA_RECOVERY_RATIO,
   RELEASE_TRAIN_GAME_MINUTE,
   SPAWN_INTERVAL_MAX_MS,
   SPAWN_INTERVAL_MIN_MS,
@@ -33,6 +31,9 @@ import {
   CHARACTER_NAMES,
 } from "../engine/catalog";
 import { clamp } from "../engine/math";
+import {
+  checkRunState as checkRunStateInternal,
+} from "../engine/loss";
 import {
   randomBetween,
 } from "../engine/rng";
@@ -69,6 +70,12 @@ import {
   releaseReadiness,
 } from "../engine/readiness";
 import {
+  advanceDay as advanceDayInternal,
+  crossedReleaseTrain,
+  updateShock,
+  updateTaskTimers,
+} from "../engine/time";
+import {
   RT_COLUMNS,
   type RtBlastRadius,
   type RtCharacter,
@@ -79,7 +86,6 @@ import {
   type RtFalloutWarning,
   type RtGameState,
   type RtLateReleaseReport,
-  type RtLossReport,
   type RtMorningReport,
   type RtMoveBlockReason,
   type RtMoveCheck,
@@ -538,7 +544,7 @@ export function tickRealtime(state: RtGameState, tickMs = TICK_MS): void {
 
   if (crossedReleaseTrain(previousGameMinuteOfDay, state.gameMinuteOfDay)) {
     openMorningReport(state);
-    checkRunState(state);
+    checkRunStateInternal(state, (event) => pushEvent(state, event));
     return;
   }
 
@@ -547,7 +553,7 @@ export function tickRealtime(state: RtGameState, tickMs = TICK_MS): void {
   updateOutsourcing(state, tickMs, (event) => pushEvent(state, event));
   updateAssignments(state, tickMs, (event) => pushEvent(state, event));
   updateSpawner(state, tickMs);
-  checkRunState(state);
+  checkRunStateInternal(state, (event) => pushEvent(state, event));
 }
 
 export function startDayAfterMorningReport(state: RtGameState): boolean {
@@ -556,7 +562,7 @@ export function startDayAfterMorningReport(state: RtGameState): boolean {
 
   state.morningReport = null;
   state.paused = false;
-  checkRunState(state);
+  checkRunStateInternal(state, (event) => pushEvent(state, event));
   return true;
 }
 
@@ -622,7 +628,7 @@ function openMorningReport(state: RtGameState): void {
   const resourceAfterRelease = copyResources(state.resources);
   const releaseDelta = diffResources(resourceBefore, resourceAfterRelease);
   const missedTaskIds = collectMissedTaskIds(state);
-  const quarterReview = advanceDay(state);
+  const quarterReview = advanceDayInternal(state, (event) => pushEvent(state, event));
   const resourceAfterQuarter = copyResources(state.resources);
   state.gameMinuteOfDay = GAME_DAY_START_MINUTE;
   const consequences = generateMorningConsequencesInternal(state, shippedTaskIds, missedTaskIds, {
@@ -793,21 +799,6 @@ function addTask(state: RtGameState, task: RtTask, backlogLimit = BACKLOG_LIMIT)
   return true;
 }
 
-function updateTaskTimers(state: RtGameState, tickMs: number): void {
-  for (const task of Object.values(state.tasks)) {
-    if (task.released || task.column === "done") continue;
-    if (task.deadlineMs > 0) {
-      const nextDeadlineMs = task.deadlineMs - tickMs;
-      if (nextDeadlineMs < 0) {
-        task.overdueMs += Math.abs(nextDeadlineMs);
-      }
-      task.deadlineMs = Math.max(0, nextDeadlineMs);
-    } else {
-      task.overdueMs += tickMs;
-    }
-  }
-}
-
 function updateSpawner(state: RtGameState, tickMs: number): void {
   if (state.board.backlog.length >= BACKLOG_LIMIT) return;
 
@@ -839,213 +830,8 @@ function updateSpawner(state: RtGameState, tickMs: number): void {
   }
 }
 
-function updateShock(state: RtGameState, gameMinutes: number): void {
-  for (const character of Object.values(state.characters)) {
-    character.shockGameMinutes = Math.max(0, character.shockGameMinutes - gameMinutes);
-    if (!character.assignedTaskId && !character.exhaustedToday) {
-      character.stamina = clamp(character.stamina + gameMinutes * 0.12, 0, 100);
-    }
-  }
-}
-
-function crossedReleaseTrain(previousMinute: number, nextMinute: number): boolean {
-  return previousMinute < RELEASE_TRAIN_GAME_MINUTE && nextMinute >= RELEASE_TRAIN_GAME_MINUTE;
-}
-
-function advanceDay(state: RtGameState): RtQuarterReviewReport | null {
-  restTeamForNewDay(state);
-  state.day += 1;
-  state.dayInQuarter += 1;
-  pushEvent(state, {
-    type: "day_started",
-    title: `Day ${state.day}`,
-    body: "A new production day starts. The team had overnight rest.",
-    effects: ["stamina restored overnight", "context shock cleared", "clock reset to 08:00"],
-  });
-
-  if (state.dayInQuarter > state.daysPerQuarter) {
-    return resolveQuarter(state);
-  }
-  return null;
-}
-
-function restTeamForNewDay(state: RtGameState): void {
-  for (const character of Object.values(state.characters)) {
-    const missingStamina = 100 - character.stamina;
-    const overnightRecovery = Math.max(
-      NIGHT_STAMINA_MIN_RECOVERY,
-      missingStamina * NIGHT_STAMINA_RECOVERY_RATIO,
-    );
-    character.stamina = clamp(character.stamina + overnightRecovery, 0, 100);
-    character.shockGameMinutes = 0;
-    character.exhaustedToday = false;
-  }
-}
-
-function resolveQuarter(state: RtGameState): RtQuarterReviewReport {
-  const reviewedQuarter = state.quarter;
-  const valueActual = state.quarterValue;
-  const valueTarget = state.quarterGoal.value;
-  const trustActual = state.resources.trust;
-  const trustTarget = state.quarterGoal.trust;
-  const valueMet = valueActual >= valueTarget;
-  const trustMet = trustActual >= trustTarget;
-  const resourceBefore = copyResources(state.resources);
-  const hitGoal =
-    valueMet &&
-    trustMet;
-  if (hitGoal) {
-    state.resources.budget += state.quarterGoal.rewardBudget;
-    state.resources.processBoost = clamp(state.resources.processBoost + 5, 0, 25);
-  } else {
-    state.resources.trust = clamp(state.resources.trust - 8, 0, 100);
-  }
-  const resourceAfter = copyResources(state.resources);
-  const resourceDelta = diffResources(resourceBefore, resourceAfter);
-  const effects = morningReportEffects(resourceDelta);
-
-  pushEvent(state, {
-    type: "quarter_review",
-    title: `Quarter ${reviewedQuarter} review`,
-    body: hitGoal ? "Business goals were met." : "Business goals were missed.",
-    effects,
-  });
-
-  const report: RtQuarterReviewReport = {
-    quarter: reviewedQuarter,
-    hitGoal,
-    valueActual,
-    valueTarget,
-    valueMet,
-    trustActual,
-    trustTarget,
-    trustMet,
-    resourceBefore,
-    resourceAfter,
-    resourceDelta,
-    effects,
-  };
-
-  state.quarter += 1;
-  state.dayInQuarter = 1;
-  state.quarterValue = 0;
-  state.quarterGoal = {
-    value: Math.round(state.quarterGoal.value * 1.18 + 20),
-    trust: Math.min(70, state.quarterGoal.trust + 3),
-    rewardBudget: state.quarterGoal.rewardBudget,
-  };
-
-  return report;
-}
-
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values));
-}
-
-function checkRunState(state: RtGameState): void {
-  if (state.resources.trust <= 0) {
-    loseRun(state, "business trust reached 0", "trust");
-  }
-  if (state.resources.clients <= 0) {
-    loseRun(state, "clients left the product", "clients");
-  }
-  if (state.resources.debt >= 100) {
-    loseRun(state, "technical debt reached 100", "debt");
-  }
-}
-
-function loseRun(
-  state: RtGameState,
-  reason: string,
-  primaryMetric: RtLossReport["primaryMetric"],
-): void {
-  if (state.status === "lost") return;
-  state.status = "lost";
-  state.lossReason = reason;
-  state.lossReport = buildLossReport(state, reason, primaryMetric);
-  pushEvent(state, {
-    type: "run_lost",
-    title: "Run lost",
-    body: state.lossReport.explanation,
-    effects: [
-      `trust ${state.resources.trust}`,
-      `clients ${state.resources.clients}`,
-      `debt ${state.resources.debt}`,
-    ],
-  });
-}
-
-function buildLossReport(
-  state: RtGameState,
-  reason: string,
-  primaryMetric: RtLossReport["primaryMetric"],
-): RtLossReport {
-  const lastMissedTasks = state.log
-    .filter(
-      (event) =>
-        event.type === "missed_task_resolved" ||
-        event.type === "missed_minor_hit" ||
-        event.type === "missed_tail_blocked",
-    )
-    .slice(0, 5)
-    .map((event) => ({
-      at: event.at,
-      title: event.title,
-      effects: event.effects,
-    }));
-  const lastBadReleases = state.log
-    .filter(
-      (event) =>
-        event.type === "release" &&
-        event.effects.some((effect) => effect.startsWith("trust -") || effect.startsWith("clients -")),
-    )
-    .slice(0, 5)
-    .map((event) => ({
-      at: event.at,
-      title: event.title,
-      effects: event.effects,
-    }));
-  const activePressure = Object.values(state.tasks)
-    .filter((task) => !task.released)
-    .sort((a, b) => a.deadlineMs - b.deadlineMs)
-    .slice(0, 6)
-    .map((task) => ({
-      id: task.id,
-      title: task.title,
-      column: task.column,
-      deadlineMs: Math.round(task.deadlineMs),
-      assignedCharacterId: task.assignedCharacterId,
-    }));
-
-  const headline =
-    primaryMetric === "trust"
-      ? "Business trust hit zero."
-      : primaryMetric === "clients"
-        ? "Customers left the product."
-        : "Technical debt overwhelmed the product.";
-  const badReleaseCount = lastBadReleases.length;
-  const explanation =
-    primaryMetric === "trust"
-      ? `Trust fell to 0. The latest run had ${badReleaseCount} recent release(s) that hurt trust or clients.`
-      : primaryMetric === "clients"
-        ? `Clients fell to 0. Recent low-quality releases and missed work made customers leave.`
-        : `Debt reached 100. Recent releases shipped with too much risk, bugs, or unfinished work.`;
-  const suggestion =
-    badReleaseCount > 0
-      ? "Do more Analysis, assign QA in To Do, and fix bugfix subtasks before moving cards to Done."
-      : "Watch the deadline bars. Releasing late or low-quality work will drain trust.";
-
-  return {
-    reason,
-    headline,
-    explanation,
-    primaryMetric,
-    resourceSnapshot: { ...state.resources },
-    lastMissedTasks,
-    lastBadReleases,
-    activePressure,
-    suggestion,
-  };
 }
 
 function randomSpawnInterval(state: RtGameState): number {
