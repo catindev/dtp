@@ -401,20 +401,27 @@ export function App() {
 
   function togglePause() {
     if (game.morningReport) return;
-    logAction(sessionIdRef.current, "pause_menu_opened", {
+    const next = game.status === "running" ? { ...game, paused: !game.paused } : game;
+    latestGameRef.current = next;
+    setGame(next);
+    saveRun(next, sessionIdRef.current);
+    logAction(sessionIdRef.current, game.paused ? "resume_clicked" : "pause_clicked", {
       gameTime: formatGameTime(game),
       status: game.status,
     });
-    const next = game.status === "running" ? { ...game, paused: true } : game;
+  }
+
+  function openMenu() {
+    const next = game.status === "running" && !game.morningReport ? { ...game, paused: true } : game;
     latestGameRef.current = next;
     setGame(next);
     setHasResumeCard(true);
     setScreen("menu");
     saveRun(next, sessionIdRef.current);
-  }
-
-  function newRun() {
-    startRun("new_run_clicked");
+    logAction(sessionIdRef.current, "menu_opened", {
+      gameTime: formatGameTime(game),
+      status: game.status,
+    });
   }
 
   function continueRun() {
@@ -880,14 +887,11 @@ export function App() {
               <button className="start-button" onClick={continueRun} type="button">
                 {t(locale, "menu.continue")}
               </button>
-            ) : null}
-            <button
-              className={hasResumeCard ? "ghost-button menu-new-run" : "start-button"}
-              onClick={() => startRun(hasResumeCard ? "menu_new_run_clicked" : "start_run_clicked")}
-              type="button"
-            >
-              {hasResumeCard ? t(locale, "menu.newRun") : t(locale, "menu.start")}
-            </button>
+            ) : (
+              <button className="start-button" onClick={() => startRun()} type="button">
+                {t(locale, "menu.start")}
+              </button>
+            )}
           </div>
         </section>
       </main>
@@ -957,10 +961,12 @@ export function App() {
               ? t(locale, "header.stopped")
               : morningReport
                 ? t(locale, "header.paused")
-                : t(locale, "header.pause")}
+                : game.paused
+                  ? t(locale, "header.resume")
+                  : t(locale, "header.pause")}
           </button>
-          <button className="ghost-button" onClick={newRun} type="button">
-            {t(locale, "header.newRun")}
+          <button className="ghost-button" onClick={openMenu} type="button">
+            {t(locale, "header.menu")}
           </button>
         </div>
       </header>

@@ -100,10 +100,6 @@ button {
   flex: 1;
 }
 
-.menu-new-run {
-  min-height: 44px;
-}
-
 .resume-card {
   background: #f8f8f4;
   border: 1px solid #dfdfd8;
