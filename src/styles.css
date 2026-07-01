@@ -230,6 +230,10 @@ button {
   gap: 8px;
 }
 
+.header-actions .language-switch {
+  margin-right: 18px;
+}
+
 .pause-button,
 .ghost-button,
 .cancel-button {

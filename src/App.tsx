@@ -718,9 +718,6 @@ export function App() {
   const clockText = morningReport ? "08:00" : formatGameTime(game);
   const displayedDay = morningReport?.day ?? game.day;
   const displayedQuarter = morningReport?.quarter ?? game.quarter;
-  const quarterValueDelta = Math.max(0, game.quarterGoal.value - game.quarterValue);
-  const quarterTrustDelta = Math.max(0, game.quarterGoal.trust - game.resources.trust);
-  const quarterGoalText = quarterGoalProgressText(locale, quarterValueDelta, quarterTrustDelta);
   const quarterReviewText = quarterReviewLabel(locale, game);
 
   if (screen === "menu") {
@@ -771,7 +768,6 @@ export function App() {
               trustGoal: game.quarterGoal.trust,
             })}
           </span>
-          <span>{quarterGoalText}</span>
           <span>
             {morningReport
               ? t(locale, "header.morningLine", { count: morningReport.consequences.length })
@@ -1028,19 +1024,6 @@ function quarterReviewLabel(locale: Locale, game: RtGameState): string {
   const daysLeft = Math.max(0, game.daysPerQuarter - game.dayInQuarter);
   if (daysLeft === 0) return t(locale, "header.quarterReviewTomorrow");
   return t(locale, "header.quarterReviewInDays", { days: daysLeft });
-}
-
-function quarterGoalProgressText(
-  locale: Locale,
-  valueDelta: number,
-  trustDelta: number,
-): string {
-  if (valueDelta === 0 && trustDelta === 0) return t(locale, "header.goalMet");
-  if (valueDelta > 0 && trustDelta > 0) {
-    return t(locale, "header.needValueAndTrust", { value: valueDelta, trust: trustDelta });
-  }
-  if (valueDelta > 0) return t(locale, "header.needValue", { value: valueDelta });
-  return t(locale, "header.needTrust", { value: trustDelta });
 }
 
 function columnLabel(locale: Locale, column: RtColumn): string {
@@ -1365,11 +1348,7 @@ function TaskCard({
     task.stageComplete && task.column === "inProgress" && !task.assignedCharacterId && !task.released;
   const readyForDone = needsAttention && taskReadyForDone(task);
   const neededRoles = taskNeededRoleChips(task, locale);
-  const cardStatus = task.released
-    ? t(locale, "task.released")
-    : task.column === "done"
-      ? t(locale, "task.ships")
-      : null;
+  const cardStatus = task.released ? t(locale, "task.released") : null;
   const readinessClass = taskCardReadinessClass(task, readiness, readyForDone);
   const title = localizeTaskName(task.title, locale);
 
