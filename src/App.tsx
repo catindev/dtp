@@ -7,11 +7,7 @@ import { MenuScreen } from "./components/MenuScreen";
 import { MorningReportPage } from "./components/MorningReportPage";
 import { TeamPanel } from "./components/TeamPanel";
 import { TaskInspector } from "./components/TaskInspector";
-import {
-  formatGameTime,
-  normalizeRealtimeState,
-  type RtGameState,
-} from "./realtime/simulation";
+import { type RtGameState } from "./realtime/simulation";
 import {
   localizeLossExplanation,
   localizeLossHeadline,
@@ -24,6 +20,7 @@ import { useGameDragAndDrop } from "./hooks/useGameDragAndDrop";
 import { useGameEventEffects } from "./hooks/useGameEventEffects";
 import { initialSelectedTaskId, useGameActions } from "./hooks/useGameActions";
 import { useGameBoot } from "./hooks/useGameBoot";
+import { useGameMutation } from "./hooks/useGameMutation";
 import { useLocaleGameSync } from "./hooks/useLocaleSync";
 import {
   useAutosaveRun,
@@ -80,6 +77,7 @@ export function App() {
   const morningReport = game.morningReport;
   const interactionBlocked =
     screen !== "game" || game.paused || game.status !== "running" || Boolean(morningReport);
+  const mutate = useGameMutation(screen, setGame);
   const {
     beginTaskDrag,
     beginCharacterDrag,
@@ -153,23 +151,6 @@ export function App() {
     animatedWorkEventKeysRef,
     bounceTask,
   });
-
-  function mutate(updater: (draft: RtGameState) => void) {
-    setGame((current) => {
-      if (
-        screen !== "game" ||
-        current.paused ||
-        current.status !== "running" ||
-        current.morningReport
-      ) {
-        return current;
-      }
-      const draft = structuredClone(current) as RtGameState;
-      normalizeRealtimeState(draft);
-      updater(draft);
-      return draft;
-    });
-  }
 
   const selectedAssigned = selectedTask?.assignedCharacterId
     ? game.characters[selectedTask.assignedCharacterId]
