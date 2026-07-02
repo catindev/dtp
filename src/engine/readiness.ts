@@ -12,6 +12,22 @@ import {
   LATE_RELEASE_SCORE_PENALTY_MIN,
   LATE_RELEASE_SCORE_PENALTY_PER_VALUE_PERCENT,
   LATE_RELEASE_SCORE_PENALTY_WHEN_ON_TIME,
+  RELEASE_DEADLINE_PRESSURE_RATIO,
+  RELEASE_LOW_CLARITY_THRESHOLD,
+  RELEASE_QA_COVERAGE_THRESHOLD,
+  RELEASE_SCORE_BUG_PENALTY,
+  RELEASE_SCORE_CLARITY_WEIGHT,
+  RELEASE_SCORE_COMPLETED_RATIO_WEIGHT,
+  RELEASE_SCORE_DEADLINE_PRESSURE_PENALTY,
+  RELEASE_SCORE_DEADLINE_PRESSURE_RATIO,
+  RELEASE_SCORE_DEBT_PENALTY_PER_DEBT,
+  RELEASE_SCORE_HIDDEN_OPEN_PENALTY,
+  RELEASE_SCORE_OPEN_CRITICAL_PENALTY,
+  RELEASE_SCORE_OPEN_IMPORTANT_PENALTY,
+  RELEASE_SCORE_QA_WEIGHT,
+  RELEASE_SCORE_QUALITY_WEIGHT,
+  RELEASE_SCORE_WORK_DONE_BONUS,
+  RELEASE_SCORE_WORK_NOT_DONE_PENALTY,
 } from "./balance";
 import { clamp } from "./math";
 import type {
@@ -52,7 +68,7 @@ export function falloutWarningForTask(task: RtTask): RtFalloutWarning | null {
         reasons: ["missed deadline"],
       };
     }
-    if (taskDeadlineRatio(task) <= 0.18) {
+    if (taskDeadlineRatio(task) <= RELEASE_DEADLINE_PRESSURE_RATIO) {
       return {
         level: "possible",
         label: "Can become missed work",
@@ -120,7 +136,7 @@ export function releaseReadiness(task: RtTask): RtReadinessReport {
   const knownImportantOpen = task.subtasks.filter(
     (subtask) => subtask.revealed && subtask.importance === "important" && !subtask.done,
   ).length;
-  const qaCovered = task.testCoverage >= 45;
+  const qaCovered = task.testCoverage >= RELEASE_QA_COVERAGE_THRESHOLD;
   const sreCovered = task.subtasks.some(
     (subtask) => subtask.revealed && subtask.role === "sre" && subtask.done,
   );
@@ -131,8 +147,8 @@ export function releaseReadiness(task: RtTask): RtReadinessReport {
     knownImportantOpen > 0 ? "important_open" : null,
     task.bugs > 0 ? "known_bug" : null,
     !qaCovered ? "no_qa" : null,
-    task.clarity < 55 ? "low_clarity" : null,
-    deadlineRatio <= 0.18 ? "deadline_pressure" : null,
+    task.clarity < RELEASE_LOW_CLARITY_THRESHOLD ? "low_clarity" : null,
+    deadlineRatio <= RELEASE_DEADLINE_PRESSURE_RATIO ? "deadline_pressure" : null,
     task.blastRadius === "high" && !sreCovered ? "blast_radius_uncovered" : null,
     task.changedAfterQa ? "changed_after_qa" : null,
     task.subtasks.some((subtask) => subtask.revealed && subtask.role === "sre") && !sreCovered
@@ -169,11 +185,11 @@ export function releaseScore(state: RtGameState, task: RtTask): number {
   const deadlinePenalty =
     deadlineMsForScore <= 0
       ? lateReleaseScorePenalty(task)
-      : deadlineRatioForScore < 0.2
-        ? 8
+      : deadlineRatioForScore < RELEASE_SCORE_DEADLINE_PRESSURE_RATIO
+        ? RELEASE_SCORE_DEADLINE_PRESSURE_PENALTY
         : 0;
-  const bugPenalty = task.bugs * 12;
-  const debtPenalty = state.resources.debt * 0.12;
+  const bugPenalty = task.bugs * RELEASE_SCORE_BUG_PENALTY;
+  const debtPenalty = state.resources.debt * RELEASE_SCORE_DEBT_PENALTY_PER_DEBT;
   const openCritical = task.subtasks.filter(
     (subtask) => subtask.importance === "critical" && !subtask.done,
   ).length;
@@ -186,14 +202,14 @@ export function releaseScore(state: RtGameState, task: RtTask): number {
       ? 0
       : task.subtasks.filter((subtask) => subtask.done).length / task.subtasks.length;
   const score =
-    task.quality * 0.45 +
-    task.clarity * 0.25 +
-    task.testCoverage * 0.25 +
-    completedRatio * 25 +
-    (task.workDone ? 8 : -18) -
-    openCritical * 22 -
-    openImportant * 9 -
-    hiddenOpen * 10 -
+    task.quality * RELEASE_SCORE_QUALITY_WEIGHT +
+    task.clarity * RELEASE_SCORE_CLARITY_WEIGHT +
+    task.testCoverage * RELEASE_SCORE_QA_WEIGHT +
+    completedRatio * RELEASE_SCORE_COMPLETED_RATIO_WEIGHT +
+    (task.workDone ? RELEASE_SCORE_WORK_DONE_BONUS : -RELEASE_SCORE_WORK_NOT_DONE_PENALTY) -
+    openCritical * RELEASE_SCORE_OPEN_CRITICAL_PENALTY -
+    openImportant * RELEASE_SCORE_OPEN_IMPORTANT_PENALTY -
+    hiddenOpen * RELEASE_SCORE_HIDDEN_OPEN_PENALTY -
     task.offRolePenalty -
     deadlinePenalty -
     bugPenalty -
