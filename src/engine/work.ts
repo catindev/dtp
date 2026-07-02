@@ -4,10 +4,85 @@ import {
   ANALYSIS_SPEED_MULTIPLIER,
   ANALYSIS_STAMINA_DRAIN_BASE,
   OFF_ROLE_STAMINA_DRAIN,
+  WORK_ANALYSIS_CLARITY_GAIN_BASE,
+  WORK_ANALYSIS_CLARITY_GAIN_PER_SKILL,
+  WORK_ANALYSIS_CLARITY_GAIN_RANDOM_MAX,
+  WORK_ANALYSIS_QUALITY_GAIN_RATIO,
+  WORK_ANALYSIS_REVEAL_HIGH_COUNT,
+  WORK_ANALYSIS_REVEAL_HIGH_GAIN,
+  WORK_ANALYSIS_REVEAL_LOW_COUNT,
+  WORK_ANALYSIS_REVEAL_MEDIUM_COUNT,
+  WORK_ANALYSIS_REVEAL_MEDIUM_GAIN,
+  WORK_ASSIGNMENT_CANCEL_PROGRESS_PENALTY,
+  WORK_ASSIGNMENT_CANCEL_SHOCK_MINUTES,
+  WORK_ASSIGNMENT_CANCEL_STAMINA_PENALTY,
+  WORK_ASSIGNMENT_NON_PREFERRED_PENALTY,
+  WORK_ASSIGNMENT_PROGRESS_PENALTY,
+  WORK_ASSIGNMENT_ROLE_MATCH_BONUS,
+  WORK_ASSIGNMENT_ROLE_SCORE_FACTOR,
+  WORK_BASE_SPEED,
+  WORK_BUGFIX_DEFAULT_FIX_COUNT,
+  WORK_BUGFIX_MULTI_FIX_CHANCE,
+  WORK_BUGFIX_MULTI_FIX_COUNT,
+  WORK_BUGFIX_MULTI_FIX_ROLE_THRESHOLD,
+  WORK_BUGFIX_PREFERRED_SKILL_THRESHOLD,
+  WORK_BUGFIX_QUALITY_BASE,
+  WORK_BUGFIX_QUALITY_ROLE_FACTOR,
+  WORK_BURNOUT_DRAIN_BASE,
+  WORK_BURNOUT_OFF_ROLE_DRAIN,
+  WORK_BURNOUT_PRESSURE_DRAIN,
+  WORK_CHANGED_AFTER_QA_COVERAGE_CAP,
+  WORK_CLARITY_FACTOR_BASE,
+  WORK_CLARITY_FACTOR_DIVISOR,
   WORK_COMPLEXITY_STAMINA_DRAIN,
+  WORK_COMPLEXITY_SPEED_FACTOR,
+  WORK_IMPLEMENTATION_MIN_QUALITY_GAIN,
+  WORK_IMPLEMENTATION_QUALITY_CRITICAL,
+  WORK_IMPLEMENTATION_QUALITY_GAIN_DIVISOR,
+  WORK_IMPLEMENTATION_QUALITY_IMPORTANT,
+  WORK_IMPLEMENTATION_QUALITY_OPTIONAL,
+  WORK_IMPORTANCE_WEIGHT_CRITICAL,
+  WORK_IMPORTANCE_WEIGHT_IMPORTANT,
+  WORK_IMPORTANCE_WEIGHT_OPTIONAL,
+  WORK_LOW_STAMINA_BURNOUT_THRESHOLD,
+  WORK_OFF_ROLE_CRITICAL_PENALTY,
+  WORK_OFF_ROLE_DEFAULT_PENALTY,
+  WORK_OFF_ROLE_SKILL_THRESHOLD,
+  WORK_OFF_ROLE_SPEED_FACTOR,
+  WORK_OFF_ROLE_STAMINA_PENALTY,
+  WORK_PREFERRED_STRONG_SKILL_DELTA,
+  WORK_PREFERRED_STRONG_SKILL_THRESHOLD,
   WORK_PRESSURE_STAMINA_DRAIN,
+  WORK_QA_OFF_ROLE_COVERAGE_FACTOR,
+  WORK_QA_SUBTASK_COVERAGE_BASE,
+  WORK_QA_SUBTASK_RANDOM_MAX,
+  WORK_QA_SUBTASK_ROLE_FACTOR,
+  WORK_QA_SUBTASK_SKILL_FACTOR,
+  WORK_QA_TRIAGE_MIN,
+  WORK_QA_TRIAGE_RANDOM_MAX,
+  WORK_QA_TRIAGE_SKILL_DIVISOR,
+  WORK_RAW_QUALITY_CLARITY_FACTOR,
+  WORK_RAW_QUALITY_OFF_ROLE_PENALTY,
+  WORK_RAW_QUALITY_RANDOM_MAX,
+  WORK_RAW_QUALITY_RANDOM_MIN,
+  WORK_RAW_QUALITY_ROLE_FACTOR,
+  WORK_RAW_QUALITY_STAMINA_PENALTY,
+  WORK_SHOCK_SPEED_FACTOR,
+  WORK_SKILL_SPEED_FACTOR,
   WORK_SPEED_MULTIPLIER,
+  WORK_STAMINA_FACTOR_BASE,
+  WORK_STAMINA_FACTOR_DIVISOR,
+  WORK_STAMINA_FACTOR_MAX,
+  WORK_STAMINA_FACTOR_MIN,
   WORK_STAMINA_DRAIN_BASE,
+  WORK_SUBTASK_SPECIALTY_GAIN,
+  WORK_SUBTASK_SPECIALTY_MAX,
+  WORK_SUBTASK_XP_OFF_ROLE,
+  WORK_SUBTASK_XP_ON_ROLE,
+  WORK_SUBTASK_XP_TO_SPECIALTY,
+  WORK_TEST_COVERAGE_BASE,
+  WORK_TEST_COVERAGE_RANDOM_MAX,
+  WORK_TEST_COVERAGE_SKILL_FACTOR,
 } from "./balance";
 import { getOpenTodoSubtasks, taskBusy } from "./board";
 import {
@@ -85,7 +160,7 @@ export function cancelTaskWorkInternal(
     ? task.subtasks.find((candidate) => candidate.id === task.currentSubtaskId)
     : null;
   task.assignedCharacterId = null;
-  task.stageProgress = Math.max(0, task.stageProgress - 8);
+  task.stageProgress = Math.max(0, task.stageProgress - WORK_ASSIGNMENT_CANCEL_PROGRESS_PENALTY);
   if (subtask) subtask.progress = task.stageProgress;
   task.currentSubtaskId = null;
   task.stageComplete = false;
@@ -93,13 +168,24 @@ export function cancelTaskWorkInternal(
 
   if (character) {
     character.assignedTaskId = null;
-    character.stamina = clamp(character.stamina - 12, 0, 100);
-    character.shockGameMinutes = Math.max(character.shockGameMinutes, 20);
+    character.stamina = clamp(
+      character.stamina - WORK_ASSIGNMENT_CANCEL_STAMINA_PENALTY,
+      0,
+      100,
+    );
+    character.shockGameMinutes = Math.max(
+      character.shockGameMinutes,
+      WORK_ASSIGNMENT_CANCEL_SHOCK_MINUTES,
+    );
     emit({
       type: "cancelled",
       title: `${task.id} interrupted`,
       body: `${character.name} was pulled off the task.`,
-      effects: ["stamina -12", "context shock 20m", "stage progress -8"],
+      effects: [
+        `stamina -${WORK_ASSIGNMENT_CANCEL_STAMINA_PENALTY}`,
+        `context shock ${WORK_ASSIGNMENT_CANCEL_SHOCK_MINUTES}m`,
+        `stage progress -${WORK_ASSIGNMENT_CANCEL_PROGRESS_PENALTY}`,
+      ],
     });
   }
   return true;
@@ -124,16 +210,21 @@ export function updateAssignments(
       : null;
     const stage: RtStage = subtask ? "todo" : "analysis";
     const roleFit = subtask ? character.specialty[subtask.role] : character.skill[stage];
-    const offRole = Boolean(subtask && roleFit < 3);
+    const offRole = Boolean(subtask && roleFit < WORK_OFF_ROLE_SKILL_THRESHOLD);
 
-    const clarityFactor = stage === "todo" ? 0.55 + task.clarity / 140 : 1;
-    const staminaFactor = clamp(0.55 + character.stamina / 160, 0.55, 1.15);
-    const shockFactor = character.shockGameMinutes > 0 ? 0.65 : 1;
-    const offRoleFactor = offRole ? 0.62 : 1;
+    const clarityFactor =
+      stage === "todo" ? WORK_CLARITY_FACTOR_BASE + task.clarity / WORK_CLARITY_FACTOR_DIVISOR : 1;
+    const staminaFactor = clamp(
+      WORK_STAMINA_FACTOR_BASE + character.stamina / WORK_STAMINA_FACTOR_DIVISOR,
+      WORK_STAMINA_FACTOR_MIN,
+      WORK_STAMINA_FACTOR_MAX,
+    );
+    const shockFactor = character.shockGameMinutes > 0 ? WORK_SHOCK_SPEED_FACTOR : 1;
+    const offRoleFactor = offRole ? WORK_OFF_ROLE_SPEED_FACTOR : 1;
     const boostFactor = 1 + state.resources.processBoost / 100;
     const paceFactor = stage === "analysis" ? ANALYSIS_SPEED_MULTIPLIER : WORK_SPEED_MULTIPLIER;
     const speed =
-      (4.2 + (stage === "todo" ? roleFit : character.skill[stage]) * 1.25) *
+      (WORK_BASE_SPEED + (stage === "todo" ? roleFit : character.skill[stage]) * WORK_SKILL_SPEED_FACTOR) *
       clarityFactor *
       staminaFactor *
       shockFactor *
@@ -141,7 +232,7 @@ export function updateAssignments(
       boostFactor *
       paceFactor;
     task.stageProgress = clamp(
-      task.stageProgress + (speed * tickSeconds) / (1 + task.complexity * 0.28),
+      task.stageProgress + (speed * tickSeconds) / (1 + task.complexity * WORK_COMPLEXITY_SPEED_FACTOR),
       0,
       100,
     );
@@ -156,9 +247,13 @@ export function updateAssignments(
           (offRole ? OFF_ROLE_STAMINA_DRAIN : 0);
     character.stamina = clamp(character.stamina - tickSeconds * staminaDrainPerSecond, 0, 100);
     if (subtask) subtask.progress = task.stageProgress;
-    if (character.stamina < 20) {
+    if (character.stamina < WORK_LOW_STAMINA_BURNOUT_THRESHOLD) {
       character.burnout = clamp(
-        character.burnout + tickSeconds * (0.06 + task.pressure * 0.012 + (offRole ? 0.025 : 0)),
+        character.burnout +
+          tickSeconds *
+            (WORK_BURNOUT_DRAIN_BASE +
+              task.pressure * WORK_BURNOUT_PRESSURE_DRAIN +
+              (offRole ? WORK_BURNOUT_OFF_ROLE_DRAIN : 0)),
         0,
         100,
       );
@@ -173,9 +268,9 @@ export function updateAssignments(
 }
 
 export function importanceWeight(importance: RtSubtaskImportance): number {
-  if (importance === "critical") return 35;
-  if (importance === "important") return 20;
-  return 8;
+  if (importance === "critical") return WORK_IMPORTANCE_WEIGHT_CRITICAL;
+  if (importance === "important") return WORK_IMPORTANCE_WEIGHT_IMPORTANT;
+  return WORK_IMPORTANCE_WEIGHT_OPTIONAL;
 }
 
 export function addPostmortemNote(task: RtTask, note: string): void {
@@ -252,10 +347,13 @@ function completeAnalysisStage(
   character: RtCharacter,
   emit: WorkEventSink,
 ): void {
-  const gain = 18 + character.skill.analysis * 5 + randomInt(state, 0, 8);
+  const gain =
+    WORK_ANALYSIS_CLARITY_GAIN_BASE +
+    character.skill.analysis * WORK_ANALYSIS_CLARITY_GAIN_PER_SKILL +
+    randomInt(state, 0, WORK_ANALYSIS_CLARITY_GAIN_RANDOM_MAX);
   const revealed = revealSubtasksByAnalysis(state, task, gain);
   task.clarity = clamp(task.clarity + gain, 0, 100);
-  task.quality = clamp(task.quality + Math.round(gain * 0.15), 0, 100);
+  task.quality = clamp(task.quality + Math.round(gain * WORK_ANALYSIS_QUALITY_GAIN_RATIO), 0, 100);
   task.currentSubtaskId = null;
   task.stageComplete = true;
   task.lastNote =
@@ -282,19 +380,23 @@ function completeTodoStage(
   if (!subtask) return;
 
   const roleFit = character.specialty[subtask.role];
-  const offRole = roleFit < 3;
+  const offRole = roleFit < WORK_OFF_ROLE_SKILL_THRESHOLD;
   subtask.done = true;
   subtask.completedBy = character.id;
   subtask.offRole = offRole;
   subtask.progress = 100;
-  character.xp[subtask.role] += offRole ? 3 : 1;
-  if (character.xp[subtask.role] >= 10 && character.specialty[subtask.role] < 5) {
-    character.xp[subtask.role] -= 10;
-    character.specialty[subtask.role] += 1;
+  character.xp[subtask.role] += offRole ? WORK_SUBTASK_XP_OFF_ROLE : WORK_SUBTASK_XP_ON_ROLE;
+  if (
+    character.xp[subtask.role] >= WORK_SUBTASK_XP_TO_SPECIALTY &&
+    character.specialty[subtask.role] < WORK_SUBTASK_SPECIALTY_MAX
+  ) {
+    character.xp[subtask.role] -= WORK_SUBTASK_XP_TO_SPECIALTY;
+    character.specialty[subtask.role] += WORK_SUBTASK_SPECIALTY_GAIN;
   }
   if (offRole) {
-    task.offRolePenalty += subtask.importance === "critical" ? 10 : 6;
-    character.stamina = clamp(character.stamina - 12, 0, 100);
+    task.offRolePenalty +=
+      subtask.importance === "critical" ? WORK_OFF_ROLE_CRITICAL_PENALTY : WORK_OFF_ROLE_DEFAULT_PENALTY;
+    character.stamina = clamp(character.stamina - WORK_OFF_ROLE_STAMINA_PENALTY, 0, 100);
     addPostmortemNote(task, `${character.name} completed ${subtask.role} work off-role.`);
   }
 
@@ -316,8 +418,11 @@ function completeQaSubtaskStage(
   emit: WorkEventSink,
 ): void {
   const coverageGain = Math.round(
-    (22 + character.skill.test * 6 + roleFit * 4 + randomInt(state, 0, 8)) *
-      (offRole ? 0.72 : 1),
+    (WORK_QA_SUBTASK_COVERAGE_BASE +
+      character.skill.test * WORK_QA_SUBTASK_SKILL_FACTOR +
+      roleFit * WORK_QA_SUBTASK_ROLE_FACTOR +
+      randomInt(state, 0, WORK_QA_SUBTASK_RANDOM_MAX)) *
+      (offRole ? WORK_QA_OFF_ROLE_COVERAGE_FACTOR : 1),
   );
   task.testCoverage = clamp(task.testCoverage + coverageGain, 0, 100);
   task.changedAfterQa = false;
@@ -325,7 +430,11 @@ function completeQaSubtaskStage(
   task.bugs += discoveredBugs;
   const triagedBugs = Math.min(
     task.bugs,
-    Math.max(1, Math.floor((character.skill.test + roleFit) / 4) + randomInt(state, 0, 1)),
+    Math.max(
+      WORK_QA_TRIAGE_MIN,
+      Math.floor((character.skill.test + roleFit) / WORK_QA_TRIAGE_SKILL_DIVISOR) +
+        randomInt(state, 0, WORK_QA_TRIAGE_RANDOM_MAX),
+    ),
   );
   task.bugs = Math.max(0, task.bugs - triagedBugs);
   const bugfixes = addBugfixSubtasks(state, task, triagedBugs);
@@ -365,10 +474,14 @@ function completeImplementationSubtaskStage(
   emit: WorkEventSink,
 ): void {
   const importanceQuality =
-    subtask.importance === "critical" ? 14 : subtask.importance === "important" ? 9 : 5;
+    subtask.importance === "critical"
+      ? WORK_IMPLEMENTATION_QUALITY_CRITICAL
+      : subtask.importance === "important"
+        ? WORK_IMPLEMENTATION_QUALITY_IMPORTANT
+        : WORK_IMPLEMENTATION_QUALITY_OPTIONAL;
   if (task.testCoverage > 0) {
     task.changedAfterQa = true;
-    task.testCoverage = Math.min(task.testCoverage, 35);
+    task.testCoverage = Math.min(task.testCoverage, WORK_CHANGED_AFTER_QA_COVERAGE_CAP);
     ensureQaRecheckSubtask(task);
     addPostmortemNote(
       task,
@@ -376,18 +489,28 @@ function completeImplementationSubtaskStage(
     );
   }
   const rawQuality =
-    task.clarity * 0.55 +
-    roleFit * 9 +
+    task.clarity * WORK_RAW_QUALITY_CLARITY_FACTOR +
+    roleFit * WORK_RAW_QUALITY_ROLE_FACTOR +
     importanceQuality +
-    randomInt(state, -10, 10) -
-    (100 - character.stamina) * 0.12 -
-    (offRole ? 18 : 0);
+    randomInt(state, WORK_RAW_QUALITY_RANDOM_MIN, WORK_RAW_QUALITY_RANDOM_MAX) -
+    (100 - character.stamina) * WORK_RAW_QUALITY_STAMINA_PENALTY -
+    (offRole ? WORK_RAW_QUALITY_OFF_ROLE_PENALTY : 0);
   const bugfixWork = isBugfixWork(subtask);
-  const qualityGain = bugfixWork ? 16 + roleFit * 3 : Math.max(4, Math.round(rawQuality / 8));
+  const qualityGain = bugfixWork
+    ? WORK_BUGFIX_QUALITY_BASE + roleFit * WORK_BUGFIX_QUALITY_ROLE_FACTOR
+    : Math.max(
+        WORK_IMPLEMENTATION_MIN_QUALITY_GAIN,
+        Math.round(rawQuality / WORK_IMPLEMENTATION_QUALITY_GAIN_DIVISOR),
+      );
   task.quality = clamp(Math.max(task.quality, Math.round(rawQuality)), 0, 100);
   let introducedBugs = 0;
   if (bugfixWork) {
-    const fixed = Math.min(task.bugs, roleFit >= 4 && chance(state, 0.35) ? 2 : 1);
+    const fixed = Math.min(
+      task.bugs,
+      roleFit >= WORK_BUGFIX_MULTI_FIX_ROLE_THRESHOLD && chance(state, WORK_BUGFIX_MULTI_FIX_CHANCE)
+        ? WORK_BUGFIX_MULTI_FIX_COUNT
+        : WORK_BUGFIX_DEFAULT_FIX_COUNT,
+    );
     task.bugs = Math.max(0, task.bugs - fixed);
     task.quality = clamp(task.quality + qualityGain, 0, 100);
   } else {
@@ -429,7 +552,10 @@ function completeTestStage(
   character: RtCharacter,
   emit: WorkEventSink,
 ): void {
-  const coverageGain = 24 + character.skill.test * 8 + randomInt(state, 0, 8);
+  const coverageGain =
+    WORK_TEST_COVERAGE_BASE +
+    character.skill.test * WORK_TEST_COVERAGE_SKILL_FACTOR +
+    randomInt(state, 0, WORK_TEST_COVERAGE_RANDOM_MAX);
   task.testCoverage = clamp(task.testCoverage + coverageGain, 0, 100);
   task.changedAfterQa = false;
   const discoveredBugs = discoverBugsDuringQa(state, task);
@@ -437,8 +563,9 @@ function completeTestStage(
   const triagedBugs = Math.min(
     task.bugs,
     Math.max(
-      1,
-      Math.floor((character.skill.test + character.specialty.qa) / 4) + randomInt(state, 0, 1),
+      WORK_QA_TRIAGE_MIN,
+      Math.floor((character.skill.test + character.specialty.qa) / WORK_QA_TRIAGE_SKILL_DIVISOR) +
+        randomInt(state, 0, WORK_QA_TRIAGE_RANDOM_MAX),
     ),
   );
   task.bugs = Math.max(0, task.bugs - triagedBugs);
@@ -488,11 +615,11 @@ function chooseSubtaskForAssignment(task: RtTask, character: RtCharacter): RtSub
     .map((subtask) => ({
       subtask,
       score:
-        character.specialty[subtask.role] * 12 +
+        character.specialty[subtask.role] * WORK_ASSIGNMENT_ROLE_SCORE_FACTOR +
         importanceWeight(subtask.importance) +
-        (roleMatchesSubtask(character.role, subtask.role) ? 10 : 0) -
-        (preferredRoles.includes(subtask.role) ? 0 : 28) -
-        subtask.progress * 0.15,
+        (roleMatchesSubtask(character.role, subtask.role) ? WORK_ASSIGNMENT_ROLE_MATCH_BONUS : 0) -
+        (preferredRoles.includes(subtask.role) ? 0 : WORK_ASSIGNMENT_NON_PREFERRED_PENALTY) -
+        subtask.progress * WORK_ASSIGNMENT_PROGRESS_PENALTY,
     }))
     .sort((a, b) => b.score - a.score)[0].subtask;
 }
@@ -512,9 +639,12 @@ function shouldAnalyzeTask(task: RtTask, character: RtCharacter): boolean {
 function preferredSubtaskRoles(character: RtCharacter): RtSubtaskRole[] {
   const entries = Object.entries(character.specialty) as Array<[RtSubtaskRole, number]>;
   const maxSkill = Math.max(...entries.map(([, skill]) => skill));
-  const strongSkill = maxSkill >= 4 ? maxSkill - 1 : maxSkill;
+  const strongSkill =
+    maxSkill >= WORK_PREFERRED_STRONG_SKILL_THRESHOLD
+      ? maxSkill - WORK_PREFERRED_STRONG_SKILL_DELTA
+      : maxSkill;
   const roles = entries.filter(([, skill]) => skill >= strongSkill).map(([role]) => role);
-  if (character.specialty.bugfix >= 3 && !roles.includes("bugfix")) {
+  if (character.specialty.bugfix >= WORK_BUGFIX_PREFERRED_SKILL_THRESHOLD && !roles.includes("bugfix")) {
     roles.push("bugfix");
   }
   return roles;
@@ -526,7 +656,14 @@ function revealSubtasksByAnalysis(
   clarityGain: number,
 ): RtSubtask[] {
   const hidden = task.subtasks.filter((subtask) => !subtask.revealed);
-  const revealCount = Math.min(hidden.length, clarityGain >= 38 ? 3 : clarityGain >= 28 ? 2 : 1);
+  const revealCount = Math.min(
+    hidden.length,
+    clarityGain >= WORK_ANALYSIS_REVEAL_HIGH_GAIN
+      ? WORK_ANALYSIS_REVEAL_HIGH_COUNT
+      : clarityGain >= WORK_ANALYSIS_REVEAL_MEDIUM_GAIN
+        ? WORK_ANALYSIS_REVEAL_MEDIUM_COUNT
+        : WORK_ANALYSIS_REVEAL_LOW_COUNT,
+  );
   const revealed = shuffle(state, hidden)
     .sort((a, b) => importanceWeight(b.importance) - importanceWeight(a.importance))
     .slice(0, revealCount);
