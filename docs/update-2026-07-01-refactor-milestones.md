@@ -221,6 +221,7 @@ Completed milestones:
 14. Work stage completion was split into analysis, implementation/bugfix, QA/test, subtask progress, and a small facade.
 15. Game drag-and-drop was split so `useGameDragAndDrop.ts` owns drag start/lifecycle and `gameDropHandlers.ts` owns drop target handling.
 16. Backend logging was split into public transport, config, types, and localStorage queue/compaction modules.
+17. `debug:rt` gained regression checks for outsource start/payment/blockers, implementation-after-QA recheck, and drag reject helper reasons.
 
 Important compatibility choices:
 
@@ -301,7 +302,7 @@ The checks are not exhaustive automated tests. They are the current guardrail se
 - TypeScript catches broken imports/types;
 - production build catches Vite packaging issues;
 - `debug:rt` catches core realtime regressions such as quarter length and release/morning flow;
-- `debug:rt` also catches save migration normalization and backend snapshot shape regressions;
+- `debug:rt` also catches save migration normalization, backend snapshot shape, outsource, QA recheck, and drag reject helper regressions;
 - `debug:ab` checks the clean/risky/dirty anti-dominance shape;
 - `git diff --check` catches whitespace and patch hygiene issues.
 
@@ -309,8 +310,12 @@ The checks are not exhaustive automated tests. They are the current guardrail se
 
 ## Remaining Refactor Targets
 
-Recommended next milestones after this pass:
+No active refactor milestone remains from the reviewed list.
 
-1. Add narrower regression checks around outsource, QA recheck, and drag/drop rejection semantics.
+Recommended future cleanup only if those areas grow again:
+
+1. Split `src/engine/work.ts` further if assignment/planning rules get new mechanics.
+2. Split `src/engine/types.ts` by domain if the type file starts blocking navigation.
+3. Add browser-level drag-and-drop tests when a proper UI test harness is introduced.
 
 These are lower-risk now because the public facade and visible UI components are already separated.

@@ -3,8 +3,10 @@ import {
   assignCharacterToTask,
   canAssignCharacterToTask,
   createRealtimeState,
+  getOutsourceTaskWorkStatus,
   moveRealtimeTask,
   normalizeRealtimeState,
+  outsourceTaskWork,
   releaseReadiness,
   RT_COLUMNS,
   runDailyReleaseTrain,
@@ -17,6 +19,7 @@ import {
   buildBackendSnapshot,
   buildDebugSnapshot,
 } from "../logging/debugSnapshot";
+import { characterDropRejectReason } from "../hooks/dragAndDropHelpers";
 
 const seedArg = Number(process.argv[2]);
 const seed = Number.isFinite(seedArg) ? seedArg : 184;
@@ -27,6 +30,9 @@ const smoke = [
   runMissedWorkSmoke(),
   runMigrationNormalizationSmoke(),
   runDebugSnapshotSmoke(),
+  runOutsourceSmoke(),
+  runQaRecheckSmoke(),
+  runDragRejectHelperSmoke(),
 ];
 
 const taskId = state.board.backlog[0];
@@ -72,10 +78,14 @@ console.log(
 );
 
 function tickUntilTaskIdle(taskId: string, limit: number): void {
+  tickUntilTaskIdleInState(state, taskId, limit);
+}
+
+function tickUntilTaskIdleInState(currentState: RtGameState, taskId: string, limit: number): void {
   for (let index = 0; index < limit; index += 1) {
-    const task = state.tasks[taskId];
+    const task = currentState.tasks[taskId];
     if (!task?.assignedCharacterId) return;
-    tickRealtime(state, 500);
+    tickRealtime(currentState, 500);
   }
 }
 
@@ -253,6 +263,117 @@ function runDebugSnapshotSmoke() {
   };
 }
 
+function runOutsourceSmoke() {
+  const currentState = createRealtimeState(2002);
+  const controlledTaskId = currentState.board.backlog[0];
+  const controlledTask = currentState.tasks[controlledTaskId];
+  assert(Boolean(controlledTask), "Outsource smoke expected an initial task.");
+  currentState.resources.budget = 6;
+  configureOutsourceTask(controlledTask);
+  assert(moveRealtimeTask(currentState, controlledTask.id, "inProgress"), "Outsource smoke move failed.");
+
+  const status = getOutsourceTaskWorkStatus(currentState, controlledTask.id);
+  assert(status.allowed, `Outsource smoke expected ready status, got ${status.reason}.`);
+  assert(status.cost === 4, "Outsource smoke expected important work cost.");
+  assert(status.subtask?.role === "backend", "Outsource smoke expected backend subtask.");
+  assert(outsourceTaskWork(currentState, controlledTask.id), "Outsource smoke expected work to start.");
+  assert(currentState.resources.budget === 2, "Outsource smoke expected budget payment.");
+  assert(controlledTask.outsourcing?.subtaskId === status.subtask.id, "Outsource smoke expected active outsourcing.");
+  assert(controlledTask.currentSubtaskId === status.subtask.id, "Outsource smoke expected current subtask.");
+  const busyStatus = getOutsourceTaskWorkStatus(currentState, controlledTask.id);
+  assert(!busyStatus.allowed && busyStatus.reason === "task_busy", "Outsource smoke expected busy blocker.");
+
+  return {
+    name: "outsource-status",
+    budget: currentState.resources.budget,
+    blockerAfterStart: busyStatus.reason,
+    subtaskRole: status.subtask.role,
+  };
+}
+
+function runQaRecheckSmoke() {
+  const currentState = createRealtimeState(3003);
+  const controlledTaskId = currentState.board.backlog[0];
+  const controlledTask = currentState.tasks[controlledTaskId];
+  assert(Boolean(controlledTask), "QA recheck smoke expected an initial task.");
+  configureImplementationAfterQaTask(controlledTask);
+  assert(moveRealtimeTask(currentState, controlledTask.id, "inProgress"), "QA recheck smoke move failed.");
+  const backend = Object.values(currentState.characters).find((character) => character.role === "backend");
+  assert(backend !== undefined, "QA recheck smoke expected backend character.");
+  assert(assignCharacterToTask(currentState, backend.id, controlledTask.id), "QA recheck smoke assign failed.");
+  tickUntilTaskIdleInState(currentState, controlledTask.id, 900);
+
+  const recheck = controlledTask.subtasks.find(
+    (subtask) => subtask.role === "qa" && subtask.revealed && !subtask.done,
+  );
+  assert(controlledTask.changedAfterQa, "QA recheck smoke expected changedAfterQa.");
+  assert(controlledTask.testCoverage <= 35, "QA recheck smoke expected stale coverage cap.");
+  assert(Boolean(recheck), "QA recheck smoke expected open QA recheck subtask.");
+  assert(
+    currentState.log.some((event) => event.effects.includes("QA recheck required")),
+    "QA recheck smoke expected event marker.",
+  );
+
+  return {
+    name: "qa-recheck",
+    changedAfterQa: controlledTask.changedAfterQa,
+    testCoverage: controlledTask.testCoverage,
+    recheckId: recheck?.id,
+  };
+}
+
+function runDragRejectHelperSmoke() {
+  const currentState = createRealtimeState(4004);
+  const controlledTaskId = currentState.board.backlog[0];
+  const controlledTask = currentState.tasks[controlledTaskId];
+  const character = Object.values(currentState.characters)[0];
+  assert(Boolean(controlledTask), "Drag reject smoke expected an initial task.");
+  assert(Boolean(character), "Drag reject smoke expected an initial character.");
+
+  assert(
+    characterDropRejectReason(currentState, "missing-character", controlledTask) === "character missing",
+    "Drag reject smoke expected missing character reason.",
+  );
+  assert(
+    characterDropRejectReason(currentState, character.id, controlledTask) === "wrong column",
+    "Drag reject smoke expected wrong column reason.",
+  );
+
+  controlledTask.column = "inProgress";
+  controlledTask.subtasks = [];
+  currentState.board.backlog = currentState.board.backlog.filter((taskId) => taskId !== controlledTask.id);
+  currentState.board.inProgress.push(controlledTask.id);
+  assert(
+    characterDropRejectReason(currentState, character.id, controlledTask) === "no matching visible work",
+    "Drag reject smoke expected no visible work reason.",
+  );
+
+  character.assignedTaskId = controlledTask.id;
+  assert(
+    characterDropRejectReason(currentState, character.id, controlledTask) === "character already busy",
+    "Drag reject smoke expected busy character reason.",
+  );
+
+  character.assignedTaskId = null;
+  character.exhaustedToday = true;
+  assert(
+    characterDropRejectReason(currentState, character.id, controlledTask) === "character exhausted",
+    "Drag reject smoke expected exhausted character reason.",
+  );
+
+  character.exhaustedToday = false;
+  controlledTask.assignedCharacterId = character.id;
+  assert(
+    characterDropRejectReason(currentState, character.id, controlledTask) === "task already in work",
+    "Drag reject smoke expected busy task reason.",
+  );
+
+  return {
+    name: "drag-reject-helper",
+    checked: 5,
+  };
+}
+
 function tickToMorningReport(currentState: RtGameState): void {
   currentState.gameMinuteOfDay = RELEASE_TRAIN_GAME_MINUTE - 0.5;
   tickRealtime(currentState, 1000);
@@ -299,6 +420,52 @@ function configureMissedMajorTask(task: RtTask): void {
   task.deadlineMaxMs = 300000;
 }
 
+function configureOutsourceTask(task: RtTask): void {
+  task.kind = "integration";
+  task.domain = "payments";
+  task.blastRadius = "medium";
+  task.pressure = 2;
+  task.complexity = 2;
+  task.value = 24;
+  task.clarity = 80;
+  task.quality = 50;
+  task.testCoverage = 0;
+  task.bugs = 0;
+  task.changedAfterQa = false;
+  task.workDone = false;
+  task.assignedCharacterId = null;
+  task.outsourcing = null;
+  task.currentSubtaskId = null;
+  task.stageProgress = 0;
+  task.stageComplete = false;
+  task.subtasks = [
+    openSubtask(task, "backend", "important", "Implement integration contract"),
+  ];
+}
+
+function configureImplementationAfterQaTask(task: RtTask): void {
+  task.kind = "feature";
+  task.domain = "admin";
+  task.blastRadius = "medium";
+  task.pressure = 1;
+  task.complexity = 1;
+  task.value = 18;
+  task.clarity = 100;
+  task.quality = 88;
+  task.testCoverage = 82;
+  task.bugs = 0;
+  task.changedAfterQa = false;
+  task.workDone = false;
+  task.assignedCharacterId = null;
+  task.outsourcing = null;
+  task.currentSubtaskId = null;
+  task.stageProgress = 0;
+  task.stageComplete = false;
+  task.subtasks = [
+    openSubtask(task, "backend", "important", "Patch service behavior"),
+  ];
+}
+
 function completeSubtask(
   task: RtTask,
   role: RtTask["subtasks"][number]["role"],
@@ -314,6 +481,25 @@ function completeSubtask(
     done: true,
     progress: 100,
     completedBy: "debug",
+    offRole: false,
+  };
+}
+
+function openSubtask(
+  task: RtTask,
+  role: RtTask["subtasks"][number]["role"],
+  importance: RtTask["subtasks"][number]["importance"],
+  title: string,
+): RtTask["subtasks"][number] {
+  return {
+    id: `${task.id}-${role}-debug-open`,
+    title,
+    role,
+    importance,
+    revealed: true,
+    done: false,
+    progress: 0,
+    completedBy: null,
     offRole: false,
   };
 }
