@@ -206,6 +206,7 @@ Completed milestones:
 10. `MorningReportPage.tsx` was reduced to page composition; report subsections moved to `MorningReportSections.tsx`.
 11. Debug/backend snapshot building moved from `frontendLogging.ts` to `src/logging/debugSnapshot.ts`.
 12. `debug:rt` gained narrow regression smoke checks for migration normalization and debug/backend snapshot shape.
+13. Morning report sections were split into resource, flow, quarter review, consequence, shipment, and formatting modules.
 
 Important compatibility choices:
 
@@ -225,7 +226,6 @@ The biggest active files after the follow-up pass:
 ```txt
 src/engine/workStages.ts                  ~405 lines
 src/engine/work.ts                        ~366 lines
-src/components/MorningReportSections.tsx  ~345 lines
 src/engine/types.ts                       ~337 lines
 src/realtime/simulation.ts                ~284 lines
 src/hooks/useGameDragAndDrop.ts           ~281 lines
@@ -240,16 +240,23 @@ src/engine/migrationReports.ts            ~133 lines
 src/engine/migration.ts                   ~131 lines
 src/engine/migrationTasks.ts              ~128 lines
 src/engine/consequenceText.ts             ~108 lines
+src/components/MorningResourceGrid.tsx    ~92 lines
 src/engine/taskFactory.ts                 ~92 lines
+src/components/MorningReportFormat.ts     ~89 lines
 src/components/MorningReportPage.tsx      ~88 lines
+src/components/MorningShipmentList.tsx    ~73 lines
 src/engine/consequenceResolution.ts       ~62 lines
+src/components/MorningConsequenceList.tsx ~55 lines
+src/components/QuarterReviewPanel.tsx     ~52 lines
 src/frontendLogging.ts                    ~48 lines
+src/components/MorningFlowStrip.tsx       ~24 lines
+src/components/MorningReportSections.tsx  ~5 lines
 ```
 
 Interpretation:
 
 - the original two largest bottlenecks were reduced substantially;
-- the next refactor targets are now mostly large renderer/helper files and a few deeper engine seams;
+- the next refactor targets are now mostly engine/runtime seams;
 - future work should not add new mechanics directly into `App.tsx`.
 
 ---
@@ -281,10 +288,9 @@ The checks are not exhaustive automated tests. They are the current guardrail se
 
 Recommended next milestones after this pass:
 
-1. Split `src/components/MorningReportSections.tsx` if the morning briefing grows again.
-2. Split `src/engine/workStages.ts` into analysis, implementation, QA, and bugfix modules once mechanic changes resume.
-3. Split `src/hooks/useGameDragAndDrop.ts` by drop target if the drag UX gains more rules.
-4. Split `src/logging/backendLog.ts` into queue storage, transport, and compaction if diagnostics work expands.
-5. Add narrower regression checks around outsource, QA recheck, and drag/drop rejection semantics.
+1. Split `src/engine/workStages.ts` into analysis, implementation, QA, and bugfix modules once mechanic changes resume.
+2. Split `src/hooks/useGameDragAndDrop.ts` by drop target if the drag UX gains more rules.
+3. Split `src/logging/backendLog.ts` into queue storage, transport, and compaction if diagnostics work expands.
+4. Add narrower regression checks around outsource, QA recheck, and drag/drop rejection semantics.
 
 These are lower-risk now because the public facade and visible UI components are already separated.
