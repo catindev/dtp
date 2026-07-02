@@ -1,4 +1,4 @@
-import type { Locale } from "../i18n";
+import type { EngineLocale } from "./locale";
 
 export const RT_COLUMNS = ["backlog", "inProgress", "done", "released"] as const;
 export type RtColumn = (typeof RT_COLUMNS)[number];
@@ -311,7 +311,7 @@ export interface RtSpawnState {
 export interface RtGameState {
   seed: number;
   rngState: number;
-  locale: Locale;
+  locale: EngineLocale;
   paused: boolean;
   status: RtRunStatus;
   lossReason: string | null;

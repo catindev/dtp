@@ -1,4 +1,3 @@
-import { normalizeLocale } from "../i18n";
 import {
   DAYS_PER_QUARTER,
   GAME_DAY_START_MINUTE,
@@ -9,6 +8,10 @@ import {
   ensureQaRecheckSubtask,
 } from "./bugs";
 import { normalizeConsequenceTaskTitle } from "./consequences";
+import {
+  type EngineLocale,
+  normalizeEngineLocale,
+} from "./locale";
 import { clamp } from "./math";
 import { emptyResourceDelta } from "./resources";
 import { inferBlastRadius } from "./taskFactory";
@@ -27,7 +30,6 @@ import {
   type RtTask,
   type RtTaskResolution,
 } from "./types";
-import type { Locale } from "../i18n";
 
 export function normalizeRealtimeState(state: RtGameState): boolean {
   let changed = false;
@@ -35,10 +37,10 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
   const legacyState = state as RtGameState & {
     releaseReview?: RtMorningReport | null;
     morningReport?: RtMorningReport | null;
-    locale?: Locale;
+    locale?: EngineLocale;
   };
 
-  const normalizedLocale = normalizeLocale(legacyState.locale);
+  const normalizedLocale = normalizeEngineLocale(legacyState.locale);
   if (state.locale !== normalizedLocale) {
     state.locale = normalizedLocale;
     changed = true;

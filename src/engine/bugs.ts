@@ -1,4 +1,5 @@
-import { SIM_TEXT, normalizeLocale } from "../i18n";
+import { SIM_TEXT } from "./content";
+import { normalizeEngineLocale } from "./locale";
 import { clamp } from "./math";
 import { chance, randomInt, shuffle } from "./rng";
 import type {
@@ -113,7 +114,8 @@ export function discoverBugsDuringQa(state: RtGameState, task: RtTask): number {
 export function addBugfixSubtasks(state: RtGameState, task: RtTask, count: number): RtSubtask[] {
   const added: RtSubtask[] = [];
   const rolePool = shuffle(state, bugfixRoleCandidates(task));
-  const text = SIM_TEXT[normalizeLocale(state.locale)].subtasks;
+  const locale = normalizeEngineLocale(state.locale);
+  const text = SIM_TEXT[locale].subtasks;
   for (let index = 0; index < count; index += 1) {
     const role = rolePool[index % rolePool.length];
     const subtask: RtSubtask = {
@@ -123,7 +125,7 @@ export function addBugfixSubtasks(state: RtGameState, task: RtTask, count: numbe
           ? text.stabilizeProductionFailureMode
           : role === "design"
             ? text.fixProductInteractionDefect
-            : normalizeLocale(state.locale) === "ru"
+            : locale === "ru"
               ? `Починить ${role}-дефект, найденный QA`
               : `Fix ${role} defect found by QA`,
       role,

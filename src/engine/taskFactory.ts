@@ -1,9 +1,10 @@
-import { SIM_TEXT, TASK_TITLES, normalizeLocale } from "../i18n";
 import {
   FRONTEND_GUARDRAIL_MIN_MAJOR_WORK,
   FRONTEND_GUARDRAIL_WINDOW,
 } from "./balance";
 import { DOMAINS, DOMAIN_PREFIXES } from "./catalog";
+import { SIM_TEXT, TASK_TITLES } from "./content";
+import { normalizeEngineLocale } from "./locale";
 import { clamp } from "./math";
 import {
   chance,
@@ -37,7 +38,7 @@ export function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTas
     randomBetween(state, 520000, 780000) + complexity * 45000 - pressure * 15000,
   );
   const value = Math.round((8 + complexity * 4 + pressure * 3) * kindValueMultiplier(kind));
-  const locale = normalizeLocale(state.locale);
+  const locale = normalizeEngineLocale(state.locale);
   const subtasks = generateSubtasks(
     state,
     id,
@@ -122,7 +123,7 @@ function generateSubtasks(
 
   const add = (role: RtSubtaskRole, importance: RtSubtaskImportance, title: string) =>
     specs.push({ role, importance, title });
-  const text = SIM_TEXT[normalizeLocale(state.locale)].subtasks;
+  const text = SIM_TEXT[normalizeEngineLocale(state.locale)].subtasks;
 
   if (kind === "feature") {
     const frontendLed = frontendBias || (frontendDomain(domain) && chance(state, 0.22));
