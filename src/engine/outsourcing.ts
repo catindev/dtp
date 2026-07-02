@@ -3,12 +3,14 @@ import {
   WORK_SPEED_MULTIPLIER,
 } from "./balance";
 import { getOpenTodoSubtasks, taskBusy } from "./board";
+import {
+  ensureQaRecheckSubtask,
+  isBugfixWork,
+} from "./bugs";
 import { clamp } from "./math";
 import {
   addPostmortemNote,
-  ensureQaRecheckSubtask,
   importanceWeight,
-  isBugfixWork,
 } from "./work";
 import type {
   RtEvent,

@@ -4,14 +4,14 @@ import {
   GAME_DAY_START_MINUTE,
 } from "./balance";
 import { removeTaskFromBoard } from "./board";
+import {
+  ensureBugReviewSubtask,
+  ensureQaRecheckSubtask,
+} from "./bugs";
 import { normalizeConsequenceTaskTitle } from "./consequences";
 import { clamp } from "./math";
 import { emptyResourceDelta } from "./resources";
 import { inferBlastRadius } from "./taskFactory";
-import {
-  ensureBugReviewSubtask,
-  ensureQaRecheckSubtask,
-} from "./work";
 import {
   RT_COLUMNS,
   type RtBlastRadius,
