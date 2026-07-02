@@ -4,6 +4,30 @@
 
 ---
 
+## 2026-07-02 - Backlog value decay
+
+Переработан смысл `Backlog`:
+
+- untouched-задачи в `Backlog` больше не тратят delivery deadline;
+- вместо этого у них уменьшается `backlogValue`;
+- первый перенос `Backlog -> In Progress` фиксирует текущую value и стартует настоящий delivery deadline;
+- engaged-задачу нельзя вернуть в бесплатный backlog-state;
+- если `backlogValue` дошел до нуля, задача тихо исчезает как упущенная возможность;
+- такая упущенная возможность добавляет capped `Debt`, но не создает named fallout;
+- Morning Briefing показывает `backlogExpiredCount`, `backlogValueLost`, `backlogDebtAdded`;
+- `Prod -> Невыполненные` больше не показывает такие тихо истекшие backlog-задачи;
+- autosave schema поднята до `rt-board-v4`, старые сейвы сбрасываются.
+
+Добавлены проверки:
+
+- untouched backlog не тикает `deadlineMs`;
+- backlog value убывает;
+- перенос в работу фиксирует value;
+- истечение backlog value применяет дневной cap по debt;
+- expired backlog не создает fallout consequences.
+
+---
+
 ## 2026-07-01 - Survival-мета, late release и визуальная читаемость
 
 P0-фикс квартального ритма:

@@ -75,7 +75,11 @@ export function addTaskToBacklog(
     type: "task_spawned",
     title: `${task.id} arrived`,
     body: task.title,
-    effects: [`clarity ${task.clarity}`, `deadline ${Math.round(task.deadlineMs / 1000)}s`],
+    effects: [
+      `clarity ${task.clarity}`,
+      `value ${Math.round(task.baseValue)}`,
+      `backlog decay ${Math.round(task.backlogDecayDurationMs / 1000)}s`,
+    ],
   });
   return true;
 }

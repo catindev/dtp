@@ -29,6 +29,7 @@ import {
   RELEASE_SCORE_WORK_DONE_BONUS,
   RELEASE_SCORE_WORK_NOT_DONE_PENALTY,
 } from "./balance";
+import { isUntouchedBacklogTask } from "./backlogOpportunity";
 import { clamp } from "./math";
 import type {
   RtFalloutWarning,
@@ -61,6 +62,7 @@ export function falloutWarningForTask(task: RtTask): RtFalloutWarning | null {
     }
   }
   if (task.column === "backlog" || task.column === "inProgress") {
+    if (isUntouchedBacklogTask(task)) return null;
     if (task.deadlineMs <= 0) {
       return {
         level: "likely",

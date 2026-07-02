@@ -2,6 +2,7 @@ import {
   DAYS_PER_QUARTER,
   GAME_DAY_START_MINUTE,
 } from "./balance";
+import { createBacklogDecayDayStats } from "./backlogOpportunity";
 import { removeTaskFromBoard } from "./board";
 import {
   type EngineLocale,
@@ -24,6 +25,7 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
     releaseReview?: RtMorningReport | null;
     morningReport?: RtMorningReport | null;
     locale?: EngineLocale;
+    backlogDecayToday?: RtGameState["backlogDecayToday"];
   };
 
   const normalizedLocale = normalizeEngineLocale(legacyState.locale);
@@ -50,6 +52,28 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
   ) {
     state.daysPerQuarter = DAYS_PER_QUARTER;
     changed = true;
+  }
+  if (!legacyState.backlogDecayToday) {
+    state.backlogDecayToday = createBacklogDecayDayStats();
+    changed = true;
+  } else {
+    const stats = state.backlogDecayToday;
+    if (typeof stats.valueLost !== "number" || !Number.isFinite(stats.valueLost)) {
+      stats.valueLost = 0;
+      changed = true;
+    }
+    if (typeof stats.expiredCount !== "number" || !Number.isFinite(stats.expiredCount)) {
+      stats.expiredCount = 0;
+      changed = true;
+    }
+    if (typeof stats.debtAdded !== "number" || !Number.isFinite(stats.debtAdded)) {
+      stats.debtAdded = 0;
+      changed = true;
+    }
+    if (!Array.isArray(stats.expiredTaskIds)) {
+      stats.expiredTaskIds = [];
+      changed = true;
+    }
   }
 
   for (const column of RT_COLUMNS) {

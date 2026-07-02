@@ -1,4 +1,5 @@
 import { DONE_REWORK_TRUST_COST } from "./balance";
+import { commitBacklogOpportunity } from "./backlogOpportunity";
 import { clamp } from "./math";
 import {
   formatRiskReason,
@@ -85,13 +86,18 @@ export function moveTaskOnBoard(
     return true;
   }
 
+  const committedFromBacklog = task.column === "backlog" && targetColumn === "inProgress";
+  if (committedFromBacklog) {
+    commitBacklogOpportunity(task, emit);
+  }
+
   removeTaskFromBoard(state, taskId);
   task.column = targetColumn;
   task.stageProgress = 0;
   task.currentSubtaskId = null;
   task.stageComplete = false;
   task.queuedDeadlineMs = null;
-  task.lastNote = stageNote(targetColumn);
+  task.lastNote = committedFromBacklog ? task.lastNote : stageNote(targetColumn);
   state.board[targetColumn].push(taskId);
   return true;
 }
@@ -112,6 +118,9 @@ export function canMoveTaskOnBoard(
   }
   if (task.column === "backlog" && targetColumn === "done") {
     return { allowed: false, reason: "backlog_to_done_forbidden" };
+  }
+  if (targetColumn === "backlog" && task.engagedOnce) {
+    return { allowed: false, reason: "engaged_backlog_forbidden" };
   }
   return { allowed: true };
 }

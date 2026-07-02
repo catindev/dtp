@@ -3,6 +3,7 @@ import {
   missedConsequenceSymptom,
   releaseConsequenceSymptom,
 } from "./consequenceText";
+import { isUntouchedBacklogTask } from "./backlogOpportunity";
 import {
   markTaskResolved,
   missedMinorResourceDelta,
@@ -42,6 +43,7 @@ export function collectMissedTaskIds(state: RtGameState): string[] {
         !task.released &&
         !task.resolved &&
         task.column !== "done" &&
+        !isUntouchedBacklogTask(task) &&
         task.deadlineMs <= 0,
     );
   });

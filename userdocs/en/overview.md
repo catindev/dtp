@@ -6,7 +6,8 @@ You do not write code directly. You manage the flow of work:
 
 - choose which tasks to take;
 - decide who should work on them;
-- watch deadlines;
+- pick tasks before their backlog value fades out;
+- watch deadlines after work is committed;
 - decide when a task is good enough to ship;
 - deal with the consequences of weak decisions.
 

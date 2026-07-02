@@ -3,6 +3,10 @@ import {
   NIGHT_STAMINA_RECOVERY_RATIO,
   RELEASE_TRAIN_GAME_MINUTE,
 } from "./balance";
+import {
+  isUntouchedBacklogTask,
+  updateBacklogOpportunity,
+} from "./backlogOpportunity";
 import { clamp } from "./math";
 import {
   copyResources,
@@ -17,9 +21,13 @@ import type {
 
 type TimeEventSink = (event: Omit<RtEvent, "at">) => void;
 
-export function updateTaskTimers(state: RtGameState, tickMs: number): void {
+export function updateTaskTimers(state: RtGameState, tickMs: number, emit: TimeEventSink): void {
   for (const task of Object.values(state.tasks)) {
     if (task.released || task.column === "done") continue;
+    if (isUntouchedBacklogTask(task)) {
+      updateBacklogOpportunity(state, task, tickMs, emit);
+      continue;
+    }
     if (task.deadlineMs > 0) {
       const nextDeadlineMs = task.deadlineMs - tickMs;
       if (nextDeadlineMs < 0) {

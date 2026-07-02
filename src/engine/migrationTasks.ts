@@ -2,6 +2,7 @@ import {
   ensureBugReviewSubtask,
   ensureQaRecheckSubtask,
 } from "./bugs";
+import { ensureBacklogOpportunityFields } from "./backlogOpportunity";
 import { normalizeConsequenceTaskTitle } from "./consequences";
 import { inferBlastRadius } from "./taskFactory";
 import type {
@@ -30,6 +31,9 @@ export function normalizeTaskForCurrentSchema(
     resolution?: RtTaskResolution | null;
     resolutionDay?: number | null;
   };
+  if (ensureBacklogOpportunityFields(task)) {
+    changed = true;
+  }
   if (!taskWithBlast.blastRadius) {
     task.blastRadius = inferBlastRadius(task);
     changed = true;

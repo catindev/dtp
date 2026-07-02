@@ -1,6 +1,8 @@
 import { type DragEvent } from "react";
 import {
+  backlogValueRatio,
   DONE_REWORK_TRUST_COST,
+  isUntouchedBacklogTask,
   lateReleaseReport,
   releaseReadiness,
   taskDeadlineRatio,
@@ -54,9 +56,11 @@ export function TaskCard({
     ? task.subtasks.find((subtask) => subtask.id === task.outsourcing?.subtaskId)
     : null;
   const deadlineRatio = taskDeadlineRatio(task);
+  const untouchedBacklog = isUntouchedBacklogTask(task);
   const readiness = releaseReadiness(task);
   const late = lateReleaseReport(task);
-  const urgent = !task.resolved && !task.released && task.column !== "done" && deadlineRatio <= 0.18;
+  const urgent =
+    !untouchedBacklog && !task.resolved && !task.released && task.column !== "done" && deadlineRatio <= 0.18;
   const dragBlocked =
     Boolean(task.assignedCharacterId) ||
     Boolean(task.outsourcing) ||
@@ -134,7 +138,13 @@ export function TaskCard({
           ))}
         </div>
       ) : null}
-      {!task.released && task.column !== "done" ? (
+      {untouchedBacklog ? (
+        <TinyBar
+          label={t(locale, "task.opportunity")}
+          ratio={backlogValueRatio(task)}
+          tone={opportunityTone(backlogValueRatio(task))}
+        />
+      ) : !task.released && task.column !== "done" ? (
         <TinyBar label={t(locale, "task.deadline")} ratio={deadlineRatio} tone={deadlineTone(deadlineRatio)} />
       ) : null}
       {task.column === "done" && !task.released ? (
@@ -233,6 +243,11 @@ function blastRadiusLabel(blastRadius: RtTask["blastRadius"], locale: Locale): s
 
 function deadlineTone(ratio: number): "deadline-safe" | "deadline-warning" | "deadline-urgent" {
   if (ratio <= 0.18) return "deadline-urgent";
+  if (ratio <= 0.42) return "deadline-warning";
+  return "deadline-safe";
+}
+
+function opportunityTone(ratio: number): "deadline-safe" | "deadline-warning" | "deadline-urgent" {
   if (ratio <= 0.42) return "deadline-warning";
   return "deadline-safe";
 }

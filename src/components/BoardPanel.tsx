@@ -108,7 +108,7 @@ function columnLabel(locale: Locale, column: RtColumn): string {
 
 function archivedUnfinishedTaskIds(game: RtGameState): string[] {
   return Object.values(game.tasks)
-    .filter((task) => task.resolved && !task.released)
+    .filter((task) => task.resolved && !task.released && task.resolution !== "backlog_opportunity_expired")
     .sort((left, right) => {
       const dayDelta = (right.resolutionDay ?? 0) - (left.resolutionDay ?? 0);
       if (dayDelta !== 0) return dayDelta;

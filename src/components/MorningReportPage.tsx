@@ -53,6 +53,7 @@ export function MorningReportPage({
               : t(locale, "morning.summary", {
                   shipped: report.shippedTaskIds.length,
                   missed: report.missedTaskIds.length,
+                  expired: summary.backlogExpiredCount,
                 })}
           </p>
         </div>

@@ -4,11 +4,15 @@ The workday runs from 08:00 to 18:00. Time moves by itself, but you can pause th
 
 ## 1. Tasks arrive in the backlog
 
-The backlog is the list of incoming work. Tasks have deadlines. When a deadline gets close, the task becomes more dangerous for the business.
+The backlog is the list of incoming work. A task does not spend its delivery deadline while it is still untouched in the backlog. Instead, its opportunity value slowly fades.
+
+If backlog value reaches zero, the task disappears as a missed opportunity and adds a small amount of debt.
 
 ## 2. Move a task into progress
 
 A task in "In Progress" is not done yet. You need to assign team members to it.
+
+When you first move a task from the backlog into progress, the real delivery deadline starts. From that moment, the team has made a commitment.
 
 ## 3. Assign people to subtasks
 
@@ -28,4 +32,4 @@ The "Prod" column is history. You can switch between shipped tasks and unfinishe
 
 ## 6. Read the morning fallout
 
-The morning briefing shows what happened after yesterday's release. If yesterday's release carried risk, today may start with a new consequence task.
+The morning briefing shows what happened after yesterday's release. If yesterday's release carried risk, today may start with a new consequence task. If backlog opportunities faded out, the briefing shows how much value was lost and how much debt was added.

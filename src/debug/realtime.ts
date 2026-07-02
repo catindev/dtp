@@ -27,6 +27,8 @@ const state = createRealtimeState(seed);
 assertQuarterCadence(state);
 const smoke = [
   runQuarterBoundarySmoke(),
+  runBacklogValueDecaySmoke(),
+  runBacklogOpportunityExpirationSmoke(),
   runMissedWorkSmoke(),
   runMigrationNormalizationSmoke(),
   runDebugSnapshotSmoke(),
@@ -159,12 +161,90 @@ function runMissedWorkSmoke() {
   };
 }
 
+function runBacklogValueDecaySmoke() {
+  const currentState = createRealtimeState(4242);
+  assertQuarterCadence(currentState);
+
+  const controlledTaskId = currentState.board.backlog[0];
+  const controlledTask = currentState.tasks[controlledTaskId];
+  assert(Boolean(controlledTask), "Backlog decay smoke expected an initial task.");
+  controlledTask.baseValue = 40;
+  controlledTask.value = 40;
+  controlledTask.backlogValue = 40;
+  controlledTask.backlogDecayElapsedMs = 0;
+  controlledTask.backlogDecayDurationMs = 300000;
+  controlledTask.deadlineMs = 300000;
+  controlledTask.deadlineMaxMs = 300000;
+
+  tickRealtime(currentState, 120000);
+  assert(controlledTask.deadlineMs === 300000, "Untouched backlog task deadline should not tick.");
+  assert(controlledTask.backlogValue < 40, "Untouched backlog task value should decay.");
+
+  const committedValue = Math.max(1, Math.round(controlledTask.backlogValue));
+  assert(moveRealtimeTask(currentState, controlledTask.id, "inProgress"), "Backlog decay smoke move failed.");
+  assert(controlledTask.engagedOnce, "Backlog decay smoke expected task committed.");
+  assert(controlledTask.value === committedValue, "Backlog decay smoke expected value fixed on commit.");
+  assert(controlledTask.deadlineMs === 300000, "Backlog decay smoke expected full deadline on commit.");
+
+  return {
+    name: "backlog-value-decay",
+    committedValue: controlledTask.value,
+    baseValue: controlledTask.baseValue,
+  };
+}
+
+function runBacklogOpportunityExpirationSmoke() {
+  const currentState = createRealtimeState(4343);
+  assertQuarterCadence(currentState);
+  const initialDebt = currentState.resources.debt;
+  const expiringTaskIds = currentState.board.backlog.slice(0, 2);
+  assert(expiringTaskIds.length >= 2, "Backlog expiration smoke expected two initial backlog tasks.");
+
+  for (const taskId of expiringTaskIds) {
+    const task = currentState.tasks[taskId];
+    assert(Boolean(task), "Backlog expiration smoke expected task.");
+    task.baseValue = 120;
+    task.value = 120;
+    task.backlogValue = 120;
+    task.backlogDecayElapsedMs = 0;
+    task.backlogDecayDurationMs = 1000;
+  }
+
+  tickRealtime(currentState, 1500);
+  const expiredTasks = expiringTaskIds.map((taskId) => currentState.tasks[taskId]);
+  assert(
+    expiredTasks.every((task) => task.resolved && task.resolution === "backlog_opportunity_expired"),
+    "Backlog expiration smoke expected resolved expired tasks.",
+  );
+  assert(currentState.backlogDecayToday.expiredCount === 2, "Backlog expiration smoke expected two expirations.");
+  assert(currentState.backlogDecayToday.debtAdded === 6, "Backlog expiration smoke expected daily debt cap.");
+  assert(currentState.resources.debt === initialDebt + 6, "Backlog expiration smoke expected capped debt applied.");
+  assert(
+    expiringTaskIds.every((taskId) => !currentState.board.backlog.includes(taskId)),
+    "Backlog expiration smoke expected tasks removed from backlog.",
+  );
+
+  tickToMorningReport(currentState);
+  const report = currentState.morningReport;
+  assert(report !== null, "Backlog expiration smoke expected morning report.");
+  assert(report.daySummary.backlogExpiredCount === 2, "Backlog expiration smoke expected report expirations.");
+  assert(report.daySummary.backlogDebtAdded === 6, "Backlog expiration smoke expected report debt.");
+  assert(report.consequences.length === 0, "Backlog expiration smoke expected no fallout consequences.");
+
+  return {
+    name: "backlog-opportunity-expiration",
+    expired: report.daySummary.backlogExpiredCount,
+    debtAdded: report.daySummary.backlogDebtAdded,
+  };
+}
+
 function runMigrationNormalizationSmoke() {
   const currentState = createRealtimeState(999);
   const legacyState = currentState as unknown as {
     locale: unknown;
     daysPerQuarter: number;
     board: Record<string, string[] | undefined>;
+    backlogDecayToday?: RtGameState["backlogDecayToday"];
     morningReport?: RtGameState["morningReport"];
   };
   const controlledTaskId = currentState.board.backlog[0];
@@ -173,6 +253,7 @@ function runMigrationNormalizationSmoke() {
 
   legacyState.locale = "de";
   legacyState.daysPerQuarter = 1;
+  delete legacyState.backlogDecayToday;
   delete legacyState.morningReport;
   currentState.board.backlog = currentState.board.backlog.filter((taskId) => taskId !== controlledTask.id);
   legacyState.board.analysis = [controlledTask.id];
@@ -187,6 +268,11 @@ function runMigrationNormalizationSmoke() {
   delete legacyTask.blastRadius;
   delete legacyTask.outsourcing;
   delete legacyTask.changedAfterQa;
+  delete legacyTask.baseValue;
+  delete legacyTask.backlogValue;
+  delete legacyTask.backlogDecayElapsedMs;
+  delete legacyTask.backlogDecayDurationMs;
+  delete legacyTask.engagedOnce;
   delete legacyTask.queuedDeadlineMs;
   legacyTask.overdueMs = -120;
   delete legacyTask.rootCauseTaskId;
@@ -212,6 +298,12 @@ function runMigrationNormalizationSmoke() {
   assert(controlledTask.blastRadius !== undefined, "Migration smoke expected blast radius backfill.");
   assert(controlledTask.outsourcing === null, "Migration smoke expected outsourcing backfill.");
   assert(controlledTask.changedAfterQa === false, "Migration smoke expected changedAfterQa backfill.");
+  assert(controlledTask.baseValue === controlledTask.value, "Migration smoke expected base value backfill.");
+  assert(controlledTask.backlogValue === controlledTask.value, "Migration smoke expected backlog value backfill.");
+  assert(controlledTask.backlogDecayElapsedMs === 0, "Migration smoke expected backlog decay elapsed backfill.");
+  assert(controlledTask.backlogDecayDurationMs > 0, "Migration smoke expected backlog decay duration backfill.");
+  assert(controlledTask.engagedOnce, "Migration smoke expected migrated work task to be engaged.");
+  assert(currentState.backlogDecayToday.expiredCount === 0, "Migration smoke expected backlog stats backfill.");
   assert(controlledTask.queuedDeadlineMs === null, "Migration smoke expected work task queued deadline reset.");
   assert(controlledTask.overdueMs === 0, "Migration smoke expected overdue clamp.");
   assert(controlledTask.rootCauseTaskId === null, "Migration smoke expected root cause backfill.");

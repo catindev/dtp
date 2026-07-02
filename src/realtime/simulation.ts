@@ -9,6 +9,10 @@ import {
   TICK_MS,
 } from "../engine/balance";
 import {
+  createBacklogDecayDayStats,
+  resetBacklogDecayDayStats,
+} from "../engine/backlogOpportunity";
+import {
   canMoveTaskOnBoard,
   createBoard,
   moveTaskOnBoard,
@@ -70,6 +74,10 @@ export {
   TICK_MS,
 } from "../engine/balance";
 export { RT_COLUMNS } from "../engine/types";
+export {
+  backlogValueRatio,
+  isUntouchedBacklogTask,
+} from "../engine/backlogOpportunity";
 export {
   getOutsourceTaskWorkStatus,
 } from "../engine/outsourcing";
@@ -148,6 +156,7 @@ export function createRealtimeState(seed = Date.now(), locale: Locale = DEFAULT_
       rewardBudget: 2,
     },
     quarterValue: 0,
+    backlogDecayToday: createBacklogDecayDayStats(),
     morningReport: null,
     board: createBoard(),
     tasks: {},
@@ -196,7 +205,7 @@ export function tickRealtime(state: RtGameState, tickMs = TICK_MS): void {
   }
 
   updateShock(state, gameMinutes);
-  updateTaskTimers(state, tickMs);
+  updateTaskTimers(state, tickMs, (event) => pushEvent(state, event));
   updateOutsourcing(state, tickMs, (event) => pushEvent(state, event));
   updateAssignments(state, tickMs, (event) => pushEvent(state, event));
   updateSpawner(state, tickMs, (event) => pushEvent(state, event));
@@ -208,6 +217,7 @@ export function startDayAfterMorningReport(state: RtGameState): boolean {
   if (!state.morningReport || state.status !== "running") return false;
 
   state.morningReport = null;
+  resetBacklogDecayDayStats(state);
   state.paused = false;
   checkRunStateInternal(state, (event) => pushEvent(state, event));
   return true;

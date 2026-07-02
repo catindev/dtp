@@ -50,7 +50,8 @@ function buildLossReport(
       (event) =>
         event.type === "missed_task_resolved" ||
         event.type === "missed_minor_hit" ||
-        event.type === "missed_tail_blocked",
+        event.type === "missed_tail_blocked" ||
+        event.type === "backlog_opportunity_expired",
     )
     .slice(0, 5)
     .map((event) => ({
@@ -71,7 +72,7 @@ function buildLossReport(
       effects: event.effects,
     }));
   const activePressure = Object.values(state.tasks)
-    .filter((task) => !task.released)
+    .filter((task) => !task.released && !task.resolved)
     .sort((a, b) => a.deadlineMs - b.deadlineMs)
     .slice(0, 6)
     .map((task) => ({
@@ -94,11 +95,11 @@ function buildLossReport(
       ? `Trust fell to 0. The latest run had ${badReleaseCount} recent release(s) that hurt trust or clients.`
       : primaryMetric === "clients"
         ? `Clients fell to 0. Recent low-quality releases and missed work made customers leave.`
-        : `Debt reached 100. Recent releases shipped with too much risk, bugs, or unfinished work.`;
+        : `Debt reached 100. Recent releases and ignored backlog opportunities made future work too hard.`;
   const suggestion =
     badReleaseCount > 0
       ? "Do more Analysis, assign QA in To Do, and fix bugfix subtasks before moving cards to Done."
-      : "Watch the deadline bars. Releasing late or low-quality work will drain trust.";
+      : "Pick valuable backlog tasks before their opportunity value fades, and keep clean releases reducing debt.";
 
   return {
     reason,

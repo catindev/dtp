@@ -1,8 +1,8 @@
 # Idea Note: Backlog Value Decay
 
 **Date:** 2026-07-01
-**Status:** design idea, not implemented.
-**Purpose:** preserve the idea for a later backlog/flow redesign pass.
+**Status:** MVP implemented on `catindev/backlog-value-decay`; tuning and follow-up decisions remain.
+**Purpose:** preserve the design rationale and future tuning notes for the backlog/flow model.
 
 ---
 
@@ -493,14 +493,14 @@ Explicitly postpone:
 
 ---
 
-## Open Decisions
+## MVP Decisions
 
-1. Should `task.value` itself decay, or should release logic use a separate `remainingValue`?
-2. Should engaged tasks be forbidden from returning to Backlog, or can they return with deadline still ticking?
-3. What is the exact debt formula and daily cap?
-4. Should vanished backlog tasks appear in `Prod -> Unfinished`, or only in Morning Briefing/day summary?
-5. How much value decay should be visible on the card: exact number, coarse bar, or both?
-6. Should backlog value decay pause during the Morning Briefing/menu pause? Expected answer: yes, because the game tick is paused.
+1. `baseValue` stays historical; `backlogValue` decays; `task.value` is fixed to current `backlogValue` only when the task first moves to `In Progress`.
+2. Engaged tasks are forbidden from returning to the free Backlog state.
+3. Debt uses `ceil(baseValue / 30)`, clamped to `1..4`, with a daily cap of `6`.
+4. Vanished backlog tasks do not appear in `Prod -> Unfinished`; they appear in Morning Briefing/day summary and logs.
+5. Cards show a coarse opportunity bar and selected task details show current/base value.
+6. Decay pauses during Morning Briefing/menu pause because the game tick is paused.
 
 ---
 

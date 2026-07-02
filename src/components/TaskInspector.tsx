@@ -1,6 +1,8 @@
 import {
+  backlogValueRatio,
   DONE_REWORK_TRUST_COST,
   formatOverdueGameTime,
+  isUntouchedBacklogTask,
   lateReleaseReport,
   releaseReadiness,
   taskDeadlineRatio,
@@ -45,7 +47,11 @@ export function TaskInspector({
   task,
 }: TaskInspectorProps) {
   const readiness = releaseReadiness(task);
+  const untouchedBacklog = isUntouchedBacklogTask(task);
   const late = lateReleaseReport(task);
+  const visibleValue = untouchedBacklog
+    ? `${Math.round(task.backlogValue)}/${Math.round(task.baseValue)}`
+    : task.value;
   const sourceTask = task.sourceTaskId ? game.tasks[task.sourceTaskId] : null;
   const consequenceTasks = Object.values(game.tasks)
     .filter((candidate) => candidate.sourceTaskId === task.id)
@@ -60,7 +66,7 @@ export function TaskInspector({
         <span>{t(locale, "inspector.column", { column: columnLabel(locale, task.column) })}</span>
         <span>{t(locale, "inspector.pressure", { value: task.pressure })}</span>
         <span>{t(locale, "inspector.complexity", { value: task.complexity })}</span>
-        <span>{t(locale, "inspector.value", { value: task.value })}</span>
+        <span>{t(locale, "inspector.value", { value: visibleValue })}</span>
         <span>{t(locale, "inspector.clarity", { value: task.clarity })}</span>
         <span>{t(locale, "inspector.quality", { value: task.quality })}</span>
         <span>{t(locale, "inspector.qa", { value: task.testCoverage })}</span>
@@ -79,6 +85,8 @@ export function TaskInspector({
       <SubtaskList locale={locale} task={task} />
       {task.column === "done" && !task.released ? (
         <p>{t(locale, "inspector.queued", { cost: DONE_REWORK_TRUST_COST })}</p>
+      ) : untouchedBacklog ? (
+        <TinyBar label={t(locale, "task.opportunity")} ratio={backlogValueRatio(task)} tone="deadline-safe" />
       ) : (
         <TinyBar label={t(locale, "task.deadline")} ratio={taskDeadlineRatio(task)} tone="deadline" />
       )}

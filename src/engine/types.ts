@@ -50,7 +50,8 @@ export type RtMoveBlockReason =
   | "released_locked"
   | "same_column"
   | "done_reopen_only_to_work"
-  | "backlog_to_done_forbidden";
+  | "backlog_to_done_forbidden"
+  | "engaged_backlog_forbidden";
 
 export interface RtMoveCheck {
   allowed: boolean;
@@ -100,7 +101,8 @@ export type RtConsequenceSource =
 export type RtTaskResolution =
   | "missed_minor"
   | "missed_tail"
-  | "missed_terminal";
+  | "missed_terminal"
+  | "backlog_opportunity_expired";
 
 export interface RtReleaseConsequence {
   id: string;
@@ -126,10 +128,20 @@ export interface RtDaySummary {
   missedBacklog: number;
   missedInProgress: number;
   missedMinor: number;
+  backlogValueLost: number;
+  backlogExpiredCount: number;
+  backlogDebtAdded: number;
   falloutCreated: number;
   falloutResolved: number;
   unresolvedFallout: number;
   terminalConsequences: number;
+}
+
+export interface RtBacklogDecayDayStats {
+  valueLost: number;
+  expiredCount: number;
+  debtAdded: number;
+  expiredTaskIds: string[];
 }
 
 export interface RtQuarterReviewReport {
@@ -176,6 +188,11 @@ export interface RtTask {
   column: RtColumn;
   pressure: number;
   complexity: number;
+  baseValue: number;
+  backlogValue: number;
+  backlogDecayElapsedMs: number;
+  backlogDecayDurationMs: number;
+  engagedOnce: boolean;
   value: number;
   clarity: number;
   quality: number;
@@ -326,6 +343,7 @@ export interface RtGameState {
   resources: RtResources;
   quarterGoal: RtQuarterGoal;
   quarterValue: number;
+  backlogDecayToday: RtBacklogDecayDayStats;
   morningReport: RtMorningReport | null;
   board: Record<RtColumn, string[]>;
   tasks: Record<string, RtTask>;

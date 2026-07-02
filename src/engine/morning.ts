@@ -71,7 +71,10 @@ export function openMorningReport(state: RtGameState, runtime: MorningRuntime): 
     releaseDelta,
     consequenceDelta,
     quarterReview,
-    empty: shippedTaskIds.length === 0 && missedTaskIds.length === 0,
+    empty:
+      shippedTaskIds.length === 0 &&
+      missedTaskIds.length === 0 &&
+      daySummary.backlogExpiredCount === 0,
     effects,
     missedTaskIds,
     consequences,
@@ -82,13 +85,16 @@ export function openMorningReport(state: RtGameState, runtime: MorningRuntime): 
   runtime.emit({
     type: "day_summary",
     title: `Day ${releaseDay} summary`,
-    body: `${daySummary.shipped} shipped, ${daySummary.missedBacklog + daySummary.missedInProgress} missed, ${daySummary.unresolvedFallout} unresolved fallout.`,
+    body: `${daySummary.shipped} shipped, ${daySummary.missedBacklog + daySummary.missedInProgress} missed, ${daySummary.backlogExpiredCount} backlog expired, ${daySummary.unresolvedFallout} unresolved fallout.`,
     effects: [
       `clean ${daySummary.releasedClean}`,
       `risky ${daySummary.releasedRisky}`,
       `dirty ${daySummary.releasedDirty}`,
       `missed backlog ${daySummary.missedBacklog}`,
       `missed progress ${daySummary.missedInProgress}`,
+      `backlog expired ${daySummary.backlogExpiredCount}`,
+      `backlog value lost ${daySummary.backlogValueLost}`,
+      `backlog debt +${daySummary.backlogDebtAdded}`,
       `fallout +${daySummary.falloutCreated}`,
       `resolved ${daySummary.falloutResolved}`,
       `unresolved ${daySummary.unresolvedFallout}`,
@@ -100,11 +106,18 @@ export function openMorningReport(state: RtGameState, runtime: MorningRuntime): 
     type: "morning_report_opened",
     title: `Morning briefing Day ${state.day}`,
     body:
-      shippedTaskIds.length > 0 || missedTaskIds.length > 0
-        ? `${shippedTaskIds.length} shipped, ${missedTaskIds.length} missed. ${consequences.length} consequence(s) shaped today's backlog.`
+      shippedTaskIds.length > 0 || missedTaskIds.length > 0 || daySummary.backlogExpiredCount > 0
+        ? `${shippedTaskIds.length} shipped, ${missedTaskIds.length} missed, ${daySummary.backlogExpiredCount} backlog expired. ${consequences.length} consequence(s) shaped today's backlog.`
         : "No tasks shipped or expired yesterday. The team starts with the existing backlog.",
     effects: [
       ...effects,
+      ...(daySummary.backlogExpiredCount > 0
+        ? [
+            `backlog expired ${daySummary.backlogExpiredCount}`,
+            `backlog value lost ${daySummary.backlogValueLost}`,
+            `backlog debt +${daySummary.backlogDebtAdded}`,
+          ]
+        : ["no backlog decay loss"]),
       ...(consequences.length > 0 ? [`consequences ${consequences.length}`] : ["no fallout"]),
       `unresolved fallout ${daySummary.unresolvedFallout}`,
     ],
@@ -135,6 +148,9 @@ function buildDaySummary(
     missedBacklog: consequences.filter((consequence) => consequence.source === "missed_backlog").length,
     missedInProgress: consequences.filter((consequence) => consequence.source === "missed_in_progress").length,
     missedMinor: missedTasks.filter((task) => task.resolution === "missed_minor").length,
+    backlogValueLost: state.backlogDecayToday.valueLost,
+    backlogExpiredCount: state.backlogDecayToday.expiredCount,
+    backlogDebtAdded: state.backlogDecayToday.debtAdded,
     falloutCreated: consequences.filter((consequence) => consequence.generatedTaskId).length,
     falloutResolved:
       shippedTaskIds.filter((taskId) => Boolean(state.tasks[taskId]?.rootCauseTaskId)).length +

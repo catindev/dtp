@@ -2,6 +2,12 @@
 
 Tasks have several important properties.
 
+## Value
+
+Value shows how much business benefit the task can create if it reaches release.
+
+In the backlog, value can fade. That means the opportunity is getting older: the task may still help, but less than when it first arrived.
+
 ## Clarity
 
 Clarity shows how well the team understands what needs to be done.

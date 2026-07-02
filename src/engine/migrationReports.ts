@@ -60,6 +60,8 @@ export function normalizeMorningReportState(
     if (!state.morningReport.daySummary) {
       state.morningReport.daySummary = emptyDaySummary(state.morningReport.previousDay);
       changed = true;
+    } else if (normalizeDaySummary(state.morningReport.daySummary)) {
+      changed = true;
     }
     if (!legacyMorningReport.releaseDelta) {
       legacyMorningReport.releaseDelta = emptyResourceDelta();
@@ -93,11 +95,25 @@ export function emptyDaySummary(day: number): RtDaySummary {
     missedBacklog: 0,
     missedInProgress: 0,
     missedMinor: 0,
+    backlogValueLost: 0,
+    backlogExpiredCount: 0,
+    backlogDebtAdded: 0,
     falloutCreated: 0,
     falloutResolved: 0,
     unresolvedFallout: 0,
     terminalConsequences: 0,
   };
+}
+
+function normalizeDaySummary(summary: RtDaySummary): boolean {
+  let changed = false;
+  for (const key of ["backlogValueLost", "backlogExpiredCount", "backlogDebtAdded"] as const) {
+    if (typeof summary[key] !== "number" || !Number.isFinite(summary[key])) {
+      summary[key] = 0;
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 function normalizeMorningConsequence(consequence: RtReleaseConsequence): boolean {

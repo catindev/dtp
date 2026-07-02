@@ -1,3 +1,4 @@
+import { BACKLOG_VALUE_DECAY_MS } from "./balance";
 import { DOMAINS, DOMAIN_PREFIXES } from "./catalog";
 import { TASK_TITLES } from "./content";
 import { normalizeEngineLocale } from "./locale";
@@ -60,6 +61,11 @@ export function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTas
     column: "backlog",
     pressure,
     complexity,
+    baseValue: value,
+    backlogValue: value,
+    backlogDecayElapsedMs: 0,
+    backlogDecayDurationMs: BACKLOG_VALUE_DECAY_MS,
+    engagedOnce: false,
     value,
     clarity: Math.round(clarity),
     quality: Math.max(0, Math.round(clarity * 0.25)),
