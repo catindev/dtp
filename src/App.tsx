@@ -10,6 +10,11 @@ import { TeamPanel } from "./components/TeamPanel";
 import { type RtGameState } from "./realtime/simulation";
 import { type Locale } from "./i18n";
 import { useTaskFeedback } from "./hooks/useTaskFeedback";
+import {
+  useGameEventSounds,
+  useGlobalButtonSounds,
+  useMainThemePlayback,
+} from "./hooks/useGameAudio";
 import { useGameDragAndDrop } from "./hooks/useGameDragAndDrop";
 import { useGameEventEffects } from "./hooks/useGameEventEffects";
 import { initialSelectedTaskId, useGameActions } from "./hooks/useGameActions";
@@ -27,6 +32,7 @@ import {
 } from "./hooks/useRuntimeEffects";
 import { useSelectedTaskSync } from "./hooks/useSelectedTaskSync";
 import { USER_DOCS } from "./userdocs";
+import { playSoundEffect } from "./audio/audioManager";
 import "./styles.css";
 
 type AppScreen = "menu" | "game" | "docs";
@@ -42,6 +48,7 @@ export function App() {
     loggedEventKeysRef,
     restoredSave,
     sessionIdRef,
+    soundEventKeysRef,
   } = useGameBoot();
 
   const [locale, setLocale] = useState<Locale>(() => initialLocale);
@@ -116,6 +123,7 @@ export function App() {
     sessionIdRef,
     loggedEventKeysRef,
     animatedWorkEventKeysRef,
+    soundEventKeysRef,
     mutate,
     setGame,
     setScreen,
@@ -128,6 +136,8 @@ export function App() {
   });
 
   useBackendLogPump();
+  useGlobalButtonSounds();
+  useMainThemePlayback(game, screen);
   useRealtimeTicker(screen, setGame);
   useDebugSnapshotPoster(screen, latestGameRef, sessionIdRef);
   useAutosaveRun(game, screen, latestGameRef, sessionIdRef);
@@ -145,8 +155,18 @@ export function App() {
     animatedWorkEventKeysRef,
     bounceTask,
   });
+  useGameEventSounds({
+    game,
+    screen,
+    soundEventKeysRef,
+  });
 
   const selectedDoc = USER_DOCS.find((doc) => doc.id === selectedDocId) ?? USER_DOCS[0];
+
+  function selectTask(taskId: string): void {
+    playSoundEffect("click");
+    setSelectedTaskId(taskId);
+  }
 
   if (screen === "docs") {
     return (
@@ -224,7 +244,7 @@ export function App() {
             onAllowDrop={allowDrop}
             onColumnDrop={dropOnColumn}
             onProdViewChange={setProdView}
-            onTaskClick={setSelectedTaskId}
+            onTaskClick={selectTask}
             onTaskDragEnd={finishDrag}
             onTaskDragStart={beginTaskDrag}
             onTaskDrop={dropOnTask}

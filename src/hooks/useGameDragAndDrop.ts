@@ -8,6 +8,7 @@ import {
 } from "../realtime/simulation";
 import { type Locale } from "../i18n";
 import { logAction } from "../frontendLogging";
+import { playSoundEffect } from "../audio/audioManager";
 import {
   acceptsDtpDrop,
   dragBlockedByPause,
@@ -68,15 +69,18 @@ export function useGameDragAndDrop({
   function beginTaskDrag(event: DragEvent<HTMLElement>, task: RtTask) {
     if (dragBlockedByPause(game, isGameScreen, morningReportActive)) {
       event.preventDefault();
+      playSoundEffect("error");
       shakePauseButton();
       return;
     }
     if (interactionBlocked || task.assignedCharacterId || task.released) {
       event.preventDefault();
+      playSoundEffect("error");
       return;
     }
     activeDragRef.current = { type: "task", taskId: task.id };
     writeTaskDragData(event, task.id);
+    playSoundEffect("drag");
     logAction(sessionId, "task_drag_started", {
       taskId: task.id,
       fromColumn: task.column,
@@ -87,15 +91,18 @@ export function useGameDragAndDrop({
   function beginCharacterDrag(event: DragEvent<HTMLElement>, character: RtCharacter) {
     if (dragBlockedByPause(game, isGameScreen, morningReportActive)) {
       event.preventDefault();
+      playSoundEffect("error");
       shakePauseButton();
       return;
     }
     if (interactionBlocked || character.assignedTaskId || character.exhaustedToday) {
       event.preventDefault();
+      playSoundEffect("error");
       return;
     }
     activeDragRef.current = { type: "character", characterId: character.id };
     writeCharacterDragData(event, character, locale);
+    playSoundEffect("drag");
     logAction(sessionId, "character_drag_started", {
       characterId: character.id,
       characterName: character.name,
@@ -107,15 +114,18 @@ export function useGameDragAndDrop({
   function beginOutsourceDrag(event: DragEvent<HTMLElement>) {
     if (dragBlockedByPause(game, isGameScreen, morningReportActive)) {
       event.preventDefault();
+      playSoundEffect("error");
       shakePauseButton();
       return;
     }
     if (interactionBlocked || game.resources.budget <= 0) {
       event.preventDefault();
+      playSoundEffect("error");
       return;
     }
     activeDragRef.current = { type: "outsourcing" };
     writeOutsourceDragData(event);
+    playSoundEffect("drag");
     logAction(sessionId, "outsourcing_drag_started", {
       budget: game.resources.budget,
       gameTime: formatGameTime(game),

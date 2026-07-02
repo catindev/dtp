@@ -14,6 +14,7 @@ import {
 } from "../realtime/simulation";
 import type { Locale } from "../i18n";
 import { logAction } from "../frontendLogging";
+import { playSoundEffect } from "../audio/audioManager";
 import {
   characterDropRejectReason,
   outsourceStatusText,
@@ -47,12 +48,14 @@ export function dropOnColumnWithContext(
   const activeDrag = context.activeDragRef.current;
   if (column === "released") {
     context.shakeColumn(column);
+    playSoundEffect("error");
     context.activeDragRef.current = null;
     return;
   }
   const taskId = readTaskDragId(event, activeDrag);
   if (!taskId) {
     if (activeDrag) context.shakeColumn(column);
+    if (activeDrag) playSoundEffect("error");
     context.activeDragRef.current = null;
     return;
   }
@@ -96,6 +99,7 @@ function dropOutsourceOnTask(context: GameDropContext, task: RtTask): void {
     });
   } else {
     context.shakeTask(task.id);
+    playSoundEffect("error");
   }
   logAction(
     context.sessionId,
@@ -113,7 +117,10 @@ function dropOutsourceOnTask(context: GameDropContext, task: RtTask): void {
       gameTime: formatGameTime(context.game),
     },
   );
-  if (canOutsource) context.flashTask(task.id);
+  if (canOutsource) {
+    playSoundEffect("drop");
+    context.flashTask(task.id);
+  }
   context.activeDragRef.current = null;
 }
 
@@ -133,6 +140,7 @@ function dropCharacterOnTask(
     });
   } else {
     context.shakeTask(task.id);
+    playSoundEffect("error");
   }
   logAction(
     context.sessionId,
@@ -148,7 +156,10 @@ function dropCharacterOnTask(
       gameTime: formatGameTime(context.game),
     },
   );
-  if (canAssign) context.flashTask(task.id);
+  if (canAssign) {
+    playSoundEffect("drop");
+    context.flashTask(task.id);
+  }
   context.activeDragRef.current = null;
 }
 
@@ -168,6 +179,7 @@ function moveDroppedTask(
     } else {
       context.shakeColumn(column);
     }
+    playSoundEffect("error");
     logAction(context.sessionId, "task_drop_rejected", {
       taskId,
       fromColumn,
@@ -192,6 +204,7 @@ function moveDroppedTask(
       : {}),
     gameTime: formatGameTime(context.game),
   });
+  playSoundEffect("drop");
   context.flashTask(taskId);
   context.activeDragRef.current = null;
 }

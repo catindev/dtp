@@ -97,6 +97,7 @@ export function TaskInspector({
       {canCancelWork ? (
         <button
           className="cancel-button inspector-cancel-button"
+          data-sound-effect="taskCancel"
           disabled={cancelDisabled}
           onClick={onCancelWork}
           type="button"

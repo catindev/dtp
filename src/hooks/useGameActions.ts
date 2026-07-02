@@ -15,7 +15,11 @@ import {
   type RtGameState,
   type RtTask,
 } from "../realtime/simulation";
-import { createSessionId, logAction } from "../frontendLogging";
+import { createSessionId, gameEventKey, logAction } from "../frontendLogging";
+import {
+  restartMainThemeOnNextPlay,
+  startMainTheme,
+} from "../audio/audioManager";
 
 type AppScreen = "menu" | "game" | "docs";
 type ProdView = "released" | "unfinished";
@@ -32,6 +36,7 @@ interface UseGameActionsArgs {
   sessionIdRef: MutableRefObject<string>;
   loggedEventKeysRef: MutableRefObject<Set<string>>;
   animatedWorkEventKeysRef: MutableRefObject<Set<string>>;
+  soundEventKeysRef: MutableRefObject<Set<string>>;
   mutate: (updater: (draft: RtGameState) => void) => void;
   setGame: Dispatch<SetStateAction<RtGameState>>;
   setScreen: Dispatch<SetStateAction<AppScreen>>;
@@ -55,6 +60,7 @@ export function useGameActions({
   sessionIdRef,
   loggedEventKeysRef,
   animatedWorkEventKeysRef,
+  soundEventKeysRef,
   mutate,
   setGame,
   setScreen,
@@ -72,6 +78,8 @@ export function useGameActions({
     sessionIdRef.current = sessionId;
     loggedEventKeysRef.current = new Set();
     animatedWorkEventKeysRef.current = new Set();
+    soundEventKeysRef.current = new Set(next.log.map(gameEventKey));
+    restartMainThemeOnNextPlay();
     resetDrag();
     resetFeedback();
     setGame(next);
@@ -79,6 +87,7 @@ export function useGameActions({
     setHasResumeCard(true);
     setScreen("game");
     saveRun(next, sessionId);
+    startMainTheme({ restart: true });
     logAction(sessionId, actionName, {
       seed: next.seed,
       startedAt: new Date().toISOString(),
@@ -97,6 +106,7 @@ export function useGameActions({
       gameTime: formatGameTime(game),
       status: game.status,
     });
+    if (game.paused && next.status === "running") startMainTheme();
   }
 
   function openMenu() {
@@ -119,6 +129,7 @@ export function useGameActions({
     setSelectedTaskId((current) => (current && next.tasks[current] ? current : initialSelectedTaskId(next)));
     setScreen("game");
     saveRun(next, sessionIdRef.current);
+    if (next.status === "running" && !next.paused) startMainTheme();
     logAction(sessionIdRef.current, "continue_run_clicked", {
       gameTime: formatGameTime(next),
       status: next.status,

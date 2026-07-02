@@ -35,6 +35,9 @@ export function useGameBoot() {
   const animatedWorkEventKeysRef = useRef(
     new Set<string>(restoredSave?.game.log.map(gameEventKey) ?? []),
   );
+  const soundEventKeysRef = useRef(
+    new Set<string>(restoredSave?.game.log.map(gameEventKey) ?? []),
+  );
 
   return {
     animatedWorkEventKeysRef,
@@ -44,5 +47,6 @@ export function useGameBoot() {
     loggedEventKeysRef,
     restoredSave,
     sessionIdRef,
+    soundEventKeysRef,
   };
 }
