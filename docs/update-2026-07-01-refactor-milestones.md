@@ -1,7 +1,8 @@
 # Update Note: Refactor Milestones And Current Architecture
 
 **Date:** 2026-07-01
-**Scope:** refactor pass after the menu/RTFM/Prod iteration.
+**Updated:** 2026-07-02
+**Scope:** refactor pass after the menu/RTFM/Prod iteration, plus follow-up engine/UI cleanup.
 **Status:** implemented and verified with `npm run check`, `npm run build`, `npm run debug:rt`, and `npm run debug:ab`.
 
 ---
@@ -38,12 +39,19 @@ Current responsibilities:
 ```txt
 src/engine/balance.ts       constants and tuning knobs
 src/engine/types.ts         shared realtime state types
+src/engine/locale.ts        engine-local locale type and normalizer
+src/engine/content.ts       simulation task/subtask text used by task generation and UI maps
 src/engine/rng.ts           deterministic random helpers
 src/engine/catalog.ts       task catalogs and role/domain data
-src/engine/taskFactory.ts   task creation and title/subtask generation
+src/engine/taskFactory.ts   task assembly facade
+src/engine/taskKind.ts      task kind weights, blast radius, value multiplier
+src/engine/taskSubtasks.ts  generated subtask composition and frontend-work guardrail
 src/engine/spawn.ts         initial team/tasks and task spawn cadence
 src/engine/board.ts         legal board movement
-src/engine/work.ts          character assignment, stamina, progress, bugs, QA, analysis
+src/engine/work.ts          assignment, active progress, stamina drain, task selection
+src/engine/workStages.ts    analysis, implementation, QA, bugfix, and test completion
+src/engine/workRules.ts     shared work scoring/postmortem helpers
+src/engine/bugs.ts          bug discovery, QA recheck, and bugfix subtask creation
 src/engine/outsourcing.ts   outsource availability, payment, and progress
 src/engine/release.ts       release train and business effects
 src/engine/consequences.ts  fallout, missed work, chain depth, terminal effects
@@ -114,6 +122,7 @@ src/hooks/useGameMutation.ts      safe state mutation wrapper
 src/hooks/useRuntimeEffects.ts    ticker, autosave, backend log pump, debug snapshots
 src/hooks/useGameActions.ts       start/continue/menu/pause/cancel/link actions
 src/hooks/useGameDragAndDrop.ts   task/character/outsource drag-and-drop
+src/hooks/dragAndDropHelpers.ts   drag payload parsing, reject reasons, drag ghost
 src/hooks/useGameEventEffects.ts  event logging and one-shot task bounce
 src/hooks/useTaskFeedback.ts      flash, bounce, reject shake, pause shake
 src/hooks/useLocaleSync.ts        locale persistence and state sync
@@ -173,26 +182,55 @@ The refactor also preserved and documented the latest UX decisions:
 
 ---
 
+## Follow-Up Refactor Pass 2026-07-02
+
+The second pass focused on reducing the remaining hotspots without changing gameplay balance.
+
+Completed milestones:
+
+1. `src/engine/work.ts` progress/stamina formulas were named and grouped into local helpers.
+2. Stage completion moved from `work.ts` to `src/engine/workStages.ts`.
+3. Shared work helpers moved to `src/engine/workRules.ts`, removing the `outsourcing.ts -> work.ts` dependency.
+4. Engine text/locale dependencies were moved out of UI `i18n.ts` into `src/engine/content.ts` and `src/engine/locale.ts`.
+5. Task generation was split into `taskFactory.ts`, `taskKind.ts`, and `taskSubtasks.ts`.
+6. Backend log transport/queue moved from `frontendLogging.ts` to `src/logging/backendLog.ts`.
+7. Drag-and-drop payload/reject helpers moved from `useGameDragAndDrop.ts` to `src/hooks/dragAndDropHelpers.ts`.
+
+Important compatibility choices:
+
+- `src/realtime/simulation.ts` still re-exports the public engine API for UI code and debug scripts.
+- Saved game locale values remain `"en"` / `"ru"`; no save reset is required for the locale refactor.
+- `i18n.ts` re-exports engine content, so existing UI imports keep working while engine no longer imports UI i18n.
+- Drag-and-drop behavior is intentionally unchanged; the refactor only moved MIME payload parsing, reject text, pause blocking, and ghost rendering.
+- Backend logging still uses the same localStorage queue key and backend endpoints.
+
+---
+
 ## Current File Size Snapshot
 
-The biggest active files after the pass:
+The biggest active files after the follow-up pass:
 
 ```txt
-src/engine/work.ts                 ~633 lines
-src/engine/consequences.ts         ~461 lines
+src/engine/consequences.ts           ~461 lines
+src/engine/workStages.ts             ~405 lines
 src/components/MorningReportPage.tsx ~367 lines
-src/hooks/useGameDragAndDrop.ts    ~352 lines
-src/engine/migration.ts            ~348 lines
-src/engine/types.ts                ~337 lines
-src/engine/taskFactory.ts          ~314 lines
-src/realtime/simulation.ts         ~284 lines
-src/App.tsx                        ~254 lines
+src/engine/work.ts                   ~366 lines
+src/engine/migration.ts              ~350 lines
+src/engine/types.ts                  ~337 lines
+src/realtime/simulation.ts           ~284 lines
+src/hooks/useGameDragAndDrop.ts      ~281 lines
+src/logging/backendLog.ts            ~271 lines
+src/App.tsx                          ~254 lines
+src/frontendLogging.ts               ~210 lines
+src/engine/taskSubtasks.ts           ~175 lines
+src/hooks/dragAndDropHelpers.ts      ~134 lines
+src/engine/taskFactory.ts            ~92 lines
 ```
 
 Interpretation:
 
 - the original two largest bottlenecks were reduced substantially;
-- the next refactor targets are now obvious and local;
+- the next refactor targets are now mostly consequences, migration/schema, and report rendering;
 - future work should not add new mechanics directly into `App.tsx`.
 
 ---
@@ -223,10 +261,10 @@ The checks are not exhaustive automated tests. They are the current guardrail se
 
 Recommended next milestones:
 
-1. Split `src/engine/work.ts` into assignment, progress, stamina, QA/bugs, and analysis helpers.
-2. Split `src/engine/consequences.ts` into release fallout, missed work, chain termination, and text/payload builders.
-3. Split `src/hooks/useGameDragAndDrop.ts` into payload parsing, move/drop handlers, and rejection feedback.
-4. Move remaining magic balance numbers out of formulas into `src/engine/balance.ts`.
-5. Add narrower regression checks around migration, missed work, outsource, and QA recheck.
+1. Split `src/engine/consequences.ts` into release fallout, missed work, chain termination, consequence task creation, and text/payload builders.
+2. Split `src/engine/migration.ts` into state normalization, board migration, task migration, report migration, and schema guards.
+3. Split `src/components/MorningReportPage.tsx` into quarter review, resource delta, consequences, and shipment sections.
+4. Split `src/frontendLogging.ts` into snapshot building and debug/Vite snapshot posting if snapshot payloads keep growing.
+5. Add narrower regression checks around migration, missed work, outsource, QA recheck, and drag/drop rejection semantics.
 
 These are lower-risk now because the public facade and visible UI components are already separated.
