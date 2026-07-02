@@ -234,149 +234,201 @@ function completeStage(
   character.assignedTaskId = null;
 
   if (stage === "analysis") {
-    const gain = 18 + character.skill.analysis * 5 + randomInt(state, 0, 8);
-    const revealed = revealSubtasksByAnalysis(state, task, gain);
-    task.clarity = clamp(task.clarity + gain, 0, 100);
-    task.quality = clamp(task.quality + Math.round(gain * 0.15), 0, 100);
-    task.currentSubtaskId = null;
-    task.stageComplete = true;
-    task.lastNote =
-      revealed.length > 0
-        ? `Analysis complete. Revealed ${revealed.length} subtask(s).`
-        : "Analysis complete. No new subtasks found.";
-    emit({
-      type: "analysis_done",
-      title: `${task.id} clarified`,
-      body: `${character.name} improved task clarity.`,
-      effects: [`clarity +${gain}`, ...revealed.map((subtask) => `revealed ${subtask.role}`)],
-    });
+    completeAnalysisStage(state, task, character, emit);
     return;
   }
 
   if (stage === "todo") {
-    const subtask = task.currentSubtaskId
-      ? task.subtasks.find((candidate) => candidate.id === task.currentSubtaskId)
-      : null;
-    if (!subtask) return;
-    const roleFit = character.specialty[subtask.role];
-    const offRole = roleFit < 3;
-    subtask.done = true;
-    subtask.completedBy = character.id;
-    subtask.offRole = offRole;
-    subtask.progress = 100;
-    character.xp[subtask.role] += offRole ? 3 : 1;
-    if (character.xp[subtask.role] >= 10 && character.specialty[subtask.role] < 5) {
-      character.xp[subtask.role] -= 10;
-      character.specialty[subtask.role] += 1;
-    }
-    if (offRole) {
-      task.offRolePenalty += subtask.importance === "critical" ? 10 : 6;
-      character.stamina = clamp(character.stamina - 12, 0, 100);
-      addPostmortemNote(task, `${character.name} completed ${subtask.role} work off-role.`);
-    }
-
-    if (subtask.role === "qa") {
-      const coverageGain = Math.round(
-        (22 + character.skill.test * 6 + roleFit * 4 + randomInt(state, 0, 8)) *
-          (offRole ? 0.72 : 1),
-      );
-      task.testCoverage = clamp(task.testCoverage + coverageGain, 0, 100);
-      task.changedAfterQa = false;
-      const discoveredBugs = discoverBugsDuringQa(state, task);
-      task.bugs += discoveredBugs;
-      const triagedBugs = Math.min(
-        task.bugs,
-        Math.max(1, Math.floor((character.skill.test + roleFit) / 4) + randomInt(state, 0, 1)),
-      );
-      task.bugs = Math.max(0, task.bugs - triagedBugs);
-      const bugfixes = addBugfixSubtasks(state, task, triagedBugs);
-      ensureBugReviewSubtask(task);
-      task.currentSubtaskId = null;
-      task.stageComplete = true;
-      task.lastNote =
-        bugfixes.length > 0
-          ? `QA converted ${bugfixes.length} bug(s) into rework.`
-          : "QA pass complete.";
-      emit({
-        type: "qa_done",
-        title: `${task.id} QA pass done`,
-        body:
-          bugfixes.length > 0
-            ? `${character.name} triaged ${bugfixes.length} bug(s) into rework.`
-            : `${character.name} found no blocking bugs.`,
-        effects: [
-          subtask.importance,
-          offRole ? "off-role" : "on-role",
-          `qa +${coverageGain}`,
-          ...(discoveredBugs > 0 ? [`found +${discoveredBugs}`] : []),
-          ...(triagedBugs > 0 ? [`bugs -${triagedBugs}`] : ["bugs 0"]),
-          ...(bugfixes.length > 0 ? [`rework +${bugfixes.length}`] : []),
-          ...(task.bugs > 0 ? [`bugs left ${task.bugs}`] : []),
-        ],
-      });
-      return;
-    }
-
-    const importanceQuality =
-      subtask.importance === "critical" ? 14 : subtask.importance === "important" ? 9 : 5;
-    if (task.testCoverage > 0) {
-      task.changedAfterQa = true;
-      task.testCoverage = Math.min(task.testCoverage, 35);
-      ensureQaRecheckSubtask(task);
-      addPostmortemNote(
-        task,
-        "Implementation changed after QA, so prior test coverage became stale.",
-      );
-    }
-    const rawQuality =
-      task.clarity * 0.55 +
-      roleFit * 9 +
-      importanceQuality +
-      randomInt(state, -10, 10) -
-      (100 - character.stamina) * 0.12 -
-      (offRole ? 18 : 0);
-    const bugfixWork = isBugfixWork(subtask);
-    const qualityGain = bugfixWork ? 16 + roleFit * 3 : Math.max(4, Math.round(rawQuality / 8));
-    task.quality = clamp(Math.max(task.quality, Math.round(rawQuality)), 0, 100);
-    let introducedBugs = 0;
-    if (bugfixWork) {
-      const fixed = Math.min(task.bugs, roleFit >= 4 && chance(state, 0.35) ? 2 : 1);
-      task.bugs = Math.max(0, task.bugs - fixed);
-      task.quality = clamp(task.quality + qualityGain, 0, 100);
-    } else {
-      introducedBugs = introduceImplementationBugs(
-        state,
-        task,
-        character,
-        subtask,
-        roleFit,
-        offRole,
-        rawQuality,
-      );
-    }
-    task.workDone = task.subtasks.some((candidate) => candidate.done && candidate.role !== "qa");
-    task.currentSubtaskId = null;
-    task.stageComplete = true;
-    task.lastNote =
-      introducedBugs > 0
-        ? `${subtask.role} subtask complete. ${introducedBugs} bug(s) appeared.`
-        : `${subtask.role} subtask complete.`;
-    emit({
-      type: bugfixWork ? "bugfix_done" : "subtask_done",
-      title: `${task.id} ${subtask.role} done`,
-      body: `${character.name} completed ${subtask.title}.`,
-      effects: [
-        subtask.importance,
-        offRole ? "off-role" : "on-role",
-        `quality ${task.quality}`,
-        `bugs ${task.bugs}`,
-        ...(introducedBugs > 0 ? [`bugs +${introducedBugs}`] : []),
-        ...(task.changedAfterQa ? ["QA recheck required"] : []),
-      ],
-    });
+    completeTodoStage(state, task, character, emit);
     return;
   }
 
+  completeTestStage(state, task, character, emit);
+}
+
+function completeAnalysisStage(
+  state: RtGameState,
+  task: RtTask,
+  character: RtCharacter,
+  emit: WorkEventSink,
+): void {
+  const gain = 18 + character.skill.analysis * 5 + randomInt(state, 0, 8);
+  const revealed = revealSubtasksByAnalysis(state, task, gain);
+  task.clarity = clamp(task.clarity + gain, 0, 100);
+  task.quality = clamp(task.quality + Math.round(gain * 0.15), 0, 100);
+  task.currentSubtaskId = null;
+  task.stageComplete = true;
+  task.lastNote =
+    revealed.length > 0
+      ? `Analysis complete. Revealed ${revealed.length} subtask(s).`
+      : "Analysis complete. No new subtasks found.";
+  emit({
+    type: "analysis_done",
+    title: `${task.id} clarified`,
+    body: `${character.name} improved task clarity.`,
+    effects: [`clarity +${gain}`, ...revealed.map((subtask) => `revealed ${subtask.role}`)],
+  });
+}
+
+function completeTodoStage(
+  state: RtGameState,
+  task: RtTask,
+  character: RtCharacter,
+  emit: WorkEventSink,
+): void {
+  const subtask = task.currentSubtaskId
+    ? task.subtasks.find((candidate) => candidate.id === task.currentSubtaskId)
+    : null;
+  if (!subtask) return;
+
+  const roleFit = character.specialty[subtask.role];
+  const offRole = roleFit < 3;
+  subtask.done = true;
+  subtask.completedBy = character.id;
+  subtask.offRole = offRole;
+  subtask.progress = 100;
+  character.xp[subtask.role] += offRole ? 3 : 1;
+  if (character.xp[subtask.role] >= 10 && character.specialty[subtask.role] < 5) {
+    character.xp[subtask.role] -= 10;
+    character.specialty[subtask.role] += 1;
+  }
+  if (offRole) {
+    task.offRolePenalty += subtask.importance === "critical" ? 10 : 6;
+    character.stamina = clamp(character.stamina - 12, 0, 100);
+    addPostmortemNote(task, `${character.name} completed ${subtask.role} work off-role.`);
+  }
+
+  if (subtask.role === "qa") {
+    completeQaSubtaskStage(state, task, character, subtask, roleFit, offRole, emit);
+    return;
+  }
+
+  completeImplementationSubtaskStage(state, task, character, subtask, roleFit, offRole, emit);
+}
+
+function completeQaSubtaskStage(
+  state: RtGameState,
+  task: RtTask,
+  character: RtCharacter,
+  subtask: RtSubtask,
+  roleFit: number,
+  offRole: boolean,
+  emit: WorkEventSink,
+): void {
+  const coverageGain = Math.round(
+    (22 + character.skill.test * 6 + roleFit * 4 + randomInt(state, 0, 8)) *
+      (offRole ? 0.72 : 1),
+  );
+  task.testCoverage = clamp(task.testCoverage + coverageGain, 0, 100);
+  task.changedAfterQa = false;
+  const discoveredBugs = discoverBugsDuringQa(state, task);
+  task.bugs += discoveredBugs;
+  const triagedBugs = Math.min(
+    task.bugs,
+    Math.max(1, Math.floor((character.skill.test + roleFit) / 4) + randomInt(state, 0, 1)),
+  );
+  task.bugs = Math.max(0, task.bugs - triagedBugs);
+  const bugfixes = addBugfixSubtasks(state, task, triagedBugs);
+  ensureBugReviewSubtask(task);
+  task.currentSubtaskId = null;
+  task.stageComplete = true;
+  task.lastNote =
+    bugfixes.length > 0
+      ? `QA converted ${bugfixes.length} bug(s) into rework.`
+      : "QA pass complete.";
+  emit({
+    type: "qa_done",
+    title: `${task.id} QA pass done`,
+    body:
+      bugfixes.length > 0
+        ? `${character.name} triaged ${bugfixes.length} bug(s) into rework.`
+        : `${character.name} found no blocking bugs.`,
+    effects: [
+      subtask.importance,
+      offRole ? "off-role" : "on-role",
+      `qa +${coverageGain}`,
+      ...(discoveredBugs > 0 ? [`found +${discoveredBugs}`] : []),
+      ...(triagedBugs > 0 ? [`bugs -${triagedBugs}`] : ["bugs 0"]),
+      ...(bugfixes.length > 0 ? [`rework +${bugfixes.length}`] : []),
+      ...(task.bugs > 0 ? [`bugs left ${task.bugs}`] : []),
+    ],
+  });
+}
+
+function completeImplementationSubtaskStage(
+  state: RtGameState,
+  task: RtTask,
+  character: RtCharacter,
+  subtask: RtSubtask,
+  roleFit: number,
+  offRole: boolean,
+  emit: WorkEventSink,
+): void {
+  const importanceQuality =
+    subtask.importance === "critical" ? 14 : subtask.importance === "important" ? 9 : 5;
+  if (task.testCoverage > 0) {
+    task.changedAfterQa = true;
+    task.testCoverage = Math.min(task.testCoverage, 35);
+    ensureQaRecheckSubtask(task);
+    addPostmortemNote(
+      task,
+      "Implementation changed after QA, so prior test coverage became stale.",
+    );
+  }
+  const rawQuality =
+    task.clarity * 0.55 +
+    roleFit * 9 +
+    importanceQuality +
+    randomInt(state, -10, 10) -
+    (100 - character.stamina) * 0.12 -
+    (offRole ? 18 : 0);
+  const bugfixWork = isBugfixWork(subtask);
+  const qualityGain = bugfixWork ? 16 + roleFit * 3 : Math.max(4, Math.round(rawQuality / 8));
+  task.quality = clamp(Math.max(task.quality, Math.round(rawQuality)), 0, 100);
+  let introducedBugs = 0;
+  if (bugfixWork) {
+    const fixed = Math.min(task.bugs, roleFit >= 4 && chance(state, 0.35) ? 2 : 1);
+    task.bugs = Math.max(0, task.bugs - fixed);
+    task.quality = clamp(task.quality + qualityGain, 0, 100);
+  } else {
+    introducedBugs = introduceImplementationBugs(
+      state,
+      task,
+      character,
+      subtask,
+      roleFit,
+      offRole,
+      rawQuality,
+    );
+  }
+  task.workDone = task.subtasks.some((candidate) => candidate.done && candidate.role !== "qa");
+  task.currentSubtaskId = null;
+  task.stageComplete = true;
+  task.lastNote =
+    introducedBugs > 0
+      ? `${subtask.role} subtask complete. ${introducedBugs} bug(s) appeared.`
+      : `${subtask.role} subtask complete.`;
+  emit({
+    type: bugfixWork ? "bugfix_done" : "subtask_done",
+    title: `${task.id} ${subtask.role} done`,
+    body: `${character.name} completed ${subtask.title}.`,
+    effects: [
+      subtask.importance,
+      offRole ? "off-role" : "on-role",
+      `quality ${task.quality}`,
+      `bugs ${task.bugs}`,
+      ...(introducedBugs > 0 ? [`bugs +${introducedBugs}`] : []),
+      ...(task.changedAfterQa ? ["QA recheck required"] : []),
+    ],
+  });
+}
+
+function completeTestStage(
+  state: RtGameState,
+  task: RtTask,
+  character: RtCharacter,
+  emit: WorkEventSink,
+): void {
   const coverageGain = 24 + character.skill.test * 8 + randomInt(state, 0, 8);
   task.testCoverage = clamp(task.testCoverage + coverageGain, 0, 100);
   task.changedAfterQa = false;
