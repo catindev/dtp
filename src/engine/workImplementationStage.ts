@@ -23,6 +23,7 @@ import {
   introduceImplementationBugs,
   isBugfixWork,
 } from "./bugs";
+import { characterEventData } from "./eventData";
 import { clamp } from "./math";
 import {
   chance,
@@ -108,6 +109,16 @@ export function completeImplementationSubtaskStage(
     type: bugfixWork ? "bugfix_done" : "subtask_done",
     title: `${task.id} ${subtask.role} done`,
     body: `${character.name} completed ${subtask.title}.`,
+    data: characterEventData(character, {
+      taskId: task.id,
+      subtaskId: subtask.id,
+      subtaskRole: subtask.role,
+      subtaskImportance: subtask.importance,
+      offRole,
+      quality: task.quality,
+      bugs: task.bugs,
+      introducedBugs,
+    }),
     effects: [
       subtask.importance,
       offRole ? "off-role" : "on-role",

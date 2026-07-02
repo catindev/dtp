@@ -36,6 +36,7 @@ const smoke = [
   runOutsourceSmoke(),
   runOutsourcedQaCoverageSmoke(),
   runQaRecheckSmoke(),
+  runCharacterEventPayloadSmoke(),
   runDragRejectHelperSmoke(),
 ];
 
@@ -474,6 +475,34 @@ function runQaRecheckSmoke() {
     changedAfterQa: controlledTask.changedAfterQa,
     testCoverage: controlledTask.testCoverage,
     recheckId: recheck?.id,
+  };
+}
+
+function runCharacterEventPayloadSmoke() {
+  const currentState = createRealtimeState(3103);
+  const controlledTaskId = currentState.board.backlog[0];
+  const controlledTask = currentState.tasks[controlledTaskId];
+  assert(Boolean(controlledTask), "Character event payload smoke expected an initial task.");
+  configureOutsourceTask(controlledTask);
+  assert(moveRealtimeTask(currentState, controlledTask.id, "inProgress"), "Character payload smoke move failed.");
+
+  const backend = Object.values(currentState.characters).find((character) => character.role === "backend");
+  assert(backend !== undefined, "Character payload smoke expected backend character.");
+  assert(assignCharacterToTask(currentState, backend.id, controlledTask.id), "Character payload smoke assign failed.");
+  tickUntilTaskIdleInState(currentState, controlledTask.id, 900);
+
+  const assignedEvent = currentState.log.find((event) => event.type === "assigned");
+  const completedEvent = currentState.log.find((event) => event.type === "subtask_done");
+  assert(assignedEvent?.data?.characterId === backend.id, "Assigned event should include characterId.");
+  assert(completedEvent?.data?.characterId === backend.id, "Completion event should include characterId.");
+  assert(completedEvent.data.taskId === controlledTask.id, "Completion event should include taskId.");
+  assert(completedEvent.data.subtaskRole === "backend", "Completion event should include subtaskRole.");
+
+  return {
+    name: "character-event-payload",
+    characterId: completedEvent.data.characterId,
+    taskId: completedEvent.data.taskId,
+    subtaskRole: completedEvent.data.subtaskRole,
   };
 }
 

@@ -16,6 +16,7 @@ import {
   discoverBugsDuringQa,
   ensureBugReviewSubtask,
 } from "./bugs";
+import { characterEventData } from "./eventData";
 import { clamp } from "./math";
 import { randomInt } from "./rng";
 import type {
@@ -47,15 +48,32 @@ export function completeQaSubtaskStage(
     roleFit,
     testSkill: character.skill.test,
   });
-  emitQaDoneEvent(task, character, emit, qaResult.bugfixes.length, [
-    subtask.importance,
-    offRole ? "off-role" : "on-role",
-    `qa +${qaResult.coverageGain}`,
-    ...(qaResult.discoveredBugs > 0 ? [`found +${qaResult.discoveredBugs}`] : []),
-    ...(qaResult.triagedBugs > 0 ? [`bugs -${qaResult.triagedBugs}`] : ["bugs 0"]),
-    ...(qaResult.bugfixes.length > 0 ? [`rework +${qaResult.bugfixes.length}`] : []),
-    ...(task.bugs > 0 ? [`bugs left ${task.bugs}`] : []),
-  ]);
+  emitQaDoneEvent(
+    task,
+    character,
+    emit,
+    qaResult.bugfixes.length,
+    [
+      subtask.importance,
+      offRole ? "off-role" : "on-role",
+      `qa +${qaResult.coverageGain}`,
+      ...(qaResult.discoveredBugs > 0 ? [`found +${qaResult.discoveredBugs}`] : []),
+      ...(qaResult.triagedBugs > 0 ? [`bugs -${qaResult.triagedBugs}`] : ["bugs 0"]),
+      ...(qaResult.bugfixes.length > 0 ? [`rework +${qaResult.bugfixes.length}`] : []),
+      ...(task.bugs > 0 ? [`bugs left ${task.bugs}`] : []),
+    ],
+    {
+      subtaskId: subtask.id,
+      subtaskRole: subtask.role,
+      subtaskImportance: subtask.importance,
+      offRole,
+      coverageGain: qaResult.coverageGain,
+      discoveredBugs: qaResult.discoveredBugs,
+      triagedBugs: qaResult.triagedBugs,
+      reworkCount: qaResult.bugfixes.length,
+      bugs: task.bugs,
+    },
+  );
 }
 
 export function completeQaSubtaskPass(
@@ -118,13 +136,29 @@ export function completeTestStage(
   task.currentSubtaskId = null;
   task.lastNote =
     qaResult.bugfixes.length > 0 ? `QA converted ${qaResult.bugfixes.length} bug(s) into rework.` : "QA pass complete.";
-  emitQaDoneEvent(task, character, emit, qaResult.bugfixes.length, [
-    `qa +${coverageGain}`,
-    ...(qaResult.discoveredBugs > 0 ? [`found +${qaResult.discoveredBugs}`] : []),
-    ...(qaResult.triagedBugs > 0 ? [`bugs -${qaResult.triagedBugs}`] : ["bugs 0"]),
-    ...(qaResult.bugfixes.length > 0 ? [`rework +${qaResult.bugfixes.length}`] : []),
-    ...(task.bugs > 0 ? [`bugs left ${task.bugs}`] : []),
-  ]);
+  emitQaDoneEvent(
+    task,
+    character,
+    emit,
+    qaResult.bugfixes.length,
+    [
+      `qa +${coverageGain}`,
+      ...(qaResult.discoveredBugs > 0 ? [`found +${qaResult.discoveredBugs}`] : []),
+      ...(qaResult.triagedBugs > 0 ? [`bugs -${qaResult.triagedBugs}`] : ["bugs 0"]),
+      ...(qaResult.bugfixes.length > 0 ? [`rework +${qaResult.bugfixes.length}`] : []),
+      ...(task.bugs > 0 ? [`bugs left ${task.bugs}`] : []),
+    ],
+    {
+      subtaskId: qaSubtask?.id ?? null,
+      subtaskRole: qaSubtask?.role ?? "qa",
+      subtaskImportance: qaSubtask?.importance ?? null,
+      coverageGain,
+      discoveredBugs: qaResult.discoveredBugs,
+      triagedBugs: qaResult.triagedBugs,
+      reworkCount: qaResult.bugfixes.length,
+      bugs: task.bugs,
+    },
+  );
 }
 
 function applyQaResult(
@@ -159,6 +193,7 @@ function emitQaDoneEvent(
   emit: WorkStageEventSink,
   bugfixCount: number,
   effects: string[],
+  data: Record<string, string | number | boolean | null>,
 ): void {
   emit({
     type: "qa_done",
@@ -166,6 +201,10 @@ function emitQaDoneEvent(
     body: bugfixCount > 0
       ? `${character.name} triaged ${bugfixCount} bug(s) into rework.`
       : `${character.name} found no blocking bugs.`,
+    data: characterEventData(character, {
+      taskId: task.id,
+      ...data,
+    }),
     effects,
   });
 }

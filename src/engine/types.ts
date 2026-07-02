@@ -249,12 +249,16 @@ export interface RtCharacter {
   exhaustedToday: boolean;
 }
 
+export type RtEventDataValue = string | number | boolean | null;
+export type RtEventData = Record<string, RtEventDataValue>;
+
 export interface RtEvent {
   at: string;
   type: string;
   title: string;
   body: string;
   effects: string[];
+  data?: RtEventData;
 }
 
 export interface RtFalloutWarning {

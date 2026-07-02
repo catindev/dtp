@@ -97,6 +97,8 @@ export type {
   RtConsequenceSource,
   RtDaySummary,
   RtEvent,
+  RtEventData,
+  RtEventDataValue,
   RtFalloutWarning,
   RtGameState,
   RtLateReleaseReport,

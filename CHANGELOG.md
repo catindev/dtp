@@ -4,6 +4,19 @@
 
 ---
 
+## 2026-07-02 - v0.1.6 Character event payload
+
+Добавлены структурные идентификаторы персонажей в игровые события:
+
+- `RtEvent` получил опциональное поле `data`;
+- события `assigned`, `cancelled`, `character_exhausted`, `analysis_done`, `subtask_done`, `bugfix_done`, `qa_done` теперь пишут `characterId`, `characterName`, `characterRole`;
+- события завершения работы дополнительно пишут `taskId`, `subtaskId`, `subtaskRole`, quality/bugs/QA-метрики, где они есть;
+- логи и debug snapshots больше не должны опираться на парсинг имени персонажа из `title/body`.
+
+Версия приложения поднята до `0.1.6` как patch logging/diagnostics правка. Формат сохранения не менялся, `SAVE_SCHEMA_VERSION` остается `rt-board-v4`.
+
+---
+
 ## 2026-07-02 - v0.1.5 Work completion sound
 
 Добавлен звук завершения работы персонажем:
