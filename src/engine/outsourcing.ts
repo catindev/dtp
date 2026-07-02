@@ -11,7 +11,7 @@ import { clamp } from "./math";
 import {
   addPostmortemNote,
   importanceWeight,
-} from "./work";
+} from "./workRules";
 import type {
   RtEvent,
   RtGameState,
