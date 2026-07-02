@@ -132,6 +132,7 @@ src/hooks/useGameMutation.ts      safe state mutation wrapper
 src/hooks/useRuntimeEffects.ts    ticker, autosave, backend log pump, debug snapshots
 src/hooks/useGameActions.ts       start/continue/menu/pause/cancel/link actions
 src/hooks/useGameDragAndDrop.ts   task/character/outsource drag-and-drop
+src/hooks/gameDropHandlers.ts     drop target handling and mutation/log side effects
 src/hooks/dragAndDropHelpers.ts   drag payload parsing, reject reasons, drag ghost
 src/hooks/useGameEventEffects.ts  event logging and one-shot task bounce
 src/hooks/useTaskFeedback.ts      flash, bounce, reject shake, pause shake
@@ -213,6 +214,7 @@ Completed milestones:
 12. `debug:rt` gained narrow regression smoke checks for migration normalization and debug/backend snapshot shape.
 13. Morning report sections were split into resource, flow, quarter review, consequence, shipment, and formatting modules.
 14. Work stage completion was split into analysis, implementation/bugfix, QA/test, subtask progress, and a small facade.
+15. Game drag-and-drop was split so `useGameDragAndDrop.ts` owns drag start/lifecycle and `gameDropHandlers.ts` owns drop target handling.
 
 Important compatibility choices:
 
@@ -233,13 +235,14 @@ The biggest active files after the follow-up pass:
 src/engine/work.ts                        ~366 lines
 src/engine/types.ts                       ~337 lines
 src/realtime/simulation.ts                ~284 lines
-src/hooks/useGameDragAndDrop.ts           ~281 lines
 src/logging/backendLog.ts                 ~271 lines
 src/App.tsx                               ~254 lines
+src/hooks/gameDropHandlers.ts             ~197 lines
 src/engine/taskSubtasks.ts                ~175 lines
 src/engine/consequenceTail.ts             ~171 lines
 src/logging/debugSnapshot.ts              ~170 lines
 src/engine/consequences.ts                ~165 lines
+src/hooks/useGameDragAndDrop.ts           ~159 lines
 src/engine/workQaStage.ts                 ~139 lines
 src/hooks/dragAndDropHelpers.ts           ~134 lines
 src/engine/migrationReports.ts            ~133 lines
@@ -299,8 +302,7 @@ The checks are not exhaustive automated tests. They are the current guardrail se
 
 Recommended next milestones after this pass:
 
-1. Split `src/hooks/useGameDragAndDrop.ts` by drop target if the drag UX gains more rules.
-2. Split `src/logging/backendLog.ts` into queue storage, transport, and compaction if diagnostics work expands.
-3. Add narrower regression checks around outsource, QA recheck, and drag/drop rejection semantics.
+1. Split `src/logging/backendLog.ts` into queue storage, transport, and compaction if diagnostics work expands.
+2. Add narrower regression checks around outsource, QA recheck, and drag/drop rejection semantics.
 
 These are lower-risk now because the public facade and visible UI components are already separated.
