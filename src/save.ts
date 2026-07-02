@@ -71,7 +71,6 @@ export function loadSavedRun(): AutosaveLoadResult {
   }
 
   if (envelope.schemaVersion !== SAVE_SCHEMA_VERSION) {
-    clearSavedRun();
     return {
       status: "reset",
       reason: "schema_mismatch",

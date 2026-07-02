@@ -137,6 +137,17 @@ button {
   max-width: 500px;
 }
 
+.reset-save-card {
+  border-color: #9f3f2f;
+}
+
+.reset-save-card p {
+  color: #55554d;
+  font-size: 13px;
+  line-height: 1.35;
+  margin: 0;
+}
+
 .resume-card header {
   display: flex;
   gap: 10px;
@@ -1105,6 +1116,20 @@ button:disabled {
   outline-color: #8f8f86;
 }
 
+.task-card.ready-clean.selected,
+.task-card.ready-clean.selected.selected-work {
+  border-color: #245d45;
+  box-shadow: 0 10px 22px rgba(36, 93, 69, 0.18);
+  outline-color: #245d45;
+}
+
+.task-card.ready-risky.selected,
+.task-card.ready-risky.selected.selected-work {
+  border-color: #6c6330;
+  box-shadow: 0 10px 22px rgba(108, 99, 48, 0.18);
+  outline-color: #6c6330;
+}
+
 .task-card.locked {
   cursor: not-allowed;
 }
@@ -1116,6 +1141,16 @@ button:disabled {
 
 .task-card.selected.urgent {
   animation: selectedUrgencyPulse 900ms ease-in-out infinite;
+}
+
+.task-card.ready-clean.selected.urgent {
+  border-color: #245d45;
+  outline-color: #245d45;
+}
+
+.task-card.ready-risky.selected.urgent {
+  border-color: #6c6330;
+  outline-color: #6c6330;
 }
 
 .task-card.work-pass-bounce {

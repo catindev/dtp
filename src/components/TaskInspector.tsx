@@ -59,6 +59,7 @@ export function TaskInspector({
   const visiblePostmortem = task.postmortem.filter(
     (note) => !/^Source task:/.test(note) && !/^Root cause:/.test(note),
   );
+  const visibleLastNote = shouldShowLastNote(task) ? task.lastNote : null;
   return (
     <div className="task-inspector">
       <strong>{localizeTaskTitle(task.title, locale)}</strong>
@@ -113,7 +114,7 @@ export function TaskInspector({
           {t(locale, "inspector.cancel")}
         </button>
       ) : null}
-      <p>{localizeText(task.lastNote, locale)}</p>
+      {visibleLastNote ? <p>{localizeText(visibleLastNote, locale)}</p> : null}
       {task.sourceTaskId ? (
         <div className="source-link-panel">
           <h3>{t(locale, "inspector.causedBy")}</h3>
@@ -192,6 +193,11 @@ function SubtaskList({ locale, task }: { locale: Locale; task: RtTask }) {
       ) : null}
     </div>
   );
+}
+
+function shouldShowLastNote(task: RtTask): boolean {
+  if (task.column !== "done" || task.released) return true;
+  return task.lastNote !== "Queued for the daily release train.";
 }
 
 function columnLabel(locale: Locale, column: RtColumn): string {

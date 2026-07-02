@@ -61,6 +61,8 @@ export function App() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
     initialSelectedTaskId(bootGame),
   );
+  const saveReset =
+    initialAutosaveRef.current?.status === "reset" ? initialAutosaveRef.current : null;
   const {
     flashTaskId,
     bounceTaskIds,
@@ -192,6 +194,7 @@ export function App() {
         onLocaleChange={setLocale}
         onOpenDocs={openDocs}
         onStartRun={startRun}
+        saveReset={saveReset}
         sessionId={sessionIdRef.current}
       />
     );

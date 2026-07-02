@@ -1,6 +1,7 @@
 import { t, type Locale } from "../i18n";
 import type { RtGameState } from "../realtime/simulation";
 import { formatReleaseCountdown, formatSessionId } from "../formatting";
+import { SAVE_SCHEMA_VERSION, type AutosaveLoadResult } from "../save";
 import { LanguageSwitch } from "./LanguageSwitch";
 
 export function MenuScreen({
@@ -11,6 +12,7 @@ export function MenuScreen({
   onLocaleChange,
   onOpenDocs,
   onStartRun,
+  saveReset,
   sessionId,
 }: {
   game: RtGameState;
@@ -20,6 +22,7 @@ export function MenuScreen({
   onLocaleChange: (locale: Locale) => void;
   onOpenDocs: () => void;
   onStartRun: (actionName?: string) => void;
+  saveReset: Extract<AutosaveLoadResult, { status: "reset" }> | null;
   sessionId: string;
 }) {
   return (
@@ -40,6 +43,9 @@ export function MenuScreen({
         {hasResumeCard ? (
           <ResumeCard game={game} locale={locale} sessionId={sessionId} />
         ) : null}
+        {!hasResumeCard && saveReset ? (
+          <ResetSaveCard locale={locale} reset={saveReset} />
+        ) : null}
         <div className="menu-actions">
           {hasResumeCard ? (
             <>
@@ -59,6 +65,47 @@ export function MenuScreen({
       </section>
     </main>
   );
+}
+
+function ResetSaveCard({
+  locale,
+  reset,
+}: {
+  locale: Locale;
+  reset: Extract<AutosaveLoadResult, { status: "reset" }>;
+}) {
+  const previousSchema = reset.previousSchemaVersion ?? t(locale, "menu.saveSchemaUnknown");
+  return (
+    <section className="resume-card reset-save-card">
+      <header>
+        <span>{t(locale, "menu.saveUnavailable")}</span>
+        <strong>{saveResetReasonLabel(locale, reset.reason)}</strong>
+      </header>
+      <p>
+        {reset.reason === "schema_mismatch"
+          ? t(locale, "menu.saveIncompatible")
+          : t(locale, "menu.saveInvalid")}
+      </p>
+      <div className="resume-facts">
+        <span>
+          {t(locale, "menu.saveSchemaDebug", {
+            previous: previousSchema,
+            current: SAVE_SCHEMA_VERSION,
+          })}
+        </span>
+        {reset.previousCommit ? (
+          <span>{t(locale, "menu.saveCommitDebug", { value: reset.previousCommit })}</span>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function saveResetReasonLabel(
+  locale: Locale,
+  reason: Extract<AutosaveLoadResult, { status: "reset" }>["reason"],
+): string {
+  return t(locale, `menu.saveReset.${reason}`);
 }
 
 function ResumeCard({

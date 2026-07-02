@@ -79,6 +79,7 @@ export function TaskCard({
   const readyForDone = needsAttention && taskReadyForDone(task);
   const neededRoles = taskNeededRoleChips(task, locale);
   const readinessClass = taskCardReadinessClass(task, readiness, readyForDone);
+  const showImpactDot = shouldShowImpactDot(task, readiness);
   const title = localizeTaskName(task.title, locale);
 
   return (
@@ -116,11 +117,13 @@ export function TaskCard({
           <span>{task.id}</span>
           <b>{labelTaskKind(locale, task.kind)}</b>
         </div>
-        <i
-          aria-label={t(locale, "task.impact", { value: blastRadiusLabel(task.blastRadius, locale) })}
-          className={`impact-dot ${task.blastRadius}`}
-          title={t(locale, "task.impact", { value: blastRadiusLabel(task.blastRadius, locale) })}
-        />
+        {showImpactDot ? (
+          <i
+            aria-label={t(locale, "task.impact", { value: blastRadiusLabel(task.blastRadius, locale) })}
+            className={`impact-dot ${task.blastRadius}`}
+            title={t(locale, "task.impact", { value: blastRadiusLabel(task.blastRadius, locale) })}
+          />
+        ) : null}
       </header>
       <strong className="task-title">{title}</strong>
       <div className="task-scan-row">
@@ -192,6 +195,13 @@ function taskCardReadinessClass(
   if (readiness.readiness === "clean") return "ready-clean";
   if (readiness.readiness === "risky") return "ready-risky";
   return "needs-work";
+}
+
+function shouldShowImpactDot(task: RtTask, readiness: RtReadinessReport): boolean {
+  const committedColumn = task.column === "done" || task.released;
+  if (!committedColumn) return true;
+  if (readiness.readiness !== "clean") return true;
+  return task.blastRadius === "high";
 }
 
 function taskNeededRoleChips(task: RtTask, locale: Locale): Array<{
