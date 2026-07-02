@@ -138,6 +138,11 @@ src/hooks/useGameEventEffects.ts  event logging and one-shot task bounce
 src/hooks/useTaskFeedback.ts      flash, bounce, reject shake, pause shake
 src/hooks/useLocaleSync.ts        locale persistence and state sync
 src/hooks/useSelectedTaskSync.ts  selected task cleanup after state changes
+src/logging/backendLog.ts         backend transport facade and public logging API
+src/logging/backendLogConfig.ts   backend URLs, queue limits, flush cadence
+src/logging/backendLogQueue.ts    localStorage queue, compaction, retry persistence
+src/logging/backendLogTypes.ts    backend logging types
+src/logging/debugSnapshot.ts      frontend/debug/backend snapshot builders
 ```
 
 The main UI moved into components:
@@ -215,6 +220,7 @@ Completed milestones:
 13. Morning report sections were split into resource, flow, quarter review, consequence, shipment, and formatting modules.
 14. Work stage completion was split into analysis, implementation/bugfix, QA/test, subtask progress, and a small facade.
 15. Game drag-and-drop was split so `useGameDragAndDrop.ts` owns drag start/lifecycle and `gameDropHandlers.ts` owns drop target handling.
+16. Backend logging was split into public transport, config, types, and localStorage queue/compaction modules.
 
 Important compatibility choices:
 
@@ -235,7 +241,6 @@ The biggest active files after the follow-up pass:
 src/engine/work.ts                        ~366 lines
 src/engine/types.ts                       ~337 lines
 src/realtime/simulation.ts                ~284 lines
-src/logging/backendLog.ts                 ~271 lines
 src/App.tsx                               ~254 lines
 src/hooks/gameDropHandlers.ts             ~197 lines
 src/engine/taskSubtasks.ts                ~175 lines
@@ -243,12 +248,14 @@ src/engine/consequenceTail.ts             ~171 lines
 src/logging/debugSnapshot.ts              ~170 lines
 src/engine/consequences.ts                ~165 lines
 src/hooks/useGameDragAndDrop.ts           ~159 lines
+src/logging/backendLogQueue.ts            ~159 lines
 src/engine/workQaStage.ts                 ~139 lines
 src/hooks/dragAndDropHelpers.ts           ~134 lines
 src/engine/migrationReports.ts            ~133 lines
 src/engine/migration.ts                   ~131 lines
 src/engine/migrationTasks.ts              ~128 lines
 src/engine/workImplementationStage.ts     ~120 lines
+src/logging/backendLog.ts                 ~109 lines
 src/engine/consequenceText.ts             ~108 lines
 src/components/MorningResourceGrid.tsx    ~92 lines
 src/engine/taskFactory.ts                 ~92 lines
@@ -263,6 +270,8 @@ src/components/MorningConsequenceList.tsx ~55 lines
 src/components/QuarterReviewPanel.tsx     ~52 lines
 src/frontendLogging.ts                    ~48 lines
 src/components/MorningFlowStrip.tsx       ~24 lines
+src/logging/backendLogTypes.ts            ~24 lines
+src/logging/backendLogConfig.ts           ~7 lines
 src/components/MorningReportSections.tsx  ~5 lines
 src/engine/workStageTypes.ts              ~3 lines
 ```
@@ -302,7 +311,6 @@ The checks are not exhaustive automated tests. They are the current guardrail se
 
 Recommended next milestones after this pass:
 
-1. Split `src/logging/backendLog.ts` into queue storage, transport, and compaction if diagnostics work expands.
-2. Add narrower regression checks around outsource, QA recheck, and drag/drop rejection semantics.
+1. Add narrower regression checks around outsource, QA recheck, and drag/drop rejection semantics.
 
 These are lower-risk now because the public facade and visible UI components are already separated.
