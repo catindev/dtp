@@ -5,29 +5,29 @@ import {
   canMoveRealtimeTask,
   formatGameTime,
   getOutsourceTaskWorkStatus,
-  isWorkColumn,
   moveRealtimeTask,
   outsourceTaskWork,
   releaseReadiness,
   type RtCharacter,
   type RtColumn,
   type RtGameState,
-  type RtOutsourceStatus,
   type RtTask,
 } from "../realtime/simulation";
-import {
-  labelImportance,
-  labelRole,
-  localizeText,
-  type Locale,
-} from "../i18n";
+import { type Locale } from "../i18n";
 import { logAction } from "../frontendLogging";
-
-type ActiveDrag =
-  | { type: "task"; taskId: string }
-  | { type: "character"; characterId: string }
-  | { type: "outsourcing" }
-  | null;
+import {
+  acceptsDtpDrop,
+  characterDropRejectReason,
+  dragBlockedByPause,
+  outsourceStatusText,
+  readCharacterDragId,
+  readOutsourceDrag,
+  readTaskDragId,
+  type ActiveDrag,
+  writeCharacterDragData,
+  writeOutsourceDragData,
+  writeTaskDragData,
+} from "./dragAndDropHelpers";
 
 interface UseGameDragAndDropArgs {
   game: RtGameState;
@@ -61,7 +61,7 @@ export function useGameDragAndDrop({
   const activeDragRef = useRef<ActiveDrag>(null);
 
   function beginTaskDrag(event: DragEvent<HTMLElement>, task: RtTask) {
-    if (game.paused && isGameScreen && game.status === "running" && !morningReportActive) {
+    if (dragBlockedByPause(game, isGameScreen, morningReportActive)) {
       event.preventDefault();
       shakePauseButton();
       return;
@@ -71,9 +71,7 @@ export function useGameDragAndDrop({
       return;
     }
     activeDragRef.current = { type: "task", taskId: task.id };
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("application/dtp-task", task.id);
-    event.dataTransfer.setData("text/plain", task.id);
+    writeTaskDragData(event, task.id);
     logAction(sessionId, "task_drag_started", {
       taskId: task.id,
       fromColumn: task.column,
@@ -82,7 +80,7 @@ export function useGameDragAndDrop({
   }
 
   function beginCharacterDrag(event: DragEvent<HTMLElement>, character: RtCharacter) {
-    if (game.paused && isGameScreen && game.status === "running" && !morningReportActive) {
+    if (dragBlockedByPause(game, isGameScreen, morningReportActive)) {
       event.preventDefault();
       shakePauseButton();
       return;
@@ -92,9 +90,7 @@ export function useGameDragAndDrop({
       return;
     }
     activeDragRef.current = { type: "character", characterId: character.id };
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("application/dtp-character", character.id);
-    setDragGhost(event, character, locale);
+    writeCharacterDragData(event, character, locale);
     logAction(sessionId, "character_drag_started", {
       characterId: character.id,
       characterName: character.name,
@@ -104,7 +100,7 @@ export function useGameDragAndDrop({
   }
 
   function beginOutsourceDrag(event: DragEvent<HTMLElement>) {
-    if (game.paused && isGameScreen && game.status === "running" && !morningReportActive) {
+    if (dragBlockedByPause(game, isGameScreen, morningReportActive)) {
       event.preventDefault();
       shakePauseButton();
       return;
@@ -114,9 +110,7 @@ export function useGameDragAndDrop({
       return;
     }
     activeDragRef.current = { type: "outsourcing" };
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("application/dtp-outsourcing", "outsourcing");
-    event.dataTransfer.setData("text/plain", "outsourcing");
+    writeOutsourceDragData(event);
     logAction(sessionId, "outsourcing_drag_started", {
       budget: game.resources.budget,
       gameTime: formatGameTime(game),
@@ -125,12 +119,7 @@ export function useGameDragAndDrop({
 
   function allowDrop(event: DragEvent<HTMLElement>) {
     if (interactionBlocked) return;
-    if (
-      activeDragRef.current ||
-      event.dataTransfer.types.includes("application/dtp-task") ||
-      event.dataTransfer.types.includes("application/dtp-character") ||
-      event.dataTransfer.types.includes("application/dtp-outsourcing")
-    ) {
+    if (acceptsDtpDrop(event, activeDragRef.current)) {
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
     }
@@ -146,9 +135,7 @@ export function useGameDragAndDrop({
       activeDragRef.current = null;
       return;
     }
-    const taskId =
-      event.dataTransfer.getData("application/dtp-task") ||
-      (activeDrag?.type === "task" ? activeDrag.taskId : "");
+    const taskId = readTaskDragId(event, activeDrag);
     if (!taskId) {
       if (activeDrag) shakeColumn(column);
       activeDragRef.current = null;
@@ -162,17 +149,13 @@ export function useGameDragAndDrop({
     event.stopPropagation();
     if (interactionBlocked) return;
     const activeDrag = activeDragRef.current;
-    const draggedTaskId =
-      event.dataTransfer.getData("application/dtp-task") ||
-      (activeDrag?.type === "task" ? activeDrag.taskId : "");
+    const draggedTaskId = readTaskDragId(event, activeDrag);
     if (draggedTaskId) {
       moveDroppedTask(draggedTaskId, task.column, task.id);
       return;
     }
 
-    const outsourcePayload =
-      event.dataTransfer.getData("application/dtp-outsourcing") ||
-      (activeDrag?.type === "outsourcing" ? "outsourcing" : "");
+    const outsourcePayload = readOutsourceDrag(event, activeDrag);
     if (outsourcePayload) {
       const outsourceStatus = getOutsourceTaskWorkStatus(game, task.id);
       const canOutsource = outsourceStatus.allowed;
@@ -206,9 +189,7 @@ export function useGameDragAndDrop({
       return;
     }
 
-    const characterId =
-      event.dataTransfer.getData("application/dtp-character") ||
-      (activeDrag?.type === "character" ? activeDrag.characterId : "");
+    const characterId = readCharacterDragId(event, activeDrag);
     if (!characterId) return;
     const character = game.characters[characterId];
     const canAssign = canAssignCharacterToTask(game, characterId, task.id);
@@ -297,56 +278,4 @@ export function useGameDragAndDrop({
     finishDrag,
     resetDrag,
   };
-}
-
-function characterDropRejectReason(
-  game: RtGameState,
-  characterId: string,
-  task: RtTask,
-): string {
-  const character = game.characters[characterId];
-  if (!character) return "character missing";
-  if (character.assignedTaskId) return "character already busy";
-  if (character.exhaustedToday) return "character exhausted";
-  if (!isWorkColumn(task.column)) return "wrong column";
-  if (task.assignedCharacterId || task.outsourcing) return "task already in work";
-  return "no matching visible work";
-}
-
-function outsourceStatusText(status: RtOutsourceStatus, locale: Locale): string {
-  const subtask = status.subtask;
-  const work = subtask
-    ? `${labelRole(locale, subtask.role)} ${labelImportance(locale, subtask.importance)}`
-    : localizeText("known work", locale);
-  switch (status.reason) {
-    case "ready":
-      return locale === "ru"
-        ? `Можно взять ${work} за Budget ${status.cost}.`
-        : `Can take ${work} for Budget ${status.cost}.`;
-    case "insufficient_budget":
-      return locale === "ru"
-        ? `Нужно Budget ${status.neededBudget} для ${work}; сейчас ${status.currentBudget}.`
-        : `Need Budget ${status.neededBudget} for ${work}; current ${status.currentBudget}.`;
-    case "needs_analysis":
-      return localizeText("Needs analysis first: no visible open work.", locale);
-    case "no_open_work":
-      return localizeText("No visible open work for outsourcing.", locale);
-    case "task_busy":
-      return localizeText("Task is already in work.", locale);
-    case "task_released":
-      return localizeText("Task is already released.", locale);
-    case "wrong_column":
-      return localizeText("Move task to In Progress first.", locale);
-    case "task_missing":
-      return localizeText("Task is no longer on the board.", locale);
-  }
-}
-
-function setDragGhost(event: DragEvent<HTMLElement>, character: RtCharacter, locale: Locale) {
-  const ghost = document.createElement("div");
-  ghost.className = "drag-ghost";
-  ghost.textContent = locale === "ru" ? `${character.name} -> задача` : `${character.name} -> task`;
-  document.body.appendChild(ghost);
-  event.dataTransfer.setDragImage(ghost, 24, 18);
-  window.setTimeout(() => document.body.removeChild(ghost), 0);
 }
