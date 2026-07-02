@@ -6,6 +6,7 @@ import {
 export const SAVE_SCHEMA_VERSION = "rt-board-v4";
 export const AUTOSAVE_KEY = "dtp.autosave.rt-board";
 export const APP_COMMIT = __DTP_COMMIT__;
+export const APP_VERSION = __DTP_VERSION__;
 
 interface AutosaveEnvelope {
   version: 1;

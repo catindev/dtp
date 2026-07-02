@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { BoardPanel } from "./components/BoardPanel";
+import { AppFooter } from "./components/AppFooter";
 import { DocsScreen } from "./components/DocsScreen";
 import { GameHeader } from "./components/GameHeader";
 import { MenuScreen } from "./components/MenuScreen";
@@ -269,6 +270,7 @@ export function App() {
           />
         </section>
       )}
+      <AppFooter locale={locale} sessionId={sessionIdRef.current} />
     </main>
   );
 }

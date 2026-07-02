@@ -38,6 +38,29 @@ button {
   overflow: hidden;
 }
 
+.app-footer {
+  align-items: center;
+  color: #77776f;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 11px;
+  font-weight: 700;
+  gap: 6px;
+  justify-content: flex-end;
+  min-height: 24px;
+  padding-top: 6px;
+}
+
+.app-footer span {
+  background: #ffffff;
+  border: 1px solid #dfdfd8;
+  max-width: 260px;
+  overflow: hidden;
+  padding: 3px 5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .menu-shell,
 .docs-shell {
   align-items: center;
