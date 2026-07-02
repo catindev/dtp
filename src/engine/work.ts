@@ -110,6 +110,13 @@ import type {
 
 type WorkEventSink = (event: Omit<RtEvent, "at">) => void;
 
+type ActiveWorkContext = {
+  subtask: RtSubtask | null;
+  stage: RtStage;
+  roleFit: number;
+  offRole: boolean;
+};
+
 export function assignCharacterToTaskWork(
   state: RtGameState,
   characterId: string,
@@ -205,66 +212,117 @@ export function updateAssignments(
       continue;
     }
 
-    const subtask = task.currentSubtaskId
-      ? task.subtasks.find((candidate) => candidate.id === task.currentSubtaskId)
-      : null;
-    const stage: RtStage = subtask ? "todo" : "analysis";
-    const roleFit = subtask ? character.specialty[subtask.role] : character.skill[stage];
-    const offRole = Boolean(subtask && roleFit < WORK_OFF_ROLE_SKILL_THRESHOLD);
-
-    const clarityFactor =
-      stage === "todo" ? WORK_CLARITY_FACTOR_BASE + task.clarity / WORK_CLARITY_FACTOR_DIVISOR : 1;
-    const staminaFactor = clamp(
-      WORK_STAMINA_FACTOR_BASE + character.stamina / WORK_STAMINA_FACTOR_DIVISOR,
-      WORK_STAMINA_FACTOR_MIN,
-      WORK_STAMINA_FACTOR_MAX,
-    );
-    const shockFactor = character.shockGameMinutes > 0 ? WORK_SHOCK_SPEED_FACTOR : 1;
-    const offRoleFactor = offRole ? WORK_OFF_ROLE_SPEED_FACTOR : 1;
-    const boostFactor = 1 + state.resources.processBoost / 100;
-    const paceFactor = stage === "analysis" ? ANALYSIS_SPEED_MULTIPLIER : WORK_SPEED_MULTIPLIER;
-    const speed =
-      (WORK_BASE_SPEED + (stage === "todo" ? roleFit : character.skill[stage]) * WORK_SKILL_SPEED_FACTOR) *
-      clarityFactor *
-      staminaFactor *
-      shockFactor *
-      offRoleFactor *
-      boostFactor *
-      paceFactor;
-    task.stageProgress = clamp(
-      task.stageProgress + (speed * tickSeconds) / (1 + task.complexity * WORK_COMPLEXITY_SPEED_FACTOR),
-      0,
-      100,
-    );
-    const staminaDrainPerSecond =
-      stage === "analysis"
-        ? ANALYSIS_STAMINA_DRAIN_BASE +
-          task.pressure * ANALYSIS_PRESSURE_STAMINA_DRAIN +
-          task.complexity * ANALYSIS_COMPLEXITY_STAMINA_DRAIN
-        : WORK_STAMINA_DRAIN_BASE +
-          task.pressure * WORK_PRESSURE_STAMINA_DRAIN +
-          task.complexity * WORK_COMPLEXITY_STAMINA_DRAIN +
-          (offRole ? OFF_ROLE_STAMINA_DRAIN : 0);
-    character.stamina = clamp(character.stamina - tickSeconds * staminaDrainPerSecond, 0, 100);
-    if (subtask) subtask.progress = task.stageProgress;
-    if (character.stamina < WORK_LOW_STAMINA_BURNOUT_THRESHOLD) {
-      character.burnout = clamp(
-        character.burnout +
-          tickSeconds *
-            (WORK_BURNOUT_DRAIN_BASE +
-              task.pressure * WORK_BURNOUT_PRESSURE_DRAIN +
-              (offRole ? WORK_BURNOUT_OFF_ROLE_DRAIN : 0)),
-        0,
-        100,
-      );
-    }
+    const context = getActiveWorkContext(task, character);
+    task.stageProgress = advanceTaskProgress(state, task, character, context, tickSeconds);
+    character.stamina = drainCharacterStamina(task, character, context, tickSeconds);
+    if (context.subtask) context.subtask.progress = task.stageProgress;
+    applyLowStaminaBurnout(task, character, context, tickSeconds);
 
     if (task.stageProgress >= 100) {
-      completeStage(state, task, character, stage, emit);
+      completeStage(state, task, character, context.stage, emit);
     } else if (character.stamina <= 0) {
       exhaustCharacterForDay(state, task, character, emit);
     }
   }
+}
+
+function getActiveWorkContext(task: RtTask, character: RtCharacter): ActiveWorkContext {
+  const subtask = task.currentSubtaskId
+    ? task.subtasks.find((candidate) => candidate.id === task.currentSubtaskId) ?? null
+    : null;
+  const stage: RtStage = subtask ? "todo" : "analysis";
+  const roleFit = subtask ? character.specialty[subtask.role] : character.skill[stage];
+  const offRole = Boolean(subtask && roleFit < WORK_OFF_ROLE_SKILL_THRESHOLD);
+  return { subtask, stage, roleFit, offRole };
+}
+
+function advanceTaskProgress(
+  state: RtGameState,
+  task: RtTask,
+  character: RtCharacter,
+  context: ActiveWorkContext,
+  tickSeconds: number,
+): number {
+  const speed = calculateWorkSpeed(state, task, character, context);
+  return clamp(
+    task.stageProgress + (speed * tickSeconds) / (1 + task.complexity * WORK_COMPLEXITY_SPEED_FACTOR),
+    0,
+    100,
+  );
+}
+
+function calculateWorkSpeed(
+  state: RtGameState,
+  task: RtTask,
+  character: RtCharacter,
+  { stage, roleFit, offRole }: ActiveWorkContext,
+): number {
+  const clarityFactor =
+    stage === "todo" ? WORK_CLARITY_FACTOR_BASE + task.clarity / WORK_CLARITY_FACTOR_DIVISOR : 1;
+  const staminaFactor = clamp(
+    WORK_STAMINA_FACTOR_BASE + character.stamina / WORK_STAMINA_FACTOR_DIVISOR,
+    WORK_STAMINA_FACTOR_MIN,
+    WORK_STAMINA_FACTOR_MAX,
+  );
+  const shockFactor = character.shockGameMinutes > 0 ? WORK_SHOCK_SPEED_FACTOR : 1;
+  const offRoleFactor = offRole ? WORK_OFF_ROLE_SPEED_FACTOR : 1;
+  const boostFactor = 1 + state.resources.processBoost / 100;
+  const paceFactor = stage === "analysis" ? ANALYSIS_SPEED_MULTIPLIER : WORK_SPEED_MULTIPLIER;
+  return (
+    (WORK_BASE_SPEED + (stage === "todo" ? roleFit : character.skill[stage]) * WORK_SKILL_SPEED_FACTOR) *
+    clarityFactor *
+    staminaFactor *
+    shockFactor *
+    offRoleFactor *
+    boostFactor *
+    paceFactor
+  );
+}
+
+function drainCharacterStamina(
+  task: RtTask,
+  character: RtCharacter,
+  context: ActiveWorkContext,
+  tickSeconds: number,
+): number {
+  return clamp(character.stamina - tickSeconds * calculateStaminaDrainPerSecond(task, context), 0, 100);
+}
+
+function calculateStaminaDrainPerSecond(
+  task: RtTask,
+  { stage, offRole }: ActiveWorkContext,
+): number {
+  if (stage === "analysis") {
+    return (
+      ANALYSIS_STAMINA_DRAIN_BASE +
+      task.pressure * ANALYSIS_PRESSURE_STAMINA_DRAIN +
+      task.complexity * ANALYSIS_COMPLEXITY_STAMINA_DRAIN
+    );
+  }
+  return (
+    WORK_STAMINA_DRAIN_BASE +
+    task.pressure * WORK_PRESSURE_STAMINA_DRAIN +
+    task.complexity * WORK_COMPLEXITY_STAMINA_DRAIN +
+    (offRole ? OFF_ROLE_STAMINA_DRAIN : 0)
+  );
+}
+
+function applyLowStaminaBurnout(
+  task: RtTask,
+  character: RtCharacter,
+  { offRole }: ActiveWorkContext,
+  tickSeconds: number,
+): void {
+  if (character.stamina >= WORK_LOW_STAMINA_BURNOUT_THRESHOLD) return;
+  character.burnout = clamp(
+    character.burnout +
+      tickSeconds *
+        (WORK_BURNOUT_DRAIN_BASE +
+          task.pressure * WORK_BURNOUT_PRESSURE_DRAIN +
+          (offRole ? WORK_BURNOUT_OFF_ROLE_DRAIN : 0)),
+    0,
+    100,
+  );
 }
 
 export function importanceWeight(importance: RtSubtaskImportance): number {
@@ -381,24 +439,7 @@ function completeTodoStage(
 
   const roleFit = character.specialty[subtask.role];
   const offRole = roleFit < WORK_OFF_ROLE_SKILL_THRESHOLD;
-  subtask.done = true;
-  subtask.completedBy = character.id;
-  subtask.offRole = offRole;
-  subtask.progress = 100;
-  character.xp[subtask.role] += offRole ? WORK_SUBTASK_XP_OFF_ROLE : WORK_SUBTASK_XP_ON_ROLE;
-  if (
-    character.xp[subtask.role] >= WORK_SUBTASK_XP_TO_SPECIALTY &&
-    character.specialty[subtask.role] < WORK_SUBTASK_SPECIALTY_MAX
-  ) {
-    character.xp[subtask.role] -= WORK_SUBTASK_XP_TO_SPECIALTY;
-    character.specialty[subtask.role] += WORK_SUBTASK_SPECIALTY_GAIN;
-  }
-  if (offRole) {
-    task.offRolePenalty +=
-      subtask.importance === "critical" ? WORK_OFF_ROLE_CRITICAL_PENALTY : WORK_OFF_ROLE_DEFAULT_PENALTY;
-    character.stamina = clamp(character.stamina - WORK_OFF_ROLE_STAMINA_PENALTY, 0, 100);
-    addPostmortemNote(task, `${character.name} completed ${subtask.role} work off-role.`);
-  }
+  completeAssignedSubtask(task, character, subtask, offRole);
 
   if (subtask.role === "qa") {
     completeQaSubtaskStage(state, task, character, subtask, roleFit, offRole, emit);
@@ -406,6 +447,49 @@ function completeTodoStage(
   }
 
   completeImplementationSubtaskStage(state, task, character, subtask, roleFit, offRole, emit);
+}
+
+function completeAssignedSubtask(
+  task: RtTask,
+  character: RtCharacter,
+  subtask: RtSubtask,
+  offRole: boolean,
+): void {
+  subtask.done = true;
+  subtask.completedBy = character.id;
+  subtask.offRole = offRole;
+  subtask.progress = 100;
+  applySubtaskExperience(character, subtask, offRole);
+  if (offRole) {
+    applyOffRoleSubtaskPenalty(task, character, subtask);
+  }
+}
+
+function applySubtaskExperience(
+  character: RtCharacter,
+  subtask: RtSubtask,
+  offRole: boolean,
+): void {
+  character.xp[subtask.role] += offRole ? WORK_SUBTASK_XP_OFF_ROLE : WORK_SUBTASK_XP_ON_ROLE;
+  if (
+    character.xp[subtask.role] < WORK_SUBTASK_XP_TO_SPECIALTY ||
+    character.specialty[subtask.role] >= WORK_SUBTASK_SPECIALTY_MAX
+  ) {
+    return;
+  }
+  character.xp[subtask.role] -= WORK_SUBTASK_XP_TO_SPECIALTY;
+  character.specialty[subtask.role] += WORK_SUBTASK_SPECIALTY_GAIN;
+}
+
+function applyOffRoleSubtaskPenalty(
+  task: RtTask,
+  character: RtCharacter,
+  subtask: RtSubtask,
+): void {
+  task.offRolePenalty +=
+    subtask.importance === "critical" ? WORK_OFF_ROLE_CRITICAL_PENALTY : WORK_OFF_ROLE_DEFAULT_PENALTY;
+  character.stamina = clamp(character.stamina - WORK_OFF_ROLE_STAMINA_PENALTY, 0, 100);
+  addPostmortemNote(task, `${character.name} completed ${subtask.role} work off-role.`);
 }
 
 function completeQaSubtaskStage(
