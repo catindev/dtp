@@ -1,5 +1,7 @@
 import {
   OUTSOURCE_COST_BY_IMPORTANCE,
+  OUTSOURCE_QA_ROLE_FIT,
+  OUTSOURCE_QA_TEST_SKILL,
   WORK_SPEED_MULTIPLIER,
 } from "./balance";
 import { getOpenTodoSubtasks, taskBusy } from "./board";
@@ -12,6 +14,7 @@ import {
   addPostmortemNote,
   importanceWeight,
 } from "./workRules";
+import { completeQaSubtaskPass } from "./workQaStage";
 import type {
   RtEvent,
   RtGameState,
@@ -209,8 +212,13 @@ function completeOutsourcedWork(
   subtask.completedBy = "outsourcing";
   subtask.offRole = false;
 
+  if (subtask.role === "qa") {
+    completeOutsourcedQaWork(state, task, subtask, cost, emit);
+    return;
+  }
+
   const bugfixWork = isBugfixWork(subtask);
-  if (task.testCoverage > 0 && subtask.role !== "qa") {
+  if (task.testCoverage > 0) {
     task.changedAfterQa = true;
     task.testCoverage = Math.min(task.testCoverage, 35);
     ensureQaRecheckSubtask(task);
@@ -242,6 +250,41 @@ function completeOutsourcedWork(
       `quality ${task.quality}`,
       `bugs ${task.bugs}`,
       ...(task.changedAfterQa ? ["QA recheck required"] : []),
+    ],
+  });
+}
+
+function completeOutsourcedQaWork(
+  state: RtGameState,
+  task: RtTask,
+  subtask: RtSubtask,
+  cost: number,
+  emit: OutsourcingEventSink,
+): void {
+  const qaResult = completeQaSubtaskPass(state, task, subtask, {
+    offRole: false,
+    roleFit: OUTSOURCE_QA_ROLE_FIT,
+    testSkill: OUTSOURCE_QA_TEST_SKILL,
+  });
+  task.workDone = task.subtasks.some((candidate) => candidate.done && candidate.role !== "qa");
+  task.currentSubtaskId = null;
+  task.outsourcing = null;
+  task.stageProgress = 100;
+  task.stageComplete = true;
+
+  emit({
+    type: "outsourced",
+    title: `${task.id} outsourced`,
+    body: `External contractor completed ${subtask.title}.`,
+    effects: [
+      `budget -${cost}`,
+      `subtask ${subtask.role}`,
+      subtask.importance,
+      `qa +${qaResult.coverageGain}`,
+      ...(qaResult.discoveredBugs > 0 ? [`found +${qaResult.discoveredBugs}`] : []),
+      ...(qaResult.triagedBugs > 0 ? [`bugs -${qaResult.triagedBugs}`] : ["bugs 0"]),
+      ...(qaResult.bugfixes.length > 0 ? [`rework +${qaResult.bugfixes.length}`] : []),
+      ...(task.bugs > 0 ? [`bugs left ${task.bugs}`] : []),
     ],
   });
 }

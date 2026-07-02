@@ -14,6 +14,8 @@ export const OUTSOURCE_COST_BY_IMPORTANCE = {
   important: 4,
   critical: 6,
 } as const;
+export const OUTSOURCE_QA_TEST_SKILL = 3;
+export const OUTSOURCE_QA_ROLE_FIT = 3;
 
 export const NIGHT_STAMINA_MIN_RECOVERY = 55;
 export const NIGHT_STAMINA_RECOVERY_RATIO = 0.8;

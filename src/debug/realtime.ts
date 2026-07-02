@@ -33,6 +33,7 @@ const smoke = [
   runMigrationNormalizationSmoke(),
   runDebugSnapshotSmoke(),
   runOutsourceSmoke(),
+  runOutsourcedQaCoverageSmoke(),
   runQaRecheckSmoke(),
   runDragRejectHelperSmoke(),
 ];
@@ -383,6 +384,36 @@ function runOutsourceSmoke() {
   };
 }
 
+function runOutsourcedQaCoverageSmoke() {
+  const currentState = createRealtimeState(2102);
+  const controlledTaskId = currentState.board.backlog[0];
+  const controlledTask = currentState.tasks[controlledTaskId];
+  assert(Boolean(controlledTask), "Outsourced QA smoke expected an initial task.");
+  currentState.resources.budget = 4;
+  configureOutsourcedQaTask(controlledTask);
+  assert(moveRealtimeTask(currentState, controlledTask.id, "inProgress"), "Outsourced QA smoke move failed.");
+
+  const status = getOutsourceTaskWorkStatus(currentState, controlledTask.id);
+  assert(status.allowed, `Outsourced QA smoke expected ready status, got ${status.reason}.`);
+  assert(status.subtask?.role === "qa", "Outsourced QA smoke expected QA subtask.");
+  assert(outsourceTaskWork(currentState, controlledTask.id), "Outsourced QA smoke expected work to start.");
+  tickUntilOutsourcingIdleInState(currentState, controlledTask.id, 900);
+
+  const qaSubtask = controlledTask.subtasks.find((subtask) => subtask.role === "qa");
+  const readiness = releaseReadiness(controlledTask);
+  assert(qaSubtask !== undefined, "Outsourced QA smoke expected QA subtask.");
+  assert(qaSubtask.done, "Outsourced QA smoke expected QA subtask done.");
+  assert(qaSubtask.completedBy === "outsourcing", "Outsourced QA smoke expected outsourced completion.");
+  assert(controlledTask.testCoverage >= 45, "Outsourced QA smoke expected real test coverage.");
+  assert(!readiness.reasons.includes("no_qa"), "Outsourced QA smoke expected no_qa cleared.");
+
+  return {
+    name: "outsourced-qa-coverage",
+    testCoverage: controlledTask.testCoverage,
+    readiness: readiness.readiness,
+  };
+}
+
 function runQaRecheckSmoke() {
   const currentState = createRealtimeState(3003);
   const controlledTaskId = currentState.board.backlog[0];
@@ -473,6 +504,14 @@ function tickToMorningReport(currentState: RtGameState): void {
   assert(currentState.paused, "Expected morning report to pause the run.");
 }
 
+function tickUntilOutsourcingIdleInState(currentState: RtGameState, taskId: string, limit: number): void {
+  for (let index = 0; index < limit; index += 1) {
+    const task = currentState.tasks[taskId];
+    if (!task?.outsourcing) return;
+    tickRealtime(currentState, 500);
+  }
+}
+
 function configureCleanReleaseTask(task: RtTask): void {
   task.kind = "integration";
   task.domain = "payments";
@@ -555,6 +594,30 @@ function configureImplementationAfterQaTask(task: RtTask): void {
   task.stageComplete = false;
   task.subtasks = [
     openSubtask(task, "backend", "important", "Patch service behavior"),
+  ];
+}
+
+function configureOutsourcedQaTask(task: RtTask): void {
+  task.kind = "bug";
+  task.domain = "admin";
+  task.blastRadius = "low";
+  task.pressure = 1;
+  task.complexity = 2;
+  task.value = 18;
+  task.clarity = 80;
+  task.quality = 94;
+  task.testCoverage = 0;
+  task.bugs = 0;
+  task.changedAfterQa = false;
+  task.workDone = true;
+  task.assignedCharacterId = null;
+  task.outsourcing = null;
+  task.currentSubtaskId = null;
+  task.stageProgress = 0;
+  task.stageComplete = false;
+  task.subtasks = [
+    completeSubtask(task, "frontend", "critical", "Fix root cause"),
+    openSubtask(task, "qa", "important", "Reproduce and verify fix"),
   ];
 }
 

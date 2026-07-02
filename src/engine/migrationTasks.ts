@@ -3,6 +3,7 @@ import {
   ensureQaRecheckSubtask,
 } from "./bugs";
 import { ensureBacklogOpportunityFields } from "./backlogOpportunity";
+import { RELEASE_QA_COVERAGE_THRESHOLD } from "./balance";
 import { normalizeConsequenceTaskTitle } from "./consequences";
 import { inferBlastRadius } from "./taskFactory";
 import type {
@@ -121,10 +122,30 @@ export function normalizeTaskForCurrentSchema(
   if (!task.released && task.bugs > 0 && ensureBugReviewSubtask(task)) {
     changed = true;
   }
+  if (repairOutsourcedQaCoverage(task)) {
+    changed = true;
+  }
   if (!task.released && task.changedAfterQa && ensureQaRecheckSubtask(task)) {
     changed = true;
   }
   return changed;
+}
+
+function repairOutsourcedQaCoverage(task: RtTask): boolean {
+  if (task.testCoverage >= RELEASE_QA_COVERAGE_THRESHOLD || task.changedAfterQa) {
+    return false;
+  }
+  const hasPaidQaPass = task.subtasks.some(
+    (subtask) => subtask.role === "qa" && subtask.done && subtask.completedBy === "outsourcing",
+  );
+  const hasOpenQaWork = task.subtasks.some(
+    (subtask) => subtask.role === "qa" && subtask.revealed && !subtask.done,
+  );
+  if (!hasPaidQaPass || hasOpenQaWork) return false;
+
+  task.testCoverage = RELEASE_QA_COVERAGE_THRESHOLD;
+  task.lastNote = "Outsourced QA coverage restored.";
+  return true;
 }
 
 function uniqueStrings(values: string[]): string[] {

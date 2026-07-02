@@ -26,6 +26,13 @@ import type {
 } from "./types";
 import type { WorkStageEventSink } from "./workStageTypes";
 
+export interface QaPassResult {
+  coverageGain: number;
+  discoveredBugs: number;
+  triagedBugs: number;
+  bugfixes: RtSubtask[];
+}
+
 export function completeQaSubtaskStage(
   state: RtGameState,
   task: RtTask,
@@ -35,31 +42,56 @@ export function completeQaSubtaskStage(
   offRole: boolean,
   emit: WorkStageEventSink,
 ): void {
+  const qaResult = completeQaSubtaskPass(state, task, subtask, {
+    offRole,
+    roleFit,
+    testSkill: character.skill.test,
+  });
+  emitQaDoneEvent(task, character, emit, qaResult.bugfixes.length, [
+    subtask.importance,
+    offRole ? "off-role" : "on-role",
+    `qa +${qaResult.coverageGain}`,
+    ...(qaResult.discoveredBugs > 0 ? [`found +${qaResult.discoveredBugs}`] : []),
+    ...(qaResult.triagedBugs > 0 ? [`bugs -${qaResult.triagedBugs}`] : ["bugs 0"]),
+    ...(qaResult.bugfixes.length > 0 ? [`rework +${qaResult.bugfixes.length}`] : []),
+    ...(task.bugs > 0 ? [`bugs left ${task.bugs}`] : []),
+  ]);
+}
+
+export function completeQaSubtaskPass(
+  state: RtGameState,
+  task: RtTask,
+  subtask: RtSubtask,
+  {
+    offRole,
+    roleFit,
+    testSkill,
+  }: {
+    offRole: boolean;
+    roleFit: number;
+    testSkill: number;
+  },
+): QaPassResult {
   const coverageGain = Math.round(
     (WORK_QA_SUBTASK_COVERAGE_BASE +
-      character.skill.test * WORK_QA_SUBTASK_SKILL_FACTOR +
+      testSkill * WORK_QA_SUBTASK_SKILL_FACTOR +
       roleFit * WORK_QA_SUBTASK_ROLE_FACTOR +
       randomInt(state, 0, WORK_QA_SUBTASK_RANDOM_MAX)) *
       (offRole ? WORK_QA_OFF_ROLE_COVERAGE_FACTOR : 1),
   );
   task.testCoverage = clamp(task.testCoverage + coverageGain, 0, 100);
   task.changedAfterQa = false;
-  const qaResult = applyQaResult(state, task, character, roleFit);
+  const qaResult = applyQaResult(state, task, testSkill, roleFit);
   task.currentSubtaskId = null;
   task.stageComplete = true;
   task.lastNote =
     qaResult.bugfixes.length > 0
       ? `QA converted ${qaResult.bugfixes.length} bug(s) into rework.`
       : "QA pass complete.";
-  emitQaDoneEvent(task, character, emit, qaResult.bugfixes.length, [
-    subtask.importance,
-    offRole ? "off-role" : "on-role",
-    `qa +${coverageGain}`,
-    ...(qaResult.discoveredBugs > 0 ? [`found +${qaResult.discoveredBugs}`] : []),
-    ...(qaResult.triagedBugs > 0 ? [`bugs -${qaResult.triagedBugs}`] : ["bugs 0"]),
-    ...(qaResult.bugfixes.length > 0 ? [`rework +${qaResult.bugfixes.length}`] : []),
-    ...(task.bugs > 0 ? [`bugs left ${task.bugs}`] : []),
-  ]);
+  return {
+    coverageGain,
+    ...qaResult,
+  };
 }
 
 export function completeTestStage(
@@ -74,7 +106,7 @@ export function completeTestStage(
     randomInt(state, 0, WORK_TEST_COVERAGE_RANDOM_MAX);
   task.testCoverage = clamp(task.testCoverage + coverageGain, 0, 100);
   task.changedAfterQa = false;
-  const qaResult = applyQaResult(state, task, character, character.specialty.qa);
+  const qaResult = applyQaResult(state, task, character.skill.test, character.specialty.qa);
   const qaSubtask = task.subtasks.find(
     (subtask) => subtask.revealed && !subtask.done && subtask.role === "qa",
   );
@@ -98,7 +130,7 @@ export function completeTestStage(
 function applyQaResult(
   state: RtGameState,
   task: RtTask,
-  character: RtCharacter,
+  testSkill: number,
   roleFit: number,
 ) {
   const discoveredBugs = discoverBugsDuringQa(state, task);
@@ -107,7 +139,7 @@ function applyQaResult(
     task.bugs,
     Math.max(
       WORK_QA_TRIAGE_MIN,
-      Math.floor((character.skill.test + roleFit) / WORK_QA_TRIAGE_SKILL_DIVISOR) +
+      Math.floor((testSkill + roleFit) / WORK_QA_TRIAGE_SKILL_DIVISOR) +
         randomInt(state, 0, WORK_QA_TRIAGE_RANDOM_MAX),
     ),
   );
