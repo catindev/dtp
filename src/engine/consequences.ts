@@ -162,6 +162,5 @@ function primaryConsequenceCause(reasons: RtRiskReason[]): RtReleaseConsequenceC
   if (reasons.includes("critical_open")) return "critical_open";
   if (reasons.includes("important_open")) return "important_open";
   if (reasons.includes("low_clarity")) return "low_clarity";
-  if (reasons.includes("deadline_pressure")) return "deadline_pressure";
   return "no_qa";
 }

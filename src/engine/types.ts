@@ -27,7 +27,6 @@ export type RtRiskReason =
   | "low_clarity"
   | "critical_open"
   | "important_open"
-  | "deadline_pressure"
   | "blast_radius_high"
   | "blast_radius_uncovered"
   | "changed_after_qa"

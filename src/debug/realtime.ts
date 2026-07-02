@@ -30,6 +30,7 @@ const smoke = [
   runBacklogValueDecaySmoke(),
   runBacklogOpportunityExpirationSmoke(),
   runMissedWorkSmoke(),
+  runDeadlinePressureReadinessSmoke(),
   runMigrationNormalizationSmoke(),
   runDebugSnapshotSmoke(),
   runOutsourceSmoke(),
@@ -159,6 +160,37 @@ function runMissedWorkSmoke() {
     missedInProgress: report.daySummary.missedInProgress,
     fallout: fallout?.generatedTaskId ?? fallout?.effects.join(", "),
     resolution: controlledTask.resolution,
+  };
+}
+
+function runDeadlinePressureReadinessSmoke() {
+  const currentState = createRealtimeState(889);
+  assertQuarterCadence(currentState);
+
+  const controlledTaskId = currentState.board.backlog[0];
+  const controlledTask = currentState.tasks[controlledTaskId];
+  assert(Boolean(controlledTask), "Deadline-pressure smoke expected an initial task.");
+  configureCleanReleaseTask(controlledTask);
+  controlledTask.deadlineMs = 1000;
+  controlledTask.deadlineMaxMs = 300000;
+
+  const workReadiness = releaseReadiness(controlledTask);
+  assert(workReadiness.readiness === "clean", "Deadline pressure should not make clean work risky.");
+  assert(workReadiness.reasons.length === 0, "Deadline pressure should not add readiness reasons.");
+  assert(
+    moveRealtimeTask(currentState, controlledTask.id, "inProgress"),
+    "Deadline-pressure smoke move to work failed.",
+  );
+  assert(moveRealtimeTask(currentState, controlledTask.id, "done"), "Deadline-pressure smoke move to Done failed.");
+
+  const doneReadiness = releaseReadiness(controlledTask);
+  assert(doneReadiness.readiness === "clean", "Done task under deadline pressure should stay clean.");
+  assert(doneReadiness.reasons.length === 0, "Done task should not show deadline pressure as a risk.");
+
+  return {
+    name: "deadline-pressure-readiness",
+    readiness: doneReadiness.readiness,
+    reasons: doneReadiness.reasons.length,
   };
 }
 

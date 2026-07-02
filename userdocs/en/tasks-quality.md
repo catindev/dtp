@@ -38,4 +38,6 @@ Card color and status show the rough state:
 - yellow means there is risk, but it may be acceptable;
 - gray or red means the task probably needs more work.
 
+The deadline does not make a task risky by itself. If the task is clean but the deadline is close, it is still clean. Watch time through the deadline bar and card pulse. If the deadline is already missed, the card shows a separate late penalty and Value loss.
+
 The game does not forbid risk. It shows the price of risk.
