@@ -54,11 +54,16 @@ src/engine/workRules.ts     shared work scoring/postmortem helpers
 src/engine/bugs.ts          bug discovery, QA recheck, and bugfix subtask creation
 src/engine/outsourcing.ts   outsource availability, payment, and progress
 src/engine/release.ts       release train and business effects
-src/engine/consequences.ts  fallout, missed work, chain depth, terminal effects
+src/engine/consequences.ts  consequence orchestration facade
+src/engine/consequenceTail.ts tail task creation, chain depth, terminal effects
+src/engine/consequenceText.ts consequence symptoms and legacy title cleanup
+src/engine/consequenceResolution.ts missed work resolution and minor-hit rules
 src/engine/morning.ts       morning report assembly
 src/engine/time.ts          day clock, deadlines, shock decay
 src/engine/loss.ts          loss checks and loss report
-src/engine/migration.ts     autosave normalization
+src/engine/migration.ts     autosave normalization orchestration
+src/engine/migrationReports.ts morning report and consequence save migration
+src/engine/migrationTasks.ts task save migration
 src/engine/readiness.ts     clean/risky/dirty, late release, release score internals
 src/engine/resources.ts     resource delta helpers
 src/engine/math.ts          small numeric helpers
@@ -140,6 +145,7 @@ src/components/BoardPanel.tsx
 src/components/TaskCard.tsx
 src/components/TaskInspector.tsx
 src/components/MorningReportPage.tsx
+src/components/MorningReportSections.tsx
 src/components/LossReport.tsx
 src/components/RunBanner.tsx
 src/components/SidePanel.tsx
@@ -195,6 +201,11 @@ Completed milestones:
 5. Task generation was split into `taskFactory.ts`, `taskKind.ts`, and `taskSubtasks.ts`.
 6. Backend log transport/queue moved from `frontendLogging.ts` to `src/logging/backendLog.ts`.
 7. Drag-and-drop payload/reject helpers moved from `useGameDragAndDrop.ts` to `src/hooks/dragAndDropHelpers.ts`.
+8. The consequence contour was split into orchestration, tail creation, text, and resolution modules.
+9. Autosave migration was split into state orchestration, morning report migration, and task migration.
+10. `MorningReportPage.tsx` was reduced to page composition; report subsections moved to `MorningReportSections.tsx`.
+11. Debug/backend snapshot building moved from `frontendLogging.ts` to `src/logging/debugSnapshot.ts`.
+12. `debug:rt` gained narrow regression smoke checks for migration normalization and debug/backend snapshot shape.
 
 Important compatibility choices:
 
@@ -203,6 +214,7 @@ Important compatibility choices:
 - `i18n.ts` re-exports engine content, so existing UI imports keep working while engine no longer imports UI i18n.
 - Drag-and-drop behavior is intentionally unchanged; the refactor only moved MIME payload parsing, reject text, pause blocking, and ghost rendering.
 - Backend logging still uses the same localStorage queue key and backend endpoints.
+- Backend log config now tolerates Node debug-script imports without assuming Vite `import.meta.env`.
 
 ---
 
@@ -211,26 +223,33 @@ Important compatibility choices:
 The biggest active files after the follow-up pass:
 
 ```txt
-src/engine/consequences.ts           ~461 lines
-src/engine/workStages.ts             ~405 lines
-src/components/MorningReportPage.tsx ~367 lines
-src/engine/work.ts                   ~366 lines
-src/engine/migration.ts              ~350 lines
-src/engine/types.ts                  ~337 lines
-src/realtime/simulation.ts           ~284 lines
-src/hooks/useGameDragAndDrop.ts      ~281 lines
-src/logging/backendLog.ts            ~271 lines
-src/App.tsx                          ~254 lines
-src/frontendLogging.ts               ~210 lines
-src/engine/taskSubtasks.ts           ~175 lines
-src/hooks/dragAndDropHelpers.ts      ~134 lines
-src/engine/taskFactory.ts            ~92 lines
+src/engine/workStages.ts                  ~405 lines
+src/engine/work.ts                        ~366 lines
+src/components/MorningReportSections.tsx  ~345 lines
+src/engine/types.ts                       ~337 lines
+src/realtime/simulation.ts                ~284 lines
+src/hooks/useGameDragAndDrop.ts           ~281 lines
+src/logging/backendLog.ts                 ~271 lines
+src/App.tsx                               ~254 lines
+src/engine/taskSubtasks.ts                ~175 lines
+src/engine/consequenceTail.ts             ~171 lines
+src/logging/debugSnapshot.ts              ~170 lines
+src/engine/consequences.ts                ~165 lines
+src/hooks/dragAndDropHelpers.ts           ~134 lines
+src/engine/migrationReports.ts            ~133 lines
+src/engine/migration.ts                   ~131 lines
+src/engine/migrationTasks.ts              ~128 lines
+src/engine/consequenceText.ts             ~108 lines
+src/engine/taskFactory.ts                 ~92 lines
+src/components/MorningReportPage.tsx      ~88 lines
+src/engine/consequenceResolution.ts       ~62 lines
+src/frontendLogging.ts                    ~48 lines
 ```
 
 Interpretation:
 
 - the original two largest bottlenecks were reduced substantially;
-- the next refactor targets are now mostly consequences, migration/schema, and report rendering;
+- the next refactor targets are now mostly large renderer/helper files and a few deeper engine seams;
 - future work should not add new mechanics directly into `App.tsx`.
 
 ---
@@ -252,6 +271,7 @@ The checks are not exhaustive automated tests. They are the current guardrail se
 - TypeScript catches broken imports/types;
 - production build catches Vite packaging issues;
 - `debug:rt` catches core realtime regressions such as quarter length and release/morning flow;
+- `debug:rt` also catches save migration normalization and backend snapshot shape regressions;
 - `debug:ab` checks the clean/risky/dirty anti-dominance shape;
 - `git diff --check` catches whitespace and patch hygiene issues.
 
@@ -259,12 +279,12 @@ The checks are not exhaustive automated tests. They are the current guardrail se
 
 ## Remaining Refactor Targets
 
-Recommended next milestones:
+Recommended next milestones after this pass:
 
-1. Split `src/engine/consequences.ts` into release fallout, missed work, chain termination, consequence task creation, and text/payload builders.
-2. Split `src/engine/migration.ts` into state normalization, board migration, task migration, report migration, and schema guards.
-3. Split `src/components/MorningReportPage.tsx` into quarter review, resource delta, consequences, and shipment sections.
-4. Split `src/frontendLogging.ts` into snapshot building and debug/Vite snapshot posting if snapshot payloads keep growing.
-5. Add narrower regression checks around migration, missed work, outsource, QA recheck, and drag/drop rejection semantics.
+1. Split `src/components/MorningReportSections.tsx` if the morning briefing grows again.
+2. Split `src/engine/workStages.ts` into analysis, implementation, QA, and bugfix modules once mechanic changes resume.
+3. Split `src/hooks/useGameDragAndDrop.ts` by drop target if the drag UX gains more rules.
+4. Split `src/logging/backendLog.ts` into queue storage, transport, and compaction if diagnostics work expands.
+5. Add narrower regression checks around outsource, QA recheck, and drag/drop rejection semantics.
 
 These are lower-risk now because the public facade and visible UI components are already separated.

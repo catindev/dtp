@@ -4,19 +4,30 @@ import {
   canAssignCharacterToTask,
   createRealtimeState,
   moveRealtimeTask,
+  normalizeRealtimeState,
   releaseReadiness,
+  RT_COLUMNS,
   runDailyReleaseTrain,
   startDayAfterMorningReport,
   tickRealtime,
   type RtGameState,
   type RtTask,
 } from "../realtime/simulation";
+import {
+  buildBackendSnapshot,
+  buildDebugSnapshot,
+} from "../logging/debugSnapshot";
 
 const seedArg = Number(process.argv[2]);
 const seed = Number.isFinite(seedArg) ? seedArg : 184;
 const state = createRealtimeState(seed);
 assertQuarterCadence(state);
-const smoke = [runQuarterBoundarySmoke(), runMissedWorkSmoke()];
+const smoke = [
+  runQuarterBoundarySmoke(),
+  runMissedWorkSmoke(),
+  runMigrationNormalizationSmoke(),
+  runDebugSnapshotSmoke(),
+];
 
 const taskId = state.board.backlog[0];
 const analystId = Object.values(state.characters).find((character) => character.role === "analyst")?.id;
@@ -135,6 +146,110 @@ function runMissedWorkSmoke() {
     missedInProgress: report.daySummary.missedInProgress,
     fallout: fallout?.generatedTaskId ?? fallout?.effects.join(", "),
     resolution: controlledTask.resolution,
+  };
+}
+
+function runMigrationNormalizationSmoke() {
+  const currentState = createRealtimeState(999);
+  const legacyState = currentState as unknown as {
+    locale: unknown;
+    daysPerQuarter: number;
+    board: Record<string, string[] | undefined>;
+    morningReport?: RtGameState["morningReport"];
+  };
+  const controlledTaskId = currentState.board.backlog[0];
+  const controlledTask = currentState.tasks[controlledTaskId];
+  assert(Boolean(controlledTask), "Migration smoke expected an initial task.");
+
+  legacyState.locale = "de";
+  legacyState.daysPerQuarter = 1;
+  delete legacyState.morningReport;
+  currentState.board.backlog = currentState.board.backlog.filter((taskId) => taskId !== controlledTask.id);
+  legacyState.board.analysis = [controlledTask.id];
+
+  const legacyTask = controlledTask as unknown as Omit<Partial<RtTask>, "column"> & {
+    column: string;
+    sourceTaskId?: string | null;
+  };
+  legacyTask.column = "analysis";
+  legacyTask.title = "Partner payouts: broke after PAY-001";
+  legacyTask.sourceTaskId = "PAY-001";
+  delete legacyTask.blastRadius;
+  delete legacyTask.outsourcing;
+  delete legacyTask.changedAfterQa;
+  delete legacyTask.queuedDeadlineMs;
+  legacyTask.overdueMs = -120;
+  delete legacyTask.rootCauseTaskId;
+  delete legacyTask.chainDepth;
+  delete legacyTask.resolved;
+  delete legacyTask.resolution;
+  delete legacyTask.resolutionDay;
+  legacyTask.postmortem = [
+    "Source task: PAY-001.",
+    "Root cause: PAY-001.",
+    "Keep this note.",
+    "Keep this note.",
+  ];
+
+  const changed = normalizeRealtimeState(currentState);
+  assert(changed, "Migration smoke expected state changes.");
+  assert(currentState.locale === "en", "Migration smoke expected invalid locale to normalize.");
+  assertQuarterCadence(currentState);
+  assert(currentState.morningReport === null, "Migration smoke expected missing morning report to normalize.");
+  assert(controlledTask.column === "inProgress", "Migration smoke expected legacy work to move to In Progress.");
+  assert(currentState.board.inProgress.includes(controlledTask.id), "Migration smoke expected migrated task on board.");
+  assert(!legacyState.board.analysis?.includes(controlledTask.id), "Migration smoke expected legacy analysis board cleared.");
+  assert(controlledTask.blastRadius !== undefined, "Migration smoke expected blast radius backfill.");
+  assert(controlledTask.outsourcing === null, "Migration smoke expected outsourcing backfill.");
+  assert(controlledTask.changedAfterQa === false, "Migration smoke expected changedAfterQa backfill.");
+  assert(controlledTask.queuedDeadlineMs === null, "Migration smoke expected work task queued deadline reset.");
+  assert(controlledTask.overdueMs === 0, "Migration smoke expected overdue clamp.");
+  assert(controlledTask.rootCauseTaskId === null, "Migration smoke expected root cause backfill.");
+  assert(controlledTask.chainDepth === 0, "Migration smoke expected chain depth backfill.");
+  assert(controlledTask.resolved === false, "Migration smoke expected resolved backfill.");
+  assert(controlledTask.resolution === null, "Migration smoke expected resolution backfill.");
+  assert(controlledTask.resolutionDay === null, "Migration smoke expected resolution day backfill.");
+  assert(!controlledTask.title.includes("PAY-001"), "Migration smoke expected consequence title cleanup.");
+  assert(
+    controlledTask.postmortem.length === 1 && controlledTask.postmortem[0] === "Keep this note.",
+    "Migration smoke expected postmortem cleanup.",
+  );
+
+  return {
+    name: "migration-normalization",
+    locale: currentState.locale,
+    daysPerQuarter: currentState.daysPerQuarter,
+    migratedColumn: controlledTask.column,
+  };
+}
+
+function runDebugSnapshotSmoke() {
+  const currentState = createRealtimeState(1001, "ru");
+  const snapshot = buildDebugSnapshot(currentState, "debug-session");
+  const backendSnapshot = buildBackendSnapshot(snapshot);
+
+  assert(snapshot.sessionId === "debug-session", "Snapshot smoke expected session id.");
+  assert(snapshot.locale === "ru", "Snapshot smoke expected locale.");
+  assert(snapshot.logger.backendUrl.includes("/api/log"), "Snapshot smoke expected backend url.");
+  assert(snapshot.logger.queuedEntries === 0, "Snapshot smoke expected empty backend queue in Node.");
+  assert(backendSnapshot.sessionId === snapshot.sessionId, "Backend snapshot smoke expected session id.");
+  assert(Array.isArray(backendSnapshot.recentEvents), "Backend snapshot smoke expected recent events.");
+  for (const column of RT_COLUMNS) {
+    assert(
+      backendSnapshot.boardCounts[column] === currentState.board[column].length,
+      `Backend snapshot smoke expected ${column} count.`,
+    );
+    assert(
+      backendSnapshot.visibleTasks[column].length === currentState.board[column].length,
+      `Backend snapshot smoke expected ${column} visible tasks.`,
+    );
+  }
+
+  return {
+    name: "debug-snapshot",
+    status: backendSnapshot.status,
+    loggerQueued: backendSnapshot.logger.queuedEntries,
+    boardCounts: backendSnapshot.boardCounts,
   };
 }
 
