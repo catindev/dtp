@@ -1,5 +1,6 @@
 export const SOUND_CATALOG = {
   mainTheme: new URL("../../sounds/main-theme.mp3", import.meta.url).href,
+  backlogEnd: [new URL("../../sounds/on-backlog-end.ogg", import.meta.url).href],
   buttonClick: [
     new URL("../../sounds/on-button-click-1.ogg", import.meta.url).href,
     new URL("../../sounds/on-button-click-2.ogg", import.meta.url).href,
@@ -33,6 +34,7 @@ export type SoundEffectName = Exclude<keyof typeof SOUND_CATALOG, "mainTheme">;
 
 export const SOUND_EFFECT_NAMES: readonly SoundEffectName[] = [
   "buttonClick",
+  "backlogEnd",
   "click",
   "dayEnd",
   "drag",

@@ -73,6 +73,8 @@ export function useGameEventSounds({
 
       if (event.type === "task_spawned") {
         playSoundEffect("newTask");
+      } else if (event.type === "backlog_opportunity_expired") {
+        playSoundEffect("backlogEnd");
       } else if (event.type === "release_train" || event.type === "release_train_empty") {
         playSoundEffect("dayEnd");
       } else if (event.type === "quarter_review") {
