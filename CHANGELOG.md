@@ -4,6 +4,18 @@
 
 ---
 
+## 2026-07-02 - v0.1.5 Work completion sound
+
+Добавлен звук завершения работы персонажем:
+
+- `sounds/on-subtask-completed.ogg` подключен как sound effect `subtaskCompleted`;
+- звук проигрывается на `analysis_done`, `subtask_done`, `bugfix_done`, `qa_done`;
+- сохраненные события не переигрывают звук при восстановлении autosave, потому что уже учтены в `soundEventKeysRef`.
+
+Версия приложения поднята до `0.1.5` как patch audio/UI feedback правка. Формат сохранения не менялся, `SAVE_SCHEMA_VERSION` остается `rt-board-v4`.
+
+---
+
 ## 2026-07-02 - v0.1.4 Backlog expiration sound
 
 Добавлен звук для исчезновения карточки из `Backlog`:
