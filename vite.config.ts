@@ -1,5 +1,4 @@
 import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { defineConfig, type Plugin } from "vite";
@@ -8,7 +7,6 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   define: {
     __DTP_COMMIT__: JSON.stringify(readGitCommit()),
-    __DTP_VERSION__: JSON.stringify(readPackageVersion()),
   },
   plugins: [react(), dtpDebugLogPlugin()],
 });
@@ -28,17 +26,6 @@ function readGitCommit(): string {
     return `${commit || "nogit"}${dirty ? "-dirty" : ""}`;
   } catch {
     return "nogit";
-  }
-}
-
-function readPackageVersion(): string {
-  try {
-    const packageJson = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as {
-      version?: string;
-    };
-    return packageJson.version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
   }
 }
 

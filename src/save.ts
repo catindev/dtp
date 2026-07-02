@@ -2,11 +2,12 @@ import {
   normalizeRealtimeState,
   type RtGameState,
 } from "./realtime/simulation";
+import packageJson from "../package.json";
 
 export const SAVE_SCHEMA_VERSION = "rt-board-v4";
 export const AUTOSAVE_KEY = "dtp.autosave.rt-board";
 export const APP_COMMIT = __DTP_COMMIT__;
-export const APP_VERSION = __DTP_VERSION__;
+export const APP_VERSION = packageJson.version;
 
 interface AutosaveEnvelope {
   version: 1;
