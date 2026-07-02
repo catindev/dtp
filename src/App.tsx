@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BoardPanel } from "./components/BoardPanel";
 import { AppFooter } from "./components/AppFooter";
 import { DocsScreen } from "./components/DocsScreen";
@@ -33,7 +33,11 @@ import {
 } from "./hooks/useRuntimeEffects";
 import { useSelectedTaskSync } from "./hooks/useSelectedTaskSync";
 import { USER_DOCS } from "./userdocs";
-import { playSoundEffect } from "./audio/audioManager";
+import { pauseMainTheme, playSoundEffect } from "./audio/audioManager";
+import {
+  loadMusicEnabledPreference,
+  saveMusicEnabledPreference,
+} from "./audio/audioPreferences";
 import "./styles.css";
 
 type AppScreen = "menu" | "game" | "docs";
@@ -55,6 +59,7 @@ export function App() {
   const [locale, setLocale] = useState<Locale>(() => initialLocale);
   const [game, setGame] = useState<RtGameState>(() => bootGame);
   const [screen, setScreen] = useState<AppScreen>("menu");
+  const [musicEnabled, setMusicEnabled] = useState(loadMusicEnabledPreference);
   const [hasResumeCard, setHasResumeCard] = useState(Boolean(restoredSave));
   const [prodView, setProdView] = useState<ProdView>("released");
   const [selectedDocId, setSelectedDocId] = useState(USER_DOCS[0].id);
@@ -140,7 +145,7 @@ export function App() {
 
   useBackendLogPump();
   useGlobalButtonSounds();
-  useMainThemePlayback(game, screen);
+  useMainThemePlayback(game, screen, musicEnabled);
   useRealtimeTicker(screen, setGame);
   useDebugSnapshotPoster(screen, latestGameRef, sessionIdRef);
   useAutosaveRun(game, screen, latestGameRef, sessionIdRef);
@@ -163,6 +168,11 @@ export function App() {
     screen,
     soundEventKeysRef,
   });
+
+  useEffect(() => {
+    saveMusicEnabledPreference(musicEnabled);
+    if (!musicEnabled) pauseMainTheme();
+  }, [musicEnabled]);
 
   const selectedDoc = USER_DOCS.find((doc) => doc.id === selectedDocId) ?? USER_DOCS[0];
 
@@ -190,8 +200,10 @@ export function App() {
         game={game}
         hasResumeCard={hasResumeCard}
         locale={locale}
+        musicEnabled={musicEnabled}
         onContinueRun={continueRun}
         onLocaleChange={setLocale}
+        onMusicEnabledChange={setMusicEnabled}
         onOpenDocs={openDocs}
         onStartRun={startRun}
         saveReset={saveReset}

@@ -16,10 +16,7 @@ import {
   type RtTask,
 } from "../realtime/simulation";
 import { createSessionId, gameEventKey, logAction } from "../frontendLogging";
-import {
-  restartMainThemeOnNextPlay,
-  startMainTheme,
-} from "../audio/audioManager";
+import { restartMainThemeOnNextPlay } from "../audio/audioManager";
 
 type AppScreen = "menu" | "game" | "docs";
 type ProdView = "released" | "unfinished";
@@ -87,7 +84,6 @@ export function useGameActions({
     setHasResumeCard(true);
     setScreen("game");
     saveRun(next, sessionId);
-    startMainTheme({ restart: true });
     logAction(sessionId, actionName, {
       seed: next.seed,
       startedAt: new Date().toISOString(),
@@ -106,7 +102,6 @@ export function useGameActions({
       gameTime: formatGameTime(game),
       status: game.status,
     });
-    if (game.paused && next.status === "running") startMainTheme();
   }
 
   function openMenu() {
@@ -129,7 +124,6 @@ export function useGameActions({
     setSelectedTaskId((current) => (current && next.tasks[current] ? current : initialSelectedTaskId(next)));
     setScreen("game");
     saveRun(next, sessionIdRef.current);
-    if (next.status === "running" && !next.paused) startMainTheme();
     logAction(sessionIdRef.current, "continue_run_clicked", {
       gameTime: formatGameTime(next),
       status: next.status,

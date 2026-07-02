@@ -14,8 +14,10 @@ import {
 export function useMainThemePlayback(
   game: RtGameState,
   screen: string,
+  musicEnabled: boolean,
 ): void {
   const shouldPlay =
+    musicEnabled &&
     screen === "game" &&
     game.status === "running" &&
     !game.paused &&

@@ -119,6 +119,27 @@ button {
   text-transform: uppercase;
 }
 
+.menu-toggle {
+  align-items: center;
+  background: #f8f8f4;
+  border: 1px solid #dfdfd8;
+  color: #55554d;
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  font-weight: 800;
+  justify-content: space-between;
+  min-height: 40px;
+  padding: 8px 10px;
+  text-transform: uppercase;
+}
+
+.menu-toggle input {
+  accent-color: #245d45;
+  height: 18px;
+  width: 18px;
+}
+
 .menu-actions {
   display: flex;
   gap: 8px;

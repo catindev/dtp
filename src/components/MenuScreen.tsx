@@ -8,8 +8,10 @@ export function MenuScreen({
   game,
   hasResumeCard,
   locale,
+  musicEnabled,
   onContinueRun,
   onLocaleChange,
+  onMusicEnabledChange,
   onOpenDocs,
   onStartRun,
   saveReset,
@@ -18,8 +20,10 @@ export function MenuScreen({
   game: RtGameState;
   hasResumeCard: boolean;
   locale: Locale;
+  musicEnabled: boolean;
   onContinueRun: () => void;
   onLocaleChange: (locale: Locale) => void;
+  onMusicEnabledChange: (enabled: boolean) => void;
   onOpenDocs: () => void;
   onStartRun: (actionName?: string) => void;
   saveReset: Extract<AutosaveLoadResult, { status: "reset" }> | null;
@@ -36,6 +40,14 @@ export function MenuScreen({
           <span>{t(locale, "menu.language")}</span>
           <LanguageSwitch locale={locale} onChange={onLocaleChange} />
         </div>
+        <label className="menu-toggle">
+          <span>{t(locale, "menu.music")}</span>
+          <input
+            checked={musicEnabled}
+            onChange={(event) => onMusicEnabledChange(event.currentTarget.checked)}
+            type="checkbox"
+          />
+        </label>
         <button className="rtfm-button" onClick={onOpenDocs} type="button">
           <strong>{t(locale, "menu.rtfm")}</strong>
           <span>{t(locale, "menu.rtfmDescription")}</span>
