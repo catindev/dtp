@@ -2,6 +2,12 @@
 
 The workday runs from 08:00 to 18:00. Time moves by itself, but you can pause the game.
 
+The clock area has time speed controls: `1x`, `1.5x`, `2x`.
+
+- `1x` is the normal speed;
+- `1.5x` and `2x` help fast-forward quiet moments;
+- when the board has many decisions, switch back to `1x` or pause.
+
 ## 1. Tasks arrive in the backlog
 
 The backlog is the list of incoming work. A task does not spend its delivery deadline while it is still untouched in the backlog. Instead, its opportunity value slowly fades.
