@@ -12,6 +12,7 @@ import {
   formatGameTime,
   normalizeRealtimeState,
   startDayAfterMorningReport,
+  type RtCharacter,
   type RtGameState,
   type RtTask,
 } from "../realtime/simulation";
@@ -29,6 +30,7 @@ interface UseGameActionsArgs {
   hasResumeCard: boolean;
   selectedTaskId: string | null;
   selectedTask: RtTask | null;
+  selectedCharacter: RtCharacter | null;
   latestGameRef: MutableRefObject<RtGameState>;
   sessionIdRef: MutableRefObject<string>;
   loggedEventKeysRef: MutableRefObject<Set<string>>;
@@ -39,6 +41,7 @@ interface UseGameActionsArgs {
   setScreen: Dispatch<SetStateAction<AppScreen>>;
   setHasResumeCard: Dispatch<SetStateAction<boolean>>;
   setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
+  setSelectedCharacterId: Dispatch<SetStateAction<string | null>>;
   setProdView: Dispatch<SetStateAction<ProdView>>;
   resetDrag: () => void;
   resetFeedback: () => void;
@@ -53,6 +56,7 @@ export function useGameActions({
   hasResumeCard,
   selectedTaskId,
   selectedTask,
+  selectedCharacter,
   latestGameRef,
   sessionIdRef,
   loggedEventKeysRef,
@@ -63,6 +67,7 @@ export function useGameActions({
   setScreen,
   setHasResumeCard,
   setSelectedTaskId,
+  setSelectedCharacterId,
   setProdView,
   resetDrag,
   resetFeedback,
@@ -80,7 +85,8 @@ export function useGameActions({
     resetDrag();
     resetFeedback();
     setGame(next);
-    setSelectedTaskId(next.board.backlog[0] ?? null);
+    setSelectedTaskId(null);
+    setSelectedCharacterId(null);
     setHasResumeCard(true);
     setScreen("game");
     saveRun(next, sessionId);
@@ -121,7 +127,8 @@ export function useGameActions({
     const next = game.status === "running" ? { ...game, paused: false } : game;
     latestGameRef.current = next;
     setGame(next);
-    setSelectedTaskId((current) => (current && next.tasks[current] ? current : initialSelectedTaskId(next)));
+    setSelectedTaskId((current) => (current && next.tasks[current] ? current : null));
+    setSelectedCharacterId((current) => (current && next.characters[current] ? current : null));
     setScreen("game");
     saveRun(next, sessionIdRef.current);
     logAction(sessionIdRef.current, "continue_run_clicked", {
@@ -186,6 +193,7 @@ export function useGameActions({
       setProdView("unfinished");
     }
     setSelectedTaskId(taskId);
+    setSelectedCharacterId(null);
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         const card = document.querySelector<HTMLElement>(`[data-task-card-id="${taskId}"]`);
@@ -198,6 +206,7 @@ export function useGameActions({
     logAction(sessionIdRef.current, "linked_task_opened", {
       taskId,
       fromTaskId: selectedTaskId,
+      fromCharacterId: selectedCharacter?.id,
       gameTime: formatGameTime(game),
     });
   }
@@ -212,14 +221,4 @@ export function useGameActions({
     startRun,
     togglePause,
   };
-}
-
-export function initialSelectedTaskId(game: RtGameState): string | null {
-  return (
-    game.board.inProgress[0] ??
-    game.board.backlog[0] ??
-    game.board.done[0] ??
-    game.board.released[0] ??
-    null
-  );
 }

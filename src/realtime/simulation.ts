@@ -229,8 +229,9 @@ export function moveRealtimeTask(
   state: RtGameState,
   taskId: string,
   targetColumn: RtColumn,
+  targetIndex?: number,
 ): boolean {
-  return moveTaskOnBoard(state, taskId, targetColumn, (event) => pushEvent(state, event));
+  return moveTaskOnBoard(state, taskId, targetColumn, (event) => pushEvent(state, event), targetIndex);
 }
 
 export function canMoveRealtimeTask(

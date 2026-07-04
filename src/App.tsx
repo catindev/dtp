@@ -1,3 +1,4 @@
+import { DndContext, pointerWithin } from "@dnd-kit/core";
 import { useEffect, useRef, useState } from "react";
 import { BoardPanel } from "./components/BoardPanel";
 import { AppFooter } from "./components/AppFooter";
@@ -18,7 +19,7 @@ import {
 } from "./hooks/useGameAudio";
 import { useGameDragAndDrop } from "./hooks/useGameDragAndDrop";
 import { useGameEventEffects } from "./hooks/useGameEventEffects";
-import { initialSelectedTaskId, useGameActions } from "./hooks/useGameActions";
+import { useGameActions } from "./hooks/useGameActions";
 import { useGameBoot } from "./hooks/useGameBoot";
 import { useGameMutation } from "./hooks/useGameMutation";
 import { useLocaleGameSync } from "./hooks/useLocaleSync";
@@ -32,6 +33,7 @@ import {
   useStatusDebugSnapshot,
 } from "./hooks/useRuntimeEffects";
 import { useSelectedTaskSync } from "./hooks/useSelectedTaskSync";
+import type { ProdView } from "./components/board/types";
 import { USER_DOCS } from "./userdocs";
 import { pauseMainTheme, playSoundEffect } from "./audio/audioManager";
 import {
@@ -41,8 +43,6 @@ import {
 import "./styles.css";
 
 type AppScreen = "menu" | "game" | "docs";
-
-type ProdView = "released" | "unfinished";
 
 export function App() {
   const {
@@ -63,9 +63,8 @@ export function App() {
   const [hasResumeCard, setHasResumeCard] = useState(Boolean(restoredSave));
   const [prodView, setProdView] = useState<ProdView>("released");
   const [selectedDocId, setSelectedDocId] = useState(USER_DOCS[0].id);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
-    initialSelectedTaskId(bootGame),
-  );
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
   const saveReset =
     initialAutosaveRef.current?.status === "reset" ? initialAutosaveRef.current : null;
   const {
@@ -83,18 +82,20 @@ export function App() {
   } = useTaskFeedback();
   const latestGameRef = useRef(game);
   const selectedTask = selectedTaskId ? game.tasks[selectedTaskId] : null;
+  const selectedCharacter = selectedCharacterId ? game.characters[selectedCharacterId] : null;
+  const hasInspectorContent = Boolean(selectedTask || selectedCharacter || game.lossReport);
   const morningReport = game.morningReport;
   const interactionBlocked =
     screen !== "game" || game.paused || game.status !== "running" || Boolean(morningReport);
   const mutate = useGameMutation(screen, setGame);
   const {
-    beginTaskDrag,
-    beginCharacterDrag,
-    beginOutsourceDrag,
-    allowDrop,
-    dropOnColumn,
-    dropOnTask,
-    finishDrag,
+    activeCharacterDragId,
+    activeOutsourceDrag,
+    activeTaskDragId,
+    dndSensors,
+    beginDndDrag,
+    finishDndDrag,
+    cancelDndDrag,
     resetDrag,
   } = useGameDragAndDrop({
     game,
@@ -104,7 +105,7 @@ export function App() {
     morningReportActive: Boolean(morningReport),
     sessionId: sessionIdRef.current,
     mutate,
-    setSelectedTaskId,
+    clearSelection,
     flashTask,
     shakeTask,
     shakeColumn,
@@ -127,6 +128,7 @@ export function App() {
     hasResumeCard,
     selectedTaskId,
     selectedTask,
+    selectedCharacter,
     latestGameRef,
     sessionIdRef,
     loggedEventKeysRef,
@@ -137,6 +139,7 @@ export function App() {
     setScreen,
     setHasResumeCard,
     setSelectedTaskId,
+    setSelectedCharacterId,
     setProdView,
     resetDrag,
     resetFeedback,
@@ -153,7 +156,13 @@ export function App() {
   useLatestGameRef(game, latestGameRef);
   useLocaleGameSync(locale, setGame, latestGameRef);
   useNormalizeRealtimeStateOnMount(setGame);
-  useSelectedTaskSync(game, selectedTaskId, setSelectedTaskId);
+  useSelectedTaskSync(
+    game,
+    selectedTaskId,
+    setSelectedTaskId,
+    selectedCharacterId,
+    setSelectedCharacterId,
+  );
   useGameEventEffects({
     game,
     screen,
@@ -179,6 +188,18 @@ export function App() {
   function selectTask(taskId: string): void {
     playSoundEffect("click");
     setSelectedTaskId(taskId);
+    setSelectedCharacterId(null);
+  }
+
+  function selectCharacter(characterId: string): void {
+    playSoundEffect("click");
+    setSelectedCharacterId(characterId);
+    setSelectedTaskId(null);
+  }
+
+  function clearSelection(): void {
+    setSelectedTaskId(null);
+    setSelectedCharacterId(null);
   }
 
   if (screen === "docs") {
@@ -240,50 +261,60 @@ export function App() {
           report={morningReport}
         />
       ) : (
-        <section className="playfield">
-          <TeamPanel
-            game={game}
-            interactionBlocked={interactionBlocked}
-            isGameScreen={screen === "game"}
-            locale={locale}
-            morningReportActive={Boolean(morningReport)}
-            onCharacterDragStart={beginCharacterDrag}
-            onDragEnd={finishDrag}
-            onOutsourceDragStart={beginOutsourceDrag}
-          />
+        <DndContext
+          collisionDetection={pointerWithin}
+          onDragCancel={cancelDndDrag}
+          onDragEnd={finishDndDrag}
+          onDragStart={beginDndDrag}
+          sensors={dndSensors}
+        >
+          <section className="playfield">
+            <TeamPanel
+              activeCharacterDragId={activeCharacterDragId}
+              activeOutsourceDrag={activeOutsourceDrag}
+              game={game}
+              interactionBlocked={interactionBlocked}
+              isGameScreen={screen === "game"}
+              locale={locale}
+              morningReportActive={Boolean(morningReport)}
+              onCharacterSelect={selectCharacter}
+              selectedCharacterId={selectedCharacterId}
+            />
 
-          <BoardPanel
-            attentionTaskIds={bounceTaskIds}
-            flashTaskId={flashTaskId}
-            game={game}
-            locale={locale}
-            onAllowDrop={allowDrop}
-            onColumnDrop={dropOnColumn}
-            onProdViewChange={setProdView}
-            onTaskClick={selectTask}
-            onTaskDragEnd={finishDrag}
-            onTaskDragStart={beginTaskDrag}
-            onTaskDrop={dropOnTask}
-            prodView={prodView}
-            rejectColumnIds={shakeColumnIds}
-            rejectTaskIds={shakeTaskIds}
-            selectedTaskId={selectedTaskId}
-          />
+            <BoardPanel
+              activeCharacterDragId={activeCharacterDragId}
+              activeOutsourceDrag={activeOutsourceDrag}
+              activeTaskDragId={activeTaskDragId}
+              attentionTaskIds={bounceTaskIds}
+              flashTaskId={flashTaskId}
+              game={game}
+              locale={locale}
+              onProdViewChange={setProdView}
+              onTaskClick={selectTask}
+              prodView={prodView}
+              rejectColumnIds={shakeColumnIds}
+              rejectTaskIds={shakeTaskIds}
+              selectedTaskId={selectedTaskId}
+            />
 
-          <SidePanel
-            canCancelWork={Boolean(
-              selectedTask?.assignedCharacterId &&
-                game.characters[selectedTask.assignedCharacterId] &&
-                !morningReport,
-            )}
-            cancelDisabled={interactionBlocked}
-            game={game}
-            locale={locale}
-            onCancelWork={cancelSelectedTask}
-            onOpenLinkedTask={openLinkedTask}
-            selectedTask={selectedTask}
-          />
-        </section>
+            <SidePanel
+              canCancelWork={Boolean(
+                selectedTask?.assignedCharacterId &&
+                  game.characters[selectedTask.assignedCharacterId] &&
+                  !morningReport,
+              )}
+              cancelDisabled={interactionBlocked}
+              game={game}
+              hasContent={hasInspectorContent}
+              locale={locale}
+              onCancelWork={cancelSelectedTask}
+              onClearSelection={clearSelection}
+              onOpenLinkedTask={openLinkedTask}
+              selectedCharacter={selectedCharacter}
+              selectedTask={selectedTask}
+            />
+          </section>
+        </DndContext>
       )}
       <AppFooter locale={locale} sessionId={sessionIdRef.current} />
     </main>
