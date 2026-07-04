@@ -9,6 +9,7 @@ import { MorningReportPage } from "./components/MorningReportPage";
 import { RunBanner } from "./components/RunBanner";
 import { SidePanel } from "./components/SidePanel";
 import { TeamPanel } from "./components/TeamPanel";
+import { VictoryReport } from "./components/VictoryReport";
 import { type RtGameState } from "./realtime/simulation";
 import { type Locale } from "./i18n";
 import { useTaskFeedback } from "./hooks/useTaskFeedback";
@@ -238,6 +239,7 @@ export function App() {
       className={[
         "shell",
         game.paused ? "paused" : "",
+        game.status === "won" ? "won" : "",
         game.status === "lost" ? "lost" : "",
         morningReport ? "morning-reporting" : "",
       ].join(" ")}
@@ -253,7 +255,13 @@ export function App() {
 
       {game.status !== "running" ? <RunBanner game={game} locale={locale} /> : null}
 
-      {morningReport ? (
+      {game.status === "won" && game.victoryReport ? (
+        <VictoryReport
+          locale={locale}
+          onNewRun={() => startRun("victory_new_run_clicked")}
+          report={game.victoryReport}
+        />
+      ) : morningReport ? (
         <MorningReportPage
           game={game}
           locale={locale}

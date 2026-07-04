@@ -34,7 +34,8 @@ button {
 .side-stack,
 .docs-nav,
 .docs-article,
-.morning-report-page {
+.morning-report-page,
+.victory-report-page {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -45,7 +46,8 @@ button {
 .side-stack::-webkit-scrollbar,
 .docs-nav::-webkit-scrollbar,
 .docs-article::-webkit-scrollbar,
-.morning-report-page::-webkit-scrollbar {
+.morning-report-page::-webkit-scrollbar,
+.victory-report-page::-webkit-scrollbar {
   display: none;
   height: 0;
   width: 0;
@@ -483,6 +485,12 @@ button {
   color: var(--color-clean);
 }
 
+.status-pill.won {
+  background: rgba(36, 93, 69, 0.05);
+  border-color: var(--color-clean);
+  color: var(--color-clean);
+}
+
 .status-pill.morning-report {
   border-color: var(--color-clean);
   color: var(--color-clean);
@@ -826,6 +834,111 @@ button:disabled {
   border: 1px solid var(--color-danger);
   color: var(--color-danger);
   padding: 10px;
+}
+
+.victory-report-page {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-clean-muted);
+  display: grid;
+  flex: 1;
+  gap: 14px;
+  margin-top: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.victory-hero {
+  align-items: start;
+  border-bottom: 1px solid var(--border-soft);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding-bottom: 14px;
+}
+
+.victory-hero > div {
+  display: grid;
+  gap: 6px;
+}
+
+.victory-hero span,
+.victory-columns h2,
+.victory-notes h2 {
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.victory-hero h1 {
+  font-size: 30px;
+  line-height: 1;
+  margin: 0;
+}
+
+.victory-hero p,
+.victory-columns p,
+.victory-notes p {
+  color: var(--color-muted);
+  margin: 0;
+}
+
+.victory-grade {
+  align-items: center;
+  background: rgba(36, 93, 69, 0.06);
+  border: 1px solid var(--color-clean);
+  color: var(--color-clean);
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+}
+
+.victory-grade strong {
+  font-size: 42px;
+  line-height: 0.9;
+}
+
+.victory-grade span {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.victory-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(6, minmax(110px, 1fr));
+}
+
+.victory-grid span,
+.victory-columns section,
+.victory-notes {
+  border: 1px solid var(--border-soft);
+  padding: 10px;
+}
+
+.victory-grid span {
+  color: var(--color-muted-strong);
+  font-weight: 800;
+}
+
+.victory-columns {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+}
+
+.victory-columns section,
+.victory-notes {
+  display: grid;
+  gap: 7px;
+}
+
+.victory-notes {
+  background: var(--surface-clean);
+  border-color: var(--border-clean-muted);
 }
 
 .playfield {
@@ -2311,11 +2424,14 @@ button:disabled {
   .game-header,
   .playfield,
   .morning-report-hero,
-  .morning-summary-grid {
+  .morning-summary-grid,
+  .victory-grid,
+  .victory-columns {
     grid-template-columns: 1fr;
   }
 
-  .morning-report-hero {
+  .morning-report-hero,
+  .victory-hero {
     flex-direction: column;
   }
 

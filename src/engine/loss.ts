@@ -2,12 +2,17 @@ import type {
   RtEvent,
   RtGameState,
   RtLossReport,
+  RtReleaseReadiness,
+  RtVictoryGrade,
+  RtVictoryReport,
 } from "./types";
+import { releaseReadiness } from "./readiness";
 
 type LossEventSink = (event: Omit<RtEvent, "at">) => void;
 
 export function checkRunState(state: RtGameState, emit: LossEventSink): void {
   if (state.status !== "running") return;
+  state.peakDebt = Math.max(state.peakDebt, state.resources.debt);
   if (state.resources.trust <= 0) {
     loseRun(state, emit, "business trust reached 0", "trust");
   }
@@ -48,11 +53,14 @@ function winRun(state: RtGameState, emit: LossEventSink): void {
   if (state.status !== "running") return;
   state.status = "won";
   state.paused = true;
+  state.victoryReport = buildVictoryReport(state);
   emit({
     type: "run_won",
     title: "Run won",
-    body: "The team survived the production year.",
+    body: state.victoryReport.summary,
     effects: [
+      `grade ${state.victoryReport.grade}`,
+      `score ${state.victoryReport.score}`,
       `day ${state.day - 1}/${state.calendar.daysPerYear}`,
       `trust ${state.resources.trust}`,
       `clients ${state.resources.clients}`,
@@ -60,6 +68,89 @@ function winRun(state: RtGameState, emit: LossEventSink): void {
       `value ${state.resources.value}`,
     ],
   });
+}
+
+function buildVictoryReport(state: RtGameState): RtVictoryReport {
+  const releasedTasks = Object.values(state.tasks).filter((task) => task.released);
+  const releaseMix = releasedTasks.reduce(
+    (acc, task) => {
+      acc[releaseReadiness(task).readiness] += 1;
+      return acc;
+    },
+    { clean: 0, risky: 0, dirty: 0 } satisfies Record<RtReleaseReadiness, number>,
+  );
+  const falloutTasks = Object.values(state.tasks).filter((task) => Boolean(task.rootCauseTaskId));
+  const falloutResolved = falloutTasks.filter((task) => task.released || task.resolved).length;
+  const unresolvedFallout = falloutTasks.length - falloutResolved;
+  const missedTasks = Object.values(state.tasks).filter(
+    (task) => task.resolution === "missed_minor" || task.resolution === "missed_tail" || task.resolution === "missed_terminal",
+  ).length;
+  const missedOpportunities = Object.values(state.tasks).filter(
+    (task) => task.resolution === "backlog_opportunity_expired",
+  ).length;
+  const totalBurnout = Math.round(
+    Object.values(state.characters).reduce((sum, character) => sum + character.burnout, 0),
+  );
+  const score = clampVictoryScore(
+    100 -
+      (100 - state.resources.trust) * 0.35 -
+      (100 - state.resources.clients) * 0.45 -
+      state.resources.debt * 0.3 -
+      releaseMix.risky * 1.2 -
+      releaseMix.dirty * 4 -
+      unresolvedFallout * 5 -
+      missedTasks * 2 -
+      missedOpportunities * 1.5 -
+      totalBurnout * 0.45,
+  );
+  const grade = gradeVictory(score);
+  const summary = `The team survived the production year with grade ${grade}.`;
+  return {
+    grade,
+    score,
+    headline: "Year survived.",
+    summary,
+    resourceSnapshot: { ...state.resources },
+    stats: {
+      daysSurvived: state.calendar.daysPerYear,
+      releasedClean: releaseMix.clean,
+      releasedRisky: releaseMix.risky,
+      releasedDirty: releaseMix.dirty,
+      falloutCreated: falloutTasks.length,
+      falloutResolved,
+      unresolvedFallout,
+      missedTasks,
+      missedOpportunities,
+      totalBurnout,
+      peakDebt: state.peakDebt,
+    },
+    notes: victoryNotes(grade, state.resources.debt, unresolvedFallout, totalBurnout),
+  };
+}
+
+function clampVictoryScore(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function gradeVictory(score: number): RtVictoryGrade {
+  if (score >= 85) return "A";
+  if (score >= 70) return "B";
+  if (score >= 55) return "C";
+  return "D";
+}
+
+function victoryNotes(
+  grade: RtVictoryGrade,
+  debt: number,
+  unresolvedFallout: number,
+  totalBurnout: number,
+): string[] {
+  const notes = [`Grade ${grade} reflects the state of the product after day 80.`];
+  if (debt >= 70) notes.push("Debt stayed high; the team survived, but future work is fragile.");
+  if (unresolvedFallout > 0) notes.push(`${unresolvedFallout} fallout task(s) remained unresolved.`);
+  if (totalBurnout >= 20) notes.push("The team carried noticeable burnout into the next year.");
+  if (notes.length === 1) notes.push("The year ended in stable shape.");
+  return notes;
 }
 
 function buildLossReport(

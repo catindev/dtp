@@ -267,6 +267,8 @@ function runWinContractSmoke() {
   tickRealtime(currentState, 120000);
   assert(currentState.morningReport !== null, "Win smoke expected final morning report.");
   assert(currentState.status === "won", "Win smoke expected won status.");
+  assert(currentState.victoryReport !== null, "Win smoke expected victory report.");
+  assert(currentState.victoryReport.score > 0, "Win smoke expected positive victory score.");
   assert(
     currentState.log.some((event) => event.type === "run_won"),
     "Win smoke expected run_won event.",
@@ -275,6 +277,8 @@ function runWinContractSmoke() {
   return {
     name: "win-contract",
     status: currentState.status,
+    grade: currentState.victoryReport?.grade,
+    score: currentState.victoryReport?.score,
     day: currentState.day,
     hasMorningReport: Boolean(currentState.morningReport),
   };

@@ -349,6 +349,30 @@ export interface RtQuarterGoal {
   rewardBudget: number;
 }
 
+export type RtVictoryGrade = "A" | "B" | "C" | "D";
+
+export interface RtVictoryReport {
+  grade: RtVictoryGrade;
+  score: number;
+  headline: string;
+  summary: string;
+  resourceSnapshot: RtResources;
+  stats: {
+    daysSurvived: number;
+    releasedClean: number;
+    releasedRisky: number;
+    releasedDirty: number;
+    falloutCreated: number;
+    falloutResolved: number;
+    unresolvedFallout: number;
+    missedTasks: number;
+    missedOpportunities: number;
+    totalBurnout: number;
+    peakDebt: number;
+  };
+  notes: string[];
+}
+
 export interface RtHorizonGoal {
   kind: RtHorizonKind;
   id: number;
@@ -399,11 +423,13 @@ export interface RtGameState {
   status: RtRunStatus;
   lossReason: string | null;
   lossReport: RtLossReport | null;
+  victoryReport: RtVictoryReport | null;
   elapsedRealMs: number;
   elapsedGameMinutes: number;
   gameMinuteOfDay: number;
   day: number;
   calendar: RtCampaignCalendar;
+  peakDebt: number;
   quarter: number;
   dayInQuarter: number;
   daysPerQuarter: number;

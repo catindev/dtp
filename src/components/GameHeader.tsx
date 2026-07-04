@@ -60,7 +60,7 @@ export function GameHeader({
             ? t(locale, "status.morning")
             : game.status === "running" && game.paused
               ? t(locale, "status.paused")
-              : game.status.toUpperCase()}
+              : t(locale, `status.${game.status}`)}
         </span>
         <span className="stat-pill primary">{t(locale, "header.trust", { value: game.resources.trust })}</span>
         <span className="stat-pill primary">{t(locale, "header.clients", { value: game.resources.clients })}</span>

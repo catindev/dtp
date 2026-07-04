@@ -34,6 +34,8 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
     backlogDecayToday?: RtGameState["backlogDecayToday"];
     calendar?: RtGameState["calendar"];
     horizonGoals?: RtGameState["horizonGoals"];
+    victoryReport?: RtGameState["victoryReport"];
+    peakDebt?: number;
   };
 
   const normalizedLocale = normalizeEngineLocale(legacyState.locale);
@@ -94,6 +96,18 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
       stats.expiredTaskIds = [];
       changed = true;
     }
+  }
+
+  if (!("victoryReport" in legacyState)) {
+    state.victoryReport = null;
+    changed = true;
+  }
+  if (typeof legacyState.peakDebt !== "number" || !Number.isFinite(legacyState.peakDebt)) {
+    state.peakDebt = state.resources.debt;
+    changed = true;
+  } else if (state.resources.debt > state.peakDebt) {
+    state.peakDebt = state.resources.debt;
+    changed = true;
   }
 
   if (!legacyState.horizonGoals) {

@@ -38,6 +38,8 @@ export function buildDebugSnapshot(game: RtGameState, sessionId?: string) {
       goal: game.quarterGoal,
     },
     lossReport: game.lossReport,
+    victoryReport: game.victoryReport,
+    peakDebt: game.peakDebt,
     spawn: game.spawn,
     taskCount: tasks.length,
     board: Object.fromEntries(
@@ -90,6 +92,9 @@ export function buildBackendSnapshot(snapshot: ReturnType<typeof buildDebugSnaps
     daySummary: snapshot.morningReport?.daySummary ?? null,
     horizonGoals: snapshot.horizonGoals,
     quarter: snapshot.quarter,
+    lossReport: snapshot.lossReport,
+    victoryReport: snapshot.victoryReport,
+    peakDebt: snapshot.peakDebt,
     spawn: snapshot.spawn,
     taskCount: snapshot.taskCount,
     logger: snapshot.logger,

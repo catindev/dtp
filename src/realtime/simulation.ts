@@ -148,6 +148,8 @@ export type {
   RtTask,
   RtTaskKind,
   RtTaskResolution,
+  RtVictoryGrade,
+  RtVictoryReport,
   RtWorkColumn,
 } from "../engine/types";
 
@@ -169,11 +171,13 @@ export function createRealtimeState(seed = Date.now(), locale: Locale = DEFAULT_
     status: "running",
     lossReason: null,
     lossReport: null,
+    victoryReport: null,
     elapsedRealMs: 0,
     elapsedGameMinutes: GAME_DAY_START_MINUTE,
     gameMinuteOfDay: GAME_DAY_START_MINUTE,
     day: 1,
     calendar,
+    peakDebt: resources.debt,
     quarter: 1,
     dayInQuarter: 1,
     daysPerQuarter: DAYS_PER_QUARTER,
