@@ -1,6 +1,12 @@
 import { formatReleaseCountdown } from "../formatting";
 import { t, type Locale } from "../i18n";
-import { formatGameTime, type RtGameState, type RtMorningReport } from "../realtime/simulation";
+import {
+  formatGameTime,
+  type RtGameState,
+  type RtHorizonGoal,
+  type RtHorizonKind,
+  type RtMorningReport,
+} from "../realtime/simulation";
 
 interface GameHeaderProps {
   game: RtGameState;
@@ -21,33 +27,48 @@ export function GameHeader({
 }: GameHeaderProps) {
   const releaseCountdown = formatReleaseCountdown(game);
   const clockText = morningReport ? "08:00" : formatGameTime(game);
-  const displayedDay = morningReport?.day ?? game.day;
-  const displayedQuarter = morningReport?.quarter ?? game.quarter;
-  const quarterReviewText = quarterReviewLabel(locale, game);
+  const activeGoal = pickHeaderGoal(game);
+  const horizonLabel = activeGoal ? t(locale, `horizon.${activeGoal.kind}`) : "";
+  const reviewText = activeGoal ? horizonReviewLabel(locale, game, activeGoal) : "";
 
   return (
     <header className="game-header">
       <div className="brand-block">
         <strong>Don&apos;t Touch Prod</strong>
         <span>
-          {t(locale, "header.day", {
-            quarter: displayedQuarter,
-            day: displayedDay,
-            daysPerQuarter: game.daysPerQuarter,
+          {t(locale, "header.calendar", {
+            week: game.calendar.week,
+            dayInWeek: game.calendar.dayInWeek,
+            daysPerWeek: game.calendar.daysPerWeek,
+            month: game.calendar.month,
+            quarter: game.calendar.quarter,
           })}
         </span>
-        <span>{quarterReviewText}</span>
+        <span>{t(locale, "header.campaignProgress", {
+          day: game.calendar.campaignDay,
+          daysPerYear: game.calendar.daysPerYear,
+        })}</span>
       </div>
       <div className="clock-block">
         <span className="clock">{clockText}</span>
         <span>
-          {t(locale, "header.goal", {
-            value: game.quarterValue,
-            goal: game.quarterGoal.value,
-            trust: game.resources.trust,
-            trustGoal: game.quarterGoal.trust,
-          })}
+          {activeGoal
+            ? t(locale, "header.horizonGoal", {
+                horizon: horizonLabel,
+                id: activeGoal.id,
+                value: activeGoal.currentValue,
+                goal: activeGoal.expectedValue,
+                trust: game.resources.trust,
+                trustGoal: activeGoal.targetTrust,
+              })
+            : t(locale, "header.goal", {
+                value: game.quarterValue,
+                goal: game.quarterGoal.value,
+                trust: game.resources.trust,
+                trustGoal: game.quarterGoal.trust,
+              })}
         </span>
+        <span>{reviewText}</span>
         <span>
           {morningReport
             ? t(locale, "header.morningLine", { count: morningReport.consequences.length })
@@ -92,8 +113,18 @@ export function GameHeader({
   );
 }
 
-function quarterReviewLabel(locale: Locale, game: RtGameState): string {
-  const daysLeft = Math.max(0, game.daysPerQuarter - game.dayInQuarter);
-  if (daysLeft === 0) return t(locale, "header.quarterReviewTomorrow");
-  return t(locale, "header.quarterReviewInDays", { days: daysLeft });
+function pickHeaderGoal(game: RtGameState): RtHorizonGoal | null {
+  const priority: RtHorizonKind[] = ["week", "month", "quarter", "year"];
+  for (const kind of priority) {
+    const goal = game.horizonGoals[kind];
+    if (goal && game.day <= goal.endsOnDay) return goal;
+  }
+  return game.horizonGoals.year ?? game.horizonGoals.quarter ?? game.horizonGoals.month ?? game.horizonGoals.week;
+}
+
+function horizonReviewLabel(locale: Locale, game: RtGameState, goal: RtHorizonGoal): string {
+  const horizon = t(locale, `horizon.${goal.kind}`);
+  const daysLeft = Math.max(0, goal.endsOnDay - game.calendar.campaignDay);
+  if (daysLeft === 0) return t(locale, "header.horizonReviewTomorrow", { horizon });
+  return t(locale, "header.horizonReviewInDays", { horizon, days: daysLeft });
 }

@@ -1,5 +1,9 @@
 import { t, type Locale } from "../i18n";
-import type { RtGameState } from "../realtime/simulation";
+import type {
+  RtGameState,
+  RtHorizonGoal,
+  RtHorizonKind,
+} from "../realtime/simulation";
 import { formatReleaseCountdown, formatSessionId } from "../formatting";
 import { SAVE_SCHEMA_VERSION, type AutosaveLoadResult } from "../save";
 import { LanguageSwitch } from "./LanguageSwitch";
@@ -130,8 +134,8 @@ function ResumeCard({
   sessionId: string;
 }) {
   const report = game.morningReport;
-  const quarter = report?.quarter ?? game.quarter;
-  const day = report?.day ?? game.day;
+  const activeGoal = pickResumeGoal(game);
+  const horizonLabel = activeGoal ? t(locale, `horizon.${activeGoal.kind}`) : "";
   const releaseLine = report
     ? t(locale, "header.morningLine", { count: report.consequences.length })
     : t(locale, "header.releaseLine", {
@@ -151,15 +155,36 @@ function ResumeCard({
     <section className="resume-card">
       <header>
         <span>{t(locale, "menu.savedRun")}</span>
-        <strong>{t(locale, "header.day", { quarter, day, daysPerQuarter: game.daysPerQuarter })}</strong>
+        <strong>{t(locale, "header.calendar", {
+          week: game.calendar.week,
+          dayInWeek: game.calendar.dayInWeek,
+          daysPerWeek: game.calendar.daysPerWeek,
+          month: game.calendar.month,
+          quarter: game.calendar.quarter,
+        })}</strong>
       </header>
       <div className="resume-facts">
         <span>{statusLabel}</span>
-        <span>{t(locale, "header.goal", {
-          value: game.quarterValue,
-          goal: game.quarterGoal.value,
-          trust: game.resources.trust,
-          trustGoal: game.quarterGoal.trust,
+        <span>
+          {activeGoal
+            ? t(locale, "header.horizonGoal", {
+                horizon: horizonLabel,
+                id: activeGoal.id,
+                value: activeGoal.currentValue,
+                goal: activeGoal.expectedValue,
+                trust: game.resources.trust,
+                trustGoal: activeGoal.targetTrust,
+              })
+            : t(locale, "header.goal", {
+                value: game.quarterValue,
+                goal: game.quarterGoal.value,
+                trust: game.resources.trust,
+                trustGoal: game.quarterGoal.trust,
+              })}
+        </span>
+        <span>{t(locale, "header.campaignProgress", {
+          day: game.calendar.campaignDay,
+          daysPerYear: game.calendar.daysPerYear,
         })}</span>
         <span>{releaseLine}</span>
         <span>{t(locale, "header.clients", { value: game.resources.clients })}</span>
@@ -169,4 +194,13 @@ function ResumeCard({
       </div>
     </section>
   );
+}
+
+function pickResumeGoal(game: RtGameState): RtHorizonGoal | null {
+  const priority: RtHorizonKind[] = ["week", "month", "quarter", "year"];
+  for (const kind of priority) {
+    const goal = game.horizonGoals[kind];
+    if (goal && game.day <= goal.endsOnDay) return goal;
+  }
+  return game.horizonGoals.year ?? game.horizonGoals.quarter ?? game.horizonGoals.month ?? game.horizonGoals.week;
 }
