@@ -8,6 +8,8 @@ import {
 import { saveRun } from "../save";
 import {
   BACKEND_LOG_FLUSH_INTERVAL_MS,
+  DEBUG_SNAPSHOT_INTERVAL_MS,
+  DEBUG_SNAPSHOT_POSTER_ENABLED,
   flushBackendLogQueue,
   postDebugSnapshot,
 } from "../frontendLogging";
@@ -72,9 +74,10 @@ export function useDebugSnapshotPoster(
 ): void {
   useEffect(() => {
     if (screen !== "game") return;
+    if (!DEBUG_SNAPSHOT_POSTER_ENABLED) return;
     const id = window.setInterval(() => {
-      postDebugSnapshot(latestGameRef.current, sessionIdRef.current);
-    }, 1000);
+      postDebugSnapshot(latestGameRef.current, sessionIdRef.current, "debug_interval");
+    }, DEBUG_SNAPSHOT_INTERVAL_MS);
 
     return () => window.clearInterval(id);
   }, [latestGameRef, screen, sessionIdRef]);
@@ -118,6 +121,6 @@ export function useStatusDebugSnapshot(
 ): void {
   useEffect(() => {
     if (screen !== "game") return;
-    postDebugSnapshot(game, sessionIdRef.current);
+    postDebugSnapshot(game, sessionIdRef.current, "status_change");
   }, [game.status, game.lossReason, screen, sessionIdRef]);
 }

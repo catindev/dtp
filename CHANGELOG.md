@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-07-04 - v0.1.42 Snapshot logging opt-in
+
+Продолжен рефакторинг логгера:
+
+- периодическая отправка debug snapshot больше не включена по умолчанию;
+- старый цикл `snapshot every 1000ms` заменен на opt-in режим `VITE_DTP_DEBUG_SNAPSHOTS=1`;
+- opt-in интервал увеличен до `60s`;
+- snapshot-события получили `trigger`;
+- status/loss/win snapshot остается, чтобы не потерять диагностику критических состояний;
+- ручной copy snapshot не менялся.
+
+Это schema-compatible logging refactor. Gameplay save schema не менялась: `SAVE_SCHEMA_VERSION` остается `rt-campaign-v6`.
+
+---
+
 ## 2026-07-04 - v0.1.41 Logger contract v1
 
 Начат рефакторинг логгера под серверную модель хранения:

@@ -23,11 +23,14 @@ export {
 } from "./logging/backendLog";
 export { buildDebugSnapshot } from "./logging/debugSnapshot";
 
+export const DEBUG_SNAPSHOT_INTERVAL_MS = 60_000;
+export const DEBUG_SNAPSHOT_POSTER_ENABLED = import.meta.env?.VITE_DTP_DEBUG_SNAPSHOTS === "1";
+
 export function gameEventKey(event: RtEvent): string {
   return `${event.at}|${event.type}|${event.title}|${event.body}|${event.effects.join(";")}`;
 }
 
-export function postDebugSnapshot(game: RtGameState, sessionId?: string): void {
+export function postDebugSnapshot(game: RtGameState, sessionId?: string, trigger = "manual"): void {
   const snapshot = buildDebugSnapshot(game, sessionId);
   const body = JSON.stringify(snapshot, null, 2);
   window.localStorage.setItem("dtp.latestRun", body);
@@ -39,7 +42,10 @@ export function postDebugSnapshot(game: RtGameState, sessionId?: string): void {
     // The endpoint exists only in the local Vite dev server.
   });
   if (sessionId) {
-    postBackendLog([createLogEntry(sessionId, "snapshot", "debug_snapshot", buildBackendSnapshot(snapshot))]);
+    postBackendLog([createLogEntry(sessionId, "snapshot", "debug_snapshot", {
+      trigger,
+      ...buildBackendSnapshot(snapshot),
+    })]);
   }
 }
 
