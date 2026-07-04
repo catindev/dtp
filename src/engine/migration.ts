@@ -4,6 +4,7 @@ import {
 } from "./balance";
 import { createBacklogDecayDayStats } from "./backlogOpportunity";
 import { removeTaskFromBoard } from "./board";
+import { createCampaignCalendar } from "./calendar";
 import {
   type EngineLocale,
   normalizeEngineLocale,
@@ -26,6 +27,7 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
     morningReport?: RtMorningReport | null;
     locale?: EngineLocale;
     backlogDecayToday?: RtGameState["backlogDecayToday"];
+    calendar?: RtGameState["calendar"];
   };
 
   const normalizedLocale = normalizeEngineLocale(legacyState.locale);
@@ -51,6 +53,18 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
     state.daysPerQuarter < DAYS_PER_QUARTER
   ) {
     state.daysPerQuarter = DAYS_PER_QUARTER;
+    changed = true;
+  }
+  const expectedCalendar = createCampaignCalendar(state.day);
+  if (
+    !legacyState.calendar ||
+    legacyState.calendar.campaignDay !== expectedCalendar.campaignDay ||
+    legacyState.calendar.daysPerYear !== expectedCalendar.daysPerYear
+  ) {
+    state.calendar = expectedCalendar;
+    state.quarter = expectedCalendar.quarter;
+    state.dayInQuarter = expectedCalendar.dayInQuarter;
+    state.daysPerQuarter = expectedCalendar.daysPerQuarter;
     changed = true;
   }
   if (!legacyState.backlogDecayToday) {

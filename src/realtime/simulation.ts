@@ -8,6 +8,7 @@ import {
   GAME_MINUTES_PER_REAL_SECOND,
   TICK_MS,
 } from "../engine/balance";
+import { createCampaignCalendar } from "../engine/calendar";
 import {
   createBacklogDecayDayStats,
   resetBacklogDecayDayStats,
@@ -64,6 +65,9 @@ import {
 } from "../engine/types";
 export {
   DAYS_PER_QUARTER,
+  DAYS_PER_MONTH,
+  DAYS_PER_WEEK,
+  DAYS_PER_YEAR,
   DONE_REWORK_TRUST_COST,
   GAME_DAY_MINUTES,
   GAME_DAY_START_MINUTE,
@@ -72,7 +76,14 @@ export {
   OUTSOURCE_COST_BY_IMPORTANCE,
   RELEASE_TRAIN_GAME_MINUTE,
   TICK_MS,
+  WEEKS_PER_MONTH,
 } from "../engine/balance";
+export {
+  createCampaignCalendar,
+  daysLeftInHorizon,
+  isHorizonEndDay,
+  isHorizonStart,
+} from "../engine/calendar";
 export { RT_COLUMNS } from "../engine/types";
 export {
   backlogValueRatio,
@@ -92,6 +103,7 @@ export {
 } from "../engine/readiness";
 export type {
   RtBlastRadius,
+  RtCampaignCalendar,
   RtCharacter,
   RtColumn,
   RtConsequenceSource,
@@ -101,6 +113,7 @@ export type {
   RtEventDataValue,
   RtFalloutWarning,
   RtGameState,
+  RtHorizonKind,
   RtLateReleaseReport,
   RtLossReport,
   RtMorningReport,
@@ -129,6 +142,7 @@ export type {
 } from "../engine/types";
 
 export function createRealtimeState(seed = Date.now(), locale: Locale = DEFAULT_LOCALE): RtGameState {
+  const calendar = createCampaignCalendar(1);
   const state: RtGameState = {
     seed: seed >>> 0 || 1,
     rngState: seed >>> 0 || 1,
@@ -141,6 +155,7 @@ export function createRealtimeState(seed = Date.now(), locale: Locale = DEFAULT_
     elapsedGameMinutes: GAME_DAY_START_MINUTE,
     gameMinuteOfDay: GAME_DAY_START_MINUTE,
     day: 1,
+    calendar,
     quarter: 1,
     dayInQuarter: 1,
     daysPerQuarter: DAYS_PER_QUARTER,

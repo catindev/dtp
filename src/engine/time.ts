@@ -7,6 +7,7 @@ import {
   isUntouchedBacklogTask,
   updateBacklogOpportunity,
 } from "./backlogOpportunity";
+import { createCampaignCalendar } from "./calendar";
 import { clamp } from "./math";
 import {
   copyResources,
@@ -65,7 +66,9 @@ export function advanceDay(
 ): RtQuarterReviewReport | null {
   restTeamForNewDay(state);
   state.day += 1;
-  state.dayInQuarter += 1;
+  state.calendar = createCampaignCalendar(state.day);
+  state.dayInQuarter = state.calendar.dayInQuarter;
+  state.daysPerQuarter = state.calendar.daysPerQuarter;
   emit({
     type: "day_started",
     title: `Day ${state.day}`,
@@ -73,7 +76,7 @@ export function advanceDay(
     effects: ["stamina restored overnight", "context shock cleared", "clock reset to 08:00"],
   });
 
-  if (state.dayInQuarter > state.daysPerQuarter) {
+  if (state.calendar.dayInQuarter === 1 && state.day > 1) {
     return resolveQuarter(state, emit);
   }
   return null;
@@ -137,8 +140,9 @@ function resolveQuarter(
     effects,
   };
 
-  state.quarter += 1;
-  state.dayInQuarter = 1;
+  state.quarter = state.calendar.quarter;
+  state.dayInQuarter = state.calendar.dayInQuarter;
+  state.daysPerQuarter = state.calendar.daysPerQuarter;
   state.quarterValue = 0;
   state.quarterGoal = {
     value: Math.round(state.quarterGoal.value * 1.18 + 20),

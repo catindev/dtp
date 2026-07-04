@@ -7,6 +7,7 @@ import {
   generateMorningConsequences,
   type ConsequenceRuntime,
 } from "./consequences";
+import { createCampaignCalendar } from "./calendar";
 import {
   copyResources,
   diffResources,
@@ -131,6 +132,7 @@ function buildDaySummary(
   missedTaskIds: string[],
   consequences: RtReleaseConsequence[],
 ): RtDaySummary {
+  const summaryCalendar = createCampaignCalendar(day);
   const shippedReports = shippedTaskIds
     .map((taskId) => state.tasks[taskId])
     .filter((task): task is RtTask => Boolean(task))
@@ -141,6 +143,10 @@ function buildDaySummary(
 
   return {
     day,
+    campaignDay: day,
+    weekId: summaryCalendar.week,
+    monthId: summaryCalendar.month,
+    quarterId: summaryCalendar.quarter,
     shipped: shippedTaskIds.length,
     releasedClean: shippedReports.filter((readiness) => readiness === "clean").length,
     releasedRisky: shippedReports.filter((readiness) => readiness === "risky").length,

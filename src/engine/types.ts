@@ -20,6 +20,7 @@ export type RtSubtaskRole = "backend" | "frontend" | "design" | "qa" | "sre" | "
 export type RtSubtaskImportance = "critical" | "important" | "optional";
 export type RtBlastRadius = "low" | "medium" | "high";
 export type RtReleaseReadiness = "clean" | "risky" | "dirty";
+export type RtHorizonKind = "week" | "month" | "quarter" | "year";
 export type RtRiskReason =
   | "no_qa"
   | "no_sre"
@@ -120,6 +121,10 @@ export interface RtReleaseConsequence {
 
 export interface RtDaySummary {
   day: number;
+  campaignDay: number;
+  weekId: number;
+  monthId: number;
+  quarterId: number;
   shipped: number;
   releasedClean: number;
   releasedRisky: number;
@@ -323,6 +328,26 @@ export interface RtQuarterGoal {
   rewardBudget: number;
 }
 
+export interface RtCampaignCalendar {
+  campaignDay: number;
+  year: number;
+  week: number;
+  dayInWeek: number;
+  month: number;
+  weekInMonth: number;
+  quarter: number;
+  dayInQuarter: number;
+  monthInQuarter: number;
+  daysPerWeek: number;
+  weeksPerMonth: number;
+  daysPerMonth: number;
+  monthsPerQuarter: number;
+  daysPerQuarter: number;
+  quartersPerYear: number;
+  daysPerYear: number;
+  unlockedHorizons: RtHorizonKind[];
+}
+
 export interface RtSpawnState {
   nextInMs: number;
   nextBurstInMs: number;
@@ -340,6 +365,7 @@ export interface RtGameState {
   elapsedGameMinutes: number;
   gameMinuteOfDay: number;
   day: number;
+  calendar: RtCampaignCalendar;
   quarter: number;
   dayInQuarter: number;
   daysPerQuarter: number;

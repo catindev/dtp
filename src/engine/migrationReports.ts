@@ -1,3 +1,4 @@
+import { createCampaignCalendar } from "./calendar";
 import { emptyResourceDelta } from "./resources";
 import type {
   RtConsequenceSource,
@@ -86,8 +87,13 @@ export function normalizeMorningReportState(
 }
 
 export function emptyDaySummary(day: number): RtDaySummary {
+  const calendar = createCampaignCalendar(day);
   return {
     day,
+    campaignDay: day,
+    weekId: calendar.week,
+    monthId: calendar.month,
+    quarterId: calendar.quarter,
     shipped: 0,
     releasedClean: 0,
     releasedRisky: 0,
@@ -107,6 +113,29 @@ export function emptyDaySummary(day: number): RtDaySummary {
 
 function normalizeDaySummary(summary: RtDaySummary): boolean {
   let changed = false;
+  const legacySummary = summary as RtDaySummary & {
+    campaignDay?: number;
+    weekId?: number;
+    monthId?: number;
+    quarterId?: number;
+  };
+  const calendar = createCampaignCalendar(summary.day);
+  if (typeof legacySummary.campaignDay !== "number") {
+    summary.campaignDay = summary.day;
+    changed = true;
+  }
+  if (typeof legacySummary.weekId !== "number") {
+    summary.weekId = calendar.week;
+    changed = true;
+  }
+  if (typeof legacySummary.monthId !== "number") {
+    summary.monthId = calendar.month;
+    changed = true;
+  }
+  if (typeof legacySummary.quarterId !== "number") {
+    summary.quarterId = calendar.quarter;
+    changed = true;
+  }
   for (const key of ["backlogValueLost", "backlogExpiredCount", "backlogDebtAdded"] as const) {
     if (typeof summary[key] !== "number" || !Number.isFinite(summary[key])) {
       summary[key] = 0;
