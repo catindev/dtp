@@ -1,4 +1,4 @@
-import { useEffect, type MutableRefObject } from "react";
+import { useEffect, useRef, type MutableRefObject } from "react";
 import { APP_COMMIT, type AutosaveLoadResult } from "../save";
 import { type RtEvent, type RtGameState } from "../realtime/simulation";
 import {
@@ -9,6 +9,7 @@ import {
   type FrontendLogEntry,
 } from "../frontendLogging";
 import { buildGameEventTelemetry } from "../logging/gameEventTelemetry";
+import { buildDaySummaryTelemetry } from "../logging/summaryTelemetry";
 
 interface UseGameEventEffectsArgs {
   game: RtGameState;
@@ -29,6 +30,8 @@ export function useGameEventEffects({
   animatedWorkEventKeysRef,
   bounceTask,
 }: UseGameEventEffectsArgs): void {
+  const loggedSummaryIdsRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     if (screen !== "game" || initialAutosaveRef.current?.status !== "loaded") return;
     logAction(sessionIdRef.current, "autosave_restored", {
@@ -54,6 +57,21 @@ export function useGameEventEffects({
       postBackendLog(newEntries);
     }
   }, [game, loggedEventKeysRef, screen, sessionIdRef]);
+
+  useEffect(() => {
+    if (screen !== "game" || !game.morningReport) return;
+    const reportId = game.morningReport.id;
+    if (loggedSummaryIdsRef.current.has(reportId)) return;
+    loggedSummaryIdsRef.current.add(reportId);
+    postBackendLog([
+      createLogEntry(
+        sessionIdRef.current,
+        "summary",
+        "day_summary",
+        buildDaySummaryTelemetry(game, game.morningReport),
+      ),
+    ]);
+  }, [game, screen, sessionIdRef]);
 
   useEffect(() => {
     if (screen !== "game") return;

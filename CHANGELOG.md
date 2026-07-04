@@ -4,6 +4,19 @@
 
 ---
 
+## 2026-07-04 - v0.1.44 Day summary telemetry
+
+Продолжен рефакторинг логгера:
+
+- Morning Briefing теперь пишет отдельное `kind: summary`, `type: day_summary`;
+- summary логируется один раз на `morningReport.id`;
+- payload содержит агрегаты дня, resource deltas, compact horizon reviews и ids задач;
+- большие списки последствий не копируются целиком в action/snapshot поток.
+
+Это schema-compatible logging refactor. Gameplay save schema не менялась: `SAVE_SCHEMA_VERSION` остается `rt-campaign-v6`.
+
+---
+
 ## 2026-07-04 - v0.1.43 Compact game event telemetry
 
 Продолжен рефакторинг логгера:
