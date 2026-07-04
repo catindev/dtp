@@ -1,7 +1,7 @@
 {
   "name": "dont-touch-prod-kanban-pivot",
   "private": true,
-  "version": "0.1.48",
+  "version": "0.1.49",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +11,7 @@
     "debug:legacy": "tsx src/debug/legacy.ts",
     "debug:rt": "tsx src/debug/realtime.ts",
     "debug:ab": "tsx src/debug/ab.ts",
+    "debug:volodya": "tsx src/debug/volodya.ts",
     "logs:session": "tsx src/debug/logs.ts session",
     "logs:summary": "tsx src/debug/logs.ts summary",
     "logs:events": "tsx src/debug/logs.ts events",

@@ -14,6 +14,7 @@ import { TaskCard } from "./TaskCard";
 import { TaskColumn } from "./board/TaskColumn";
 import { SortableTaskCard } from "./board/SortableTaskCard";
 import type { ProdView } from "./board/types";
+import type { CharacterDropAnimation } from "../hooks/useGameDragAndDrop";
 
 interface BacklogExitGhost {
   index: number;
@@ -25,6 +26,7 @@ interface BoardPanelProps {
   activeOutsourceDrag: boolean;
   activeTaskDragId: string | null;
   attentionTaskIds: Set<string>;
+  characterDropAnimation: CharacterDropAnimation | null;
   flashTaskId: string | null;
   game: RtGameState;
   locale: Locale;
@@ -41,6 +43,7 @@ export function BoardPanel({
   activeOutsourceDrag,
   activeTaskDragId,
   attentionTaskIds,
+  characterDropAnimation,
   flashTaskId,
   game,
   locale,
@@ -112,6 +115,7 @@ export function BoardPanel({
         activeCharacterDragId={activeCharacterDragId}
         activeOutsourceDrag={activeOutsourceDrag}
         activeTaskDragId={activeTaskDragId}
+        characterDropAnimation={characterDropAnimation}
         game={game}
         locale={locale}
         selectedTaskId={selectedTaskId}

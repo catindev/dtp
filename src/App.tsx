@@ -92,6 +92,7 @@ export function App() {
   const mutate = useGameMutation(screen, setGame);
   const {
     activeCharacterDragId,
+    characterDropAnimation,
     activeOutsourceDrag,
     activeTaskDragId,
     dndSensors,
@@ -296,6 +297,7 @@ export function App() {
               activeOutsourceDrag={activeOutsourceDrag}
               activeTaskDragId={activeTaskDragId}
               attentionTaskIds={bounceTaskIds}
+              characterDropAnimation={characterDropAnimation}
               flashTaskId={flashTaskId}
               game={game}
               locale={locale}

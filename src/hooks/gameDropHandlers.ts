@@ -67,19 +67,19 @@ export function dropCharacterOnTaskIntent(
   context: GameDropContext,
   characterId: string,
   taskId: string,
-): void {
+): boolean {
   if (context.interactionBlocked) {
     playSoundEffect("error");
     context.activeDragRef.current = null;
-    return;
+    return false;
   }
   const task = context.game.tasks[taskId];
   if (!task) {
     playSoundEffect("error");
     context.activeDragRef.current = null;
-    return;
+    return false;
   }
-  dropCharacterOnTask(context, characterId, task);
+  return dropCharacterOnTask(context, characterId, task);
 }
 
 function dropOutsourceOnTask(context: GameDropContext, task: RtTask): void {
@@ -120,7 +120,7 @@ function dropCharacterOnTask(
   context: GameDropContext,
   characterId: string,
   task: RtTask,
-): void {
+): boolean {
   const character = context.game.characters[characterId];
   const canAssign = canAssignCharacterToTask(context.game, characterId, task.id);
 
@@ -150,6 +150,7 @@ function dropCharacterOnTask(
     context.flashTask(task.id);
   }
   context.activeDragRef.current = null;
+  return canAssign;
 }
 
 function moveDroppedTask(

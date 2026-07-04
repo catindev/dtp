@@ -3,7 +3,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   canMoveRealtimeTask,
   formatGameTime,
@@ -46,6 +46,16 @@ interface UseGameDragAndDropArgs {
   shakePauseButton: () => void;
 }
 
+export interface CharacterDropAnimation {
+  targetRect: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  };
+  targetTaskId: string;
+}
+
 export function useGameDragAndDrop({
   game,
   interactionBlocked,
@@ -61,7 +71,10 @@ export function useGameDragAndDrop({
   shakePauseButton,
 }: UseGameDragAndDropArgs) {
   const activeDragRef = useRef<ActiveDrag>(null);
+  const characterDropAnimationTimerRef = useRef<number | null>(null);
   const [activeDrag, setActiveDragState] = useState<ActiveDrag>(null);
+  const [characterDropAnimation, setCharacterDropAnimation] =
+    useState<CharacterDropAnimation | null>(null);
   const dndSensors = useDndSensors();
   const dropContext: GameDropContext = {
     activeDragRef,
@@ -76,7 +89,16 @@ export function useGameDragAndDrop({
     shakeColumn,
   };
 
+  useEffect(() => {
+    return () => {
+      if (characterDropAnimationTimerRef.current !== null) {
+        window.clearTimeout(characterDropAnimationTimerRef.current);
+      }
+    };
+  }, []);
+
   function beginDndDrag(event: DragStartEvent) {
+    clearCharacterDropAnimation();
     resetActiveDrag();
     const data = event.active.data.current;
     const taskId = readTaskDndId(data);
@@ -204,7 +226,11 @@ export function useGameDragAndDrop({
     }
 
     if (active.type === "character") {
-      dropCharacterOnTaskIntent(dropContext, active.characterId, targetTaskId);
+      const assignedTargetRect = getTaskCardRect(targetTaskId);
+      const assigned = dropCharacterOnTaskIntent(dropContext, active.characterId, targetTaskId);
+      if (assigned && assignedTargetRect) {
+        animateCharacterDropIntoTask(targetTaskId, assignedTargetRect);
+      }
       resetDndDrag();
       return;
     }
@@ -286,12 +312,36 @@ export function useGameDragAndDrop({
     setActiveDragState(null);
   }
 
-function resetDrag() {
+  function resetDrag() {
     resetActiveDrag();
+    clearCharacterDropAnimation();
+  }
+
+  function animateCharacterDropIntoTask(
+    targetTaskId: string,
+    targetRect: CharacterDropAnimation["targetRect"],
+  ) {
+    if (characterDropAnimationTimerRef.current !== null) {
+      window.clearTimeout(characterDropAnimationTimerRef.current);
+    }
+    setCharacterDropAnimation({ targetRect, targetTaskId });
+    characterDropAnimationTimerRef.current = window.setTimeout(() => {
+      setCharacterDropAnimation(null);
+      characterDropAnimationTimerRef.current = null;
+    }, 420);
+  }
+
+  function clearCharacterDropAnimation() {
+    if (characterDropAnimationTimerRef.current !== null) {
+      window.clearTimeout(characterDropAnimationTimerRef.current);
+      characterDropAnimationTimerRef.current = null;
+    }
+    setCharacterDropAnimation(null);
   }
 
   return {
     activeCharacterDragId: activeDrag?.type === "character" ? activeDrag.characterId : null,
+    characterDropAnimation,
     activeOutsourceDrag: activeDrag?.type === "outsourcing",
     activeTaskDragId: activeDrag?.type === "task" ? activeDrag.taskId : null,
     dndSensors,
@@ -299,5 +349,19 @@ function resetDrag() {
     finishDndDrag,
     cancelDndDrag,
     resetDrag,
+  };
+}
+
+function getTaskCardRect(taskId: string): CharacterDropAnimation["targetRect"] | null {
+  const element = Array.from(document.querySelectorAll<HTMLElement>("[data-task-card-id]")).find(
+    (candidate) => candidate.dataset.taskCardId === taskId,
+  );
+  if (!element) return null;
+  const rect = element.getBoundingClientRect();
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
   };
 }

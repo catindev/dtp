@@ -1641,6 +1641,14 @@ button:disabled {
   transform-origin: 50% 76%;
 }
 
+.team-dnd-overlay-card.character-absorb-overlay .character {
+  box-shadow:
+    0 2px 0 rgba(255, 255, 255, 0.88) inset,
+    0 8px 18px rgba(36, 93, 69, 0.14),
+    0 30px 54px rgba(36, 93, 69, 0.24);
+  will-change: opacity, transform, filter;
+}
+
 .task-card-top {
   align-items: center;
   display: flex;
