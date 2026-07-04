@@ -4,7 +4,7 @@ import {
 } from "./realtime/simulation";
 import packageJson from "../package.json";
 
-export const SAVE_SCHEMA_VERSION = "rt-campaign-v7";
+export const SAVE_SCHEMA_VERSION = "rt-tutorial-v8";
 export const AUTOSAVE_KEY = "dtp.autosave.rt-board";
 export const APP_COMMIT = __DTP_COMMIT__;
 export const APP_VERSION = packageJson.version;

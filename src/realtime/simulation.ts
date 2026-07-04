@@ -167,6 +167,8 @@ export function createRealtimeState(seed = Date.now(), locale: Locale = DEFAULT_
     seed: seed >>> 0 || 1,
     rngState: seed >>> 0 || 1,
     locale,
+    runMode: "campaign",
+    tutorial: null,
     paused: false,
     status: "running",
     lossReason: null,

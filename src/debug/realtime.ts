@@ -25,6 +25,7 @@ import { createLogEntry } from "../logging/backendLog";
 import { buildGameEventTelemetry } from "../logging/gameEventTelemetry";
 import { buildDaySummaryTelemetry } from "../logging/summaryTelemetry";
 import { characterDropRejectReason } from "../hooks/dragAndDropHelpers";
+import { loadTutorialCompleted } from "../tutorial/tutorialProgress";
 
 const seedArg = Number(process.argv[2]);
 const seed = Number.isFinite(seedArg) ? seedArg : 184;
@@ -39,6 +40,7 @@ const smoke = [
   runDeadlinePressureReadinessSmoke(),
   runHorizonReviewCapSmoke(),
   runWinContractSmoke(),
+  runTutorialFoundationSmoke(),
   runMigrationNormalizationSmoke(),
   runDebugSnapshotSmoke(),
   runOutsourceSmoke(),
@@ -288,6 +290,41 @@ function runWinContractSmoke() {
     score: currentState.victoryReport?.score,
     day: currentState.day,
     hasMorningReport: Boolean(currentState.morningReport),
+  };
+}
+
+function runTutorialFoundationSmoke() {
+  const currentState = createRealtimeState(4104);
+  assert(currentState.runMode === "campaign", "Tutorial smoke expected default run mode campaign.");
+  assert(currentState.tutorial === null, "Tutorial smoke expected no tutorial state in a campaign run.");
+  assert(loadTutorialCompleted() === false, "Tutorial smoke expected completion flag to fail closed without storage.");
+
+  const legacyState = currentState as unknown as {
+    runMode?: RtGameState["runMode"];
+    tutorial?: RtGameState["tutorial"];
+  };
+  delete legacyState.runMode;
+  delete legacyState.tutorial;
+  const changed = normalizeRealtimeState(currentState);
+  assert(changed, "Tutorial smoke expected legacy run fields to normalize.");
+  assert(currentState.runMode === "campaign", "Tutorial smoke expected legacy run mode backfill.");
+  assert(currentState.tutorial === null, "Tutorial smoke expected legacy tutorial backfill.");
+
+  currentState.runMode = "tutorial";
+  currentState.tutorial = null;
+  normalizeRealtimeState(currentState);
+  const repairedTutorial = currentState.tutorial as NonNullable<RtGameState["tutorial"]> | null;
+  assert(repairedTutorial !== null, "Tutorial smoke expected missing tutorial state repair.");
+  assert(repairedTutorial.stageId === "boot", "Tutorial smoke expected boot tutorial repair state.");
+  assert(
+    Array.isArray(repairedTutorial.completedStepIds),
+    "Tutorial smoke expected tutorial completed step list.",
+  );
+
+  return {
+    name: "tutorial-foundation",
+    runMode: currentState.runMode,
+    repairedStage: repairedTutorial.stageId,
   };
 }
 

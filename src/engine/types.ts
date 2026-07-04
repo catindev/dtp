@@ -16,6 +16,7 @@ export type RtRole = "analyst" | "designer" | "backend" | "frontend" | "qa" | "s
 export type RtStage = "analysis" | "todo" | "test";
 export type RtWorkColumn = Extract<RtColumn, "inProgress">;
 export type RtRunStatus = "running" | "won" | "lost";
+export type RtRunMode = "campaign" | "tutorial";
 export type RtSubtaskRole = "backend" | "frontend" | "design" | "qa" | "sre" | "bugfix";
 export type RtSubtaskImportance = "critical" | "important" | "optional";
 export type RtBlastRadius = "low" | "medium" | "high";
@@ -415,10 +416,32 @@ export interface RtSpawnState {
   nextBurstInMs: number;
 }
 
+export type RtTutorialStepKind = "directive" | "choice" | "wait";
+
+export interface RtTutorialStepState {
+  id: string;
+  stageId: string;
+  kind: RtTutorialStepKind;
+  completed: boolean;
+  branchId: string | null;
+}
+
+export interface RtTutorialState {
+  stageId: string;
+  stepId: string;
+  completed: boolean;
+  completedStepIds: string[];
+  timers: Record<string, number>;
+  activeBranchId: string | null;
+  steps: RtTutorialStepState[];
+}
+
 export interface RtGameState {
   seed: number;
   rngState: number;
   locale: EngineLocale;
+  runMode: RtRunMode;
+  tutorial: RtTutorialState | null;
   paused: boolean;
   status: RtRunStatus;
   lossReason: string | null;

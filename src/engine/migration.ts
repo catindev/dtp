@@ -36,11 +36,33 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
     horizonGoals?: RtGameState["horizonGoals"];
     victoryReport?: RtGameState["victoryReport"];
     peakDebt?: number;
+    runMode?: RtGameState["runMode"];
+    tutorial?: RtGameState["tutorial"];
   };
 
   const normalizedLocale = normalizeEngineLocale(legacyState.locale);
   if (state.locale !== normalizedLocale) {
     state.locale = normalizedLocale;
+    changed = true;
+  }
+  if (legacyState.runMode !== "campaign" && legacyState.runMode !== "tutorial") {
+    state.runMode = "campaign";
+    changed = true;
+  }
+  if (state.runMode === "campaign" && legacyState.tutorial !== null) {
+    state.tutorial = null;
+    changed = true;
+  }
+  if (state.runMode === "tutorial" && !legacyState.tutorial) {
+    state.tutorial = {
+      stageId: "boot",
+      stepId: "boot",
+      completed: false,
+      completedStepIds: [],
+      timers: {},
+      activeBranchId: null,
+      steps: [],
+    };
     changed = true;
   }
 
