@@ -77,6 +77,8 @@ export function useGameEventSounds({
         playSoundEffect("newTask");
       } else if (event.type === "backlog_opportunity_expired") {
         playSoundEffect("backlogEnd");
+      } else if (event.type === "tutorial_task_spawned" || event.type === "tutorial_step_completed") {
+        playSoundEffect("quest");
       } else if (isCharacterWorkCompletedEvent(event)) {
         playSoundEffect("subtaskCompleted");
       } else if (event.type === "release_train" || event.type === "release_train_empty") {

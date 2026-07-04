@@ -53,17 +53,35 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
     state.tutorial = null;
     changed = true;
   }
-  if (state.runMode === "tutorial" && !legacyState.tutorial) {
-    state.tutorial = {
-      stageId: "boot",
-      stepId: "boot",
-      completed: false,
-      completedStepIds: [],
-      timers: {},
-      activeBranchId: null,
-      steps: [],
+  if (state.runMode === "tutorial") {
+    if (!legacyState.tutorial) {
+      state.tutorial = {
+        stageId: "boot",
+        stepId: "boot",
+        completed: false,
+        completedStepIds: [],
+        timers: {},
+        activeBranchId: null,
+        focusTaskId: null,
+        focusCharacterId: null,
+        steps: [],
+      };
+      changed = true;
+    }
+    const tutorial = (state as RtGameState & {
+      tutorial: NonNullable<RtGameState["tutorial"]>;
+    }).tutorial as NonNullable<RtGameState["tutorial"]> & {
+      focusTaskId?: string | null;
+      focusCharacterId?: string | null;
     };
-    changed = true;
+    if (!Object.prototype.hasOwnProperty.call(tutorial, "focusTaskId")) {
+      tutorial.focusTaskId = null;
+      changed = true;
+    }
+    if (!Object.prototype.hasOwnProperty.call(tutorial, "focusCharacterId")) {
+      tutorial.focusCharacterId = null;
+      changed = true;
+    }
   }
 
   changed = normalizeMorningReportState(state, legacyState) || changed;

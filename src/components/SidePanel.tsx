@@ -32,9 +32,12 @@ export function SidePanel({
   const assigned = selectedTask?.assignedCharacterId
     ? game.characters[selectedTask.assignedCharacterId]
     : null;
+  const showTutorialQuest = game.runMode === "tutorial" && game.tutorial;
 
   return (
-    <aside className={["side-stack", hasContent ? "" : "empty"].join(" ")}>
+    <aside className={["side-stack", hasContent || showTutorialQuest ? "" : "empty"].join(" ")}>
+      {showTutorialQuest ? <TutorialQuest game={game} locale={locale} /> : null}
+
       {selectedTask || selectedCharacter ? (
         <section className="panel inspector side-panel-slide">
           <div className="inspector-panel-header">
@@ -72,6 +75,51 @@ export function SidePanel({
 
       {game.lossReport ? <LossReport locale={locale} report={game.lossReport} /> : null}
     </aside>
+  );
+}
+
+function TutorialQuest({
+  game,
+  locale,
+}: {
+  game: RtGameState;
+  locale: Locale;
+}) {
+  const tutorial = game.tutorial;
+  if (!tutorial) return null;
+  const steps = tutorial.steps.length > 0
+    ? tutorial.steps
+    : [
+        { id: "move-task-to-work", completed: tutorial.completedStepIds.includes("move-task-to-work") },
+        { id: "assign-qa", completed: tutorial.completedStepIds.includes("assign-qa") },
+        { id: "wait-task-complete", completed: tutorial.completedStepIds.includes("wait-task-complete") },
+        { id: "move-task-to-done", completed: tutorial.completedStepIds.includes("move-task-to-done") },
+      ];
+
+  return (
+    <section className="panel tutorial-quest-panel side-panel-slide">
+      <span className="tutorial-quest-kicker">{t(locale, "tutorial.kicker")}</span>
+      <h2>{t(locale, "tutorial.stage.teamBasics")}</h2>
+      <ol className="tutorial-step-list">
+        {steps.map((step) => (
+          <li
+            className={[
+              step.completed ? "completed" : "",
+              tutorial.stepId === step.id ? "current" : "",
+            ].join(" ")}
+            key={step.id}
+          >
+            <span>{step.completed ? "✓" : tutorial.stepId === step.id ? "→" : "·"}</span>
+            <strong>{t(locale, `tutorial.step.${step.id}`)}</strong>
+          </li>
+        ))}
+      </ol>
+      {tutorial.stepId === "stage-1-complete" ? (
+        <p>{t(locale, "tutorial.stageComplete")}</p>
+      ) : (
+        <p>{t(locale, "tutorial.currentHint")}</p>
+      )}
+    </section>
   );
 }
 

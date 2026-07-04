@@ -30,6 +30,11 @@ import {
   dropTaskOnColumnIntent,
   type GameDropContext,
 } from "./gameDropHandlers";
+import {
+  canBeginTutorialCharacterDrag,
+  canBeginTutorialOutsourceDrag,
+  canBeginTutorialTaskDrag,
+} from "../tutorial/tutorialDirector";
 
 interface UseGameDragAndDropArgs {
   game: RtGameState;
@@ -136,6 +141,20 @@ export function useGameDragAndDrop({
       return;
     }
 
+    const tutorialGate = canBeginTutorialTaskDrag(game, taskId);
+    if (!tutorialGate.allowed) {
+      playSoundEffect("error");
+      shakeTask(taskId);
+      logAction(sessionId, "tutorial_action_rejected", {
+        action: "task_drag",
+        taskId,
+        reason: tutorialGate.reason,
+        gameTime: formatGameTime(game),
+      });
+      resetDndDrag();
+      return;
+    }
+
     setActiveDrag({ type: "task", taskId });
     clearSelection();
     playSoundEffect("drag");
@@ -163,6 +182,19 @@ export function useGameDragAndDrop({
       return;
     }
 
+    const tutorialGate = canBeginTutorialCharacterDrag(game, characterId);
+    if (!tutorialGate.allowed) {
+      playSoundEffect("error");
+      logAction(sessionId, "tutorial_action_rejected", {
+        action: "character_drag",
+        characterId,
+        reason: tutorialGate.reason,
+        gameTime: formatGameTime(game),
+      });
+      resetDndDrag();
+      return;
+    }
+
     setActiveDrag({ type: "character", characterId: character.id });
     clearSelection();
     playSoundEffect("drag");
@@ -184,6 +216,18 @@ export function useGameDragAndDrop({
 
     if (interactionBlocked || game.resources.budget <= 0) {
       playSoundEffect("error");
+      resetDndDrag();
+      return;
+    }
+
+    const tutorialGate = canBeginTutorialOutsourceDrag(game);
+    if (!tutorialGate.allowed) {
+      playSoundEffect("error");
+      logAction(sessionId, "tutorial_action_rejected", {
+        action: "outsource_drag",
+        reason: tutorialGate.reason,
+        gameTime: formatGameTime(game),
+      });
       resetDndDrag();
       return;
     }

@@ -44,6 +44,7 @@ import {
 } from "./audio/audioPreferences";
 import type { TimeScale } from "./timeScale";
 import { loadTutorialCompleted } from "./tutorial/tutorialProgress";
+import { tutorialFocusTaskId } from "./tutorial/tutorialDirector";
 import "./styles.css";
 
 type AppScreen = "menu" | "game" | "docs";
@@ -89,6 +90,9 @@ export function App() {
   const latestGameRef = useRef(game);
   const selectedTask = selectedTaskId ? game.tasks[selectedTaskId] : null;
   const selectedCharacter = selectedCharacterId ? game.characters[selectedCharacterId] : null;
+  const tutorialAttentionTaskId = tutorialFocusTaskId(game);
+  const attentionTaskIds = new Set(bounceTaskIds);
+  if (tutorialAttentionTaskId) attentionTaskIds.add(tutorialAttentionTaskId);
   const hasInspectorContent = Boolean(selectedTask || selectedCharacter || game.lossReport);
   const morningReport = game.morningReport;
   const interactionBlocked =
@@ -308,7 +312,7 @@ export function App() {
               activeCharacterDragId={activeCharacterDragId}
               activeOutsourceDrag={activeOutsourceDrag}
               activeTaskDragId={activeTaskDragId}
-              attentionTaskIds={bounceTaskIds}
+              attentionTaskIds={attentionTaskIds}
               characterDropAnimation={characterDropAnimation}
               flashTaskId={flashTaskId}
               game={game}

@@ -27,6 +27,7 @@ export const SOUND_CATALOG = {
     new URL("../../sounds/on-new-task-4.ogg", import.meta.url).href,
   ],
   quarterEnd: [new URL("../../sounds/on-quarter-end.ogg", import.meta.url).href],
+  quest: [new URL("../../sounds/on-quest.ogg", import.meta.url).href],
   subtaskCompleted: [new URL("../../sounds/on-subtask-completed.ogg", import.meta.url).href],
   taskCancel: [new URL("../../sounds/on-task-cancel.ogg", import.meta.url).href],
 } as const;
@@ -43,6 +44,7 @@ export const SOUND_EFFECT_NAMES: readonly SoundEffectName[] = [
   "error",
   "newTask",
   "quarterEnd",
+  "quest",
   "subtaskCompleted",
   "taskCancel",
 ];

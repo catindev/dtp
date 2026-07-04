@@ -11,6 +11,8 @@ export function createInitialTutorialState(): RtTutorialState {
     completedStepIds: [],
     timers: {},
     activeBranchId: null,
+    focusTaskId: null,
+    focusCharacterId: null,
     steps: [],
   };
 }

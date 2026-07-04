@@ -19,6 +19,13 @@ import {
   outsourceStatusText,
   type ActiveDrag,
 } from "./dragAndDropHelpers";
+import {
+  advanceTutorialForCharacterAssignment,
+  advanceTutorialForTaskMove,
+  canDropTutorialCharacter,
+  canDropTutorialOutsource,
+  canDropTutorialTask,
+} from "../tutorial/tutorialDirector";
 
 export interface GameDropContext {
   activeDragRef: { current: ActiveDrag };
@@ -83,6 +90,11 @@ export function dropCharacterOnTaskIntent(
 }
 
 function dropOutsourceOnTask(context: GameDropContext, task: RtTask): void {
+  const tutorialGate = canDropTutorialOutsource(context.game);
+  if (!tutorialGate.allowed) {
+    rejectTutorialAction(context, "outsource_drop", task.id, tutorialGate.reason);
+    return;
+  }
   const outsourceStatus = getOutsourceTaskWorkStatus(context.game, task.id);
   const canOutsource = outsourceStatus.allowed;
   if (canOutsource) {
@@ -121,12 +133,18 @@ function dropCharacterOnTask(
   characterId: string,
   task: RtTask,
 ): boolean {
+  const tutorialGate = canDropTutorialCharacter(context.game, characterId, task.id);
+  if (!tutorialGate.allowed) {
+    rejectTutorialAction(context, "character_drop", task.id, tutorialGate.reason, characterId);
+    return false;
+  }
   const character = context.game.characters[characterId];
   const canAssign = canAssignCharacterToTask(context.game, characterId, task.id);
 
   if (canAssign) {
     context.mutate((draft) => {
       assignCharacterToTask(draft, characterId, task.id);
+      advanceTutorialForCharacterAssignment(draft, characterId, task.id);
     });
     context.clearSelection();
   } else {
@@ -162,6 +180,15 @@ function moveDroppedTask(
 ): boolean {
   const fromColumn = context.game.tasks[taskId]?.column;
   const task = context.game.tasks[taskId];
+  const tutorialGate = canDropTutorialTask(context.game, taskId, column);
+  if (!tutorialGate.allowed) {
+    rejectTutorialAction(context, "task_drop", rejectTargetTaskId ?? taskId, tutorialGate.reason, undefined, {
+      taskId,
+      fromColumn,
+      toColumn: column,
+    });
+    return false;
+  }
   const moveCheck = canMoveRealtimeTask(context.game, taskId, column);
 
   if (!moveCheck.allowed) {
@@ -184,6 +211,7 @@ function moveDroppedTask(
 
   context.mutate((draft) => {
     moveRealtimeTask(draft, taskId, column, targetIndex);
+    advanceTutorialForTaskMove(draft, taskId, column);
   });
   context.clearSelection();
   logAction(context.sessionId, "task_dropped_on_column", {
@@ -200,4 +228,26 @@ function moveDroppedTask(
   context.flashTask(taskId);
   context.activeDragRef.current = null;
   return true;
+}
+
+function rejectTutorialAction(
+  context: GameDropContext,
+  action: string,
+  targetTaskId: string | undefined,
+  reason: string,
+  characterId?: string,
+  extra?: Record<string, string | number | boolean | null | undefined>,
+): void {
+  if (targetTaskId) {
+    context.shakeTask(targetTaskId);
+  }
+  playSoundEffect("error");
+  logAction(context.sessionId, "tutorial_action_rejected", {
+    action,
+    reason,
+    characterId,
+    gameTime: formatGameTime(context.game),
+    ...extra,
+  });
+  context.activeDragRef.current = null;
 }

@@ -65,6 +65,7 @@ import {
   type RtWorkColumn,
 } from "../engine/types";
 import { createInitialTutorialState } from "../tutorial/tutorialState";
+import { updateTutorialDirector } from "../tutorial/tutorialDirector";
 export {
   DAYS_PER_QUARTER,
   DAYS_PER_MONTH,
@@ -252,6 +253,16 @@ export function tickRealtime(state: RtGameState, tickMs = TICK_MS): void {
   state.elapsedGameMinutes += gameMinutes;
   const previousGameMinuteOfDay = state.gameMinuteOfDay;
   state.gameMinuteOfDay += gameMinutes;
+
+  if (state.runMode === "tutorial") {
+    updateShock(state, gameMinutes);
+    updateTaskTimers(state, tickMs, (event) => pushEvent(state, event));
+    updateOutsourcing(state, tickMs, (event) => pushEvent(state, event));
+    updateAssignments(state, tickMs, (event) => pushEvent(state, event));
+    updateTutorialDirector(state, tickMs, (event) => pushEvent(state, event));
+    checkRunStateInternal(state, (event) => pushEvent(state, event));
+    return;
+  }
 
   if (crossedReleaseTrain(previousGameMinuteOfDay, state.gameMinuteOfDay)) {
     openMorningReportInternal(state, {

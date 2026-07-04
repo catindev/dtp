@@ -242,6 +242,14 @@ const UI: Record<Locale, Record<string, string>> = {
     "loss.recentMisses": "Recent misses",
     "loss.badReleases": "Bad releases",
     "loss.read": "Read",
+    "tutorial.kicker": "Tutorial",
+    "tutorial.stage.teamBasics": "Task and team control",
+    "tutorial.step.move-task-to-work": "Drag the task into In Progress",
+    "tutorial.step.assign-qa": "Drag QA onto the task",
+    "tutorial.step.wait-task-complete": "Wait until the work is done",
+    "tutorial.step.move-task-to-done": "Move the completed task to Done",
+    "tutorial.stageComplete": "Good. The basic card loop is complete.",
+    "tutorial.currentHint": "Only the current checklist action changes the board during tutorial.",
   },
   ru: {
     "menu.subtitle": "Годовая кампания / День 1",
@@ -452,6 +460,14 @@ const UI: Record<Locale, Record<string, string>> = {
     "loss.recentMisses": "Недавние пропуски",
     "loss.badReleases": "Плохие релизы",
     "loss.read": "Что делать",
+    "tutorial.kicker": "Обучение",
+    "tutorial.stage.teamBasics": "Управление задачами и командой",
+    "tutorial.step.move-task-to-work": "Перетащи задачу в колонку В работе",
+    "tutorial.step.assign-qa": "Перетащи QA на задачу",
+    "tutorial.step.wait-task-complete": "Дождись выполнения работы",
+    "tutorial.step.move-task-to-done": "Перенеси готовую задачу в Готово",
+    "tutorial.stageComplete": "Хорошо. Базовый цикл карточки пройден.",
+    "tutorial.currentHint": "Во время обучения доску меняет только текущее действие из чеклиста.",
   },
 };
 
@@ -513,6 +529,8 @@ const READINESS_LABELS: Record<Locale, Record<LocalizedReadiness, string>> = {
 const EXACT_TEXTS: Record<Locale, Record<string, string>> = {
   en: {},
   ru: {
+    "Test yesterday's changes": "Протестировать вчерашние доработки",
+    "Tutorial task.": "Учебная задача.",
     "Waiting in backlog.": "Ждет в бэклоге.",
     "Ready for analysis, implementation, or QA.": "Готово к анализу, реализации или QA.",
     "Queued for the daily release train.": "В очереди на дневной релиз.",

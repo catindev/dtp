@@ -433,6 +433,8 @@ export interface RtTutorialState {
   completedStepIds: string[];
   timers: Record<string, number>;
   activeBranchId: string | null;
+  focusTaskId: string | null;
+  focusCharacterId: string | null;
   steps: RtTutorialStepState[];
 }
 

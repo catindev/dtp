@@ -27,6 +27,17 @@ import { buildGameEventTelemetry } from "../logging/gameEventTelemetry";
 import { buildDaySummaryTelemetry } from "../logging/summaryTelemetry";
 import { characterDropRejectReason } from "../hooks/dragAndDropHelpers";
 import { loadTutorialCompleted } from "../tutorial/tutorialProgress";
+import {
+  TUTORIAL_STEP_ASSIGN_QA,
+  TUTORIAL_STEP_MOVE_DONE,
+  TUTORIAL_STEP_MOVE_TASK,
+  TUTORIAL_STEP_STAGE_COMPLETE,
+  TUTORIAL_STEP_WAIT_WORK,
+  advanceTutorialForCharacterAssignment,
+  advanceTutorialForTaskMove,
+  canDropTutorialCharacter,
+  canDropTutorialTask,
+} from "../tutorial/tutorialDirector";
 
 const seedArg = Number(process.argv[2]);
 const seed = Number.isFinite(seedArg) ? seedArg : 184;
@@ -43,6 +54,7 @@ const smoke = [
   runWinContractSmoke(),
   runTutorialFoundationSmoke(),
   runTutorialEntrySmoke(),
+  runTutorialStageOneSmoke(),
   runMigrationNormalizationSmoke(),
   runDebugSnapshotSmoke(),
   runOutsourceSmoke(),
@@ -354,6 +366,80 @@ function runTutorialEntrySmoke() {
     name: "tutorial-entry",
     runMode: currentState.runMode,
     stageId: currentState.tutorial?.stageId,
+    stepId: currentState.tutorial?.stepId,
+  };
+}
+
+function runTutorialStageOneSmoke() {
+  const currentState = createTutorialRealtimeState(4205);
+  tickRealtime(currentState, 1500);
+  assert(currentState.board.backlog.length === 0, "Tutorial stage smoke expected delayed task spawn.");
+  tickRealtime(currentState, 600);
+
+  const focusTaskId = currentState.tutorial?.focusTaskId;
+  assert(typeof focusTaskId === "string", "Tutorial stage smoke expected focus task.");
+  if (typeof focusTaskId !== "string") throw new Error("Tutorial stage smoke missing focus task.");
+  const taskId = focusTaskId;
+  assert(currentState.board.backlog.includes(taskId), "Tutorial stage smoke expected task in backlog.");
+  assert(
+    (currentState.tutorial?.stepId as string | undefined) === TUTORIAL_STEP_MOVE_TASK,
+    "Tutorial stage smoke expected move step.",
+  );
+  assert(
+    canDropTutorialTask(currentState, taskId, "inProgress").allowed,
+    "Tutorial stage smoke expected allowed task move.",
+  );
+
+  moveRealtimeTask(currentState, taskId, "inProgress");
+  advanceTutorialForTaskMove(currentState, taskId, "inProgress");
+  assert(
+    (currentState.tutorial?.stepId as string | undefined) === TUTORIAL_STEP_ASSIGN_QA,
+    "Tutorial stage smoke expected QA step.",
+  );
+
+  const qaCandidate = Object.values(currentState.characters).find((character) => character.role === "qa");
+  assert(Boolean(qaCandidate), "Tutorial stage smoke expected QA character.");
+  if (!qaCandidate) throw new Error("Tutorial stage smoke missing QA character.");
+  const qa = qaCandidate;
+  assert(
+    canDropTutorialCharacter(currentState, qa.id, taskId).allowed,
+    "Tutorial stage smoke expected allowed QA drop.",
+  );
+  assignCharacterToTask(currentState, qa.id, taskId);
+  advanceTutorialForCharacterAssignment(currentState, qa.id, taskId);
+  assert(
+    (currentState.tutorial?.stepId as string | undefined) === TUTORIAL_STEP_WAIT_WORK,
+    "Tutorial stage smoke expected wait step.",
+  );
+
+  for (
+    let guard = 0;
+    guard < 80 && (currentState.tutorial?.stepId as string | undefined) === TUTORIAL_STEP_WAIT_WORK;
+    guard += 1
+  ) {
+    tickRealtime(currentState, 5000);
+  }
+  assert(
+    (currentState.tutorial?.stepId as string | undefined) === TUTORIAL_STEP_MOVE_DONE,
+    "Tutorial stage smoke expected done move step.",
+  );
+  assert(currentState.tasks[taskId]?.stageComplete, "Tutorial stage smoke expected completed task work.");
+
+  moveRealtimeTask(currentState, taskId, "done");
+  advanceTutorialForTaskMove(currentState, taskId, "done");
+  assert(
+    (currentState.tutorial?.stepId as string | undefined) === TUTORIAL_STEP_STAGE_COMPLETE,
+    "Tutorial stage smoke expected stage complete.",
+  );
+  assert(
+    currentState.tutorial?.completedStepIds.includes(TUTORIAL_STEP_MOVE_DONE) === true,
+    "Tutorial stage smoke expected completed Done step.",
+  );
+
+  return {
+    name: "tutorial-stage-one",
+    taskId,
+    completed: currentState.tutorial?.completedStepIds.length,
     stepId: currentState.tutorial?.stepId,
   };
 }
