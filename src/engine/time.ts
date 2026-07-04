@@ -8,6 +8,7 @@ import {
   updateBacklogOpportunity,
 } from "./backlogOpportunity";
 import { createCampaignCalendar } from "./calendar";
+import { ensureUnlockedHorizonGoals } from "./goals";
 import { clamp } from "./math";
 import {
   copyResources,
@@ -76,10 +77,10 @@ export function advanceDay(
     effects: ["stamina restored overnight", "context shock cleared", "clock reset to 08:00"],
   });
 
-  if (state.calendar.dayInQuarter === 1 && state.day > 1) {
-    return resolveQuarter(state, emit);
-  }
-  return null;
+  const quarterReview =
+    state.calendar.dayInQuarter === 1 && state.day > 1 ? resolveQuarter(state, emit) : null;
+  ensureUnlockedHorizonGoals(state, emit);
+  return quarterReview;
 }
 
 function restTeamForNewDay(state: RtGameState): void {

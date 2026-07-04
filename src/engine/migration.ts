@@ -6,6 +6,11 @@ import { createBacklogDecayDayStats } from "./backlogOpportunity";
 import { removeTaskFromBoard } from "./board";
 import { createCampaignCalendar } from "./calendar";
 import {
+  createInitialHorizonGoals,
+  ensureUnlockedHorizonGoals,
+  syncLegacyQuarterGoalFromHorizon,
+} from "./goals";
+import {
   type EngineLocale,
   normalizeEngineLocale,
 } from "./locale";
@@ -28,6 +33,7 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
     locale?: EngineLocale;
     backlogDecayToday?: RtGameState["backlogDecayToday"];
     calendar?: RtGameState["calendar"];
+    horizonGoals?: RtGameState["horizonGoals"];
   };
 
   const normalizedLocale = normalizeEngineLocale(legacyState.locale);
@@ -89,6 +95,14 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
       changed = true;
     }
   }
+
+  if (!legacyState.horizonGoals) {
+    state.horizonGoals = createInitialHorizonGoals(state);
+    changed = true;
+  } else {
+    changed = ensureUnlockedHorizonGoals(state) || changed;
+  }
+  syncLegacyQuarterGoalFromHorizon(state);
 
   for (const column of RT_COLUMNS) {
     if (!board[column]) {

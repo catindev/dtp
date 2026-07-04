@@ -1,4 +1,5 @@
 import { removeTaskFromBoard } from "./board";
+import { applyValueGainToHorizonGoals } from "./goals";
 import { clamp } from "./math";
 import { formatDelta } from "./resources";
 import {
@@ -40,7 +41,7 @@ export function releaseRealtimeTask(
 
   state.resources.value += valueGain;
   state.resources.budget += budgetGain;
-  state.quarterValue += valueGain;
+  applyValueGainToHorizonGoals(state, valueGain);
   state.resources.trust = clamp(state.resources.trust + trustDelta, 0, 100);
   state.resources.clients = clamp(state.resources.clients + clientDelta, 0, 100);
   state.resources.debt = clamp(state.resources.debt + debtDelta, 0, 100);

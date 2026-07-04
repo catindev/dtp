@@ -9,6 +9,7 @@ import {
   TICK_MS,
 } from "../engine/balance";
 import { createCampaignCalendar } from "../engine/calendar";
+import { createInitialHorizonGoals } from "../engine/goals";
 import {
   createBacklogDecayDayStats,
   resetBacklogDecayDayStats,
@@ -84,6 +85,11 @@ export {
   isHorizonEndDay,
   isHorizonStart,
 } from "../engine/calendar";
+export {
+  applyValueGainToHorizonGoals,
+  createInitialHorizonGoals,
+  ensureUnlockedHorizonGoals,
+} from "../engine/goals";
 export { RT_COLUMNS } from "../engine/types";
 export {
   backlogValueRatio,
@@ -113,6 +119,8 @@ export type {
   RtEventDataValue,
   RtFalloutWarning,
   RtGameState,
+  RtHorizonGoal,
+  RtHorizonGoals,
   RtHorizonKind,
   RtLateReleaseReport,
   RtLossReport,
@@ -143,6 +151,14 @@ export type {
 
 export function createRealtimeState(seed = Date.now(), locale: Locale = DEFAULT_LOCALE): RtGameState {
   const calendar = createCampaignCalendar(1);
+  const resources = {
+    trust: 70,
+    debt: 20,
+    value: 0,
+    clients: 100,
+    budget: 4,
+    processBoost: 0,
+  };
   const state: RtGameState = {
     seed: seed >>> 0 || 1,
     rngState: seed >>> 0 || 1,
@@ -159,14 +175,8 @@ export function createRealtimeState(seed = Date.now(), locale: Locale = DEFAULT_
     quarter: 1,
     dayInQuarter: 1,
     daysPerQuarter: DAYS_PER_QUARTER,
-    resources: {
-      trust: 70,
-      debt: 20,
-      value: 0,
-      clients: 100,
-      budget: 4,
-      processBoost: 0,
-    },
+    resources,
+    horizonGoals: createInitialHorizonGoals({ calendar, resources }),
     quarterGoal: {
       value: 75,
       trust: 45,

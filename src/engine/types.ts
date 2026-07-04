@@ -328,6 +328,23 @@ export interface RtQuarterGoal {
   rewardBudget: number;
 }
 
+export interface RtHorizonGoal {
+  kind: RtHorizonKind;
+  id: number;
+  openedOnDay: number;
+  endsOnDay: number;
+  startValue: number;
+  expectedValue: number;
+  targetValue: number;
+  currentValue: number;
+  targetTrust: number;
+  rewardBudget: number;
+  rewardProcessBoost: number;
+  missedTrustPenalty: number;
+}
+
+export type RtHorizonGoals = Record<RtHorizonKind, RtHorizonGoal | null>;
+
 export interface RtCampaignCalendar {
   campaignDay: number;
   year: number;
@@ -370,6 +387,7 @@ export interface RtGameState {
   dayInQuarter: number;
   daysPerQuarter: number;
   resources: RtResources;
+  horizonGoals: RtHorizonGoals;
   quarterGoal: RtQuarterGoal;
   quarterValue: number;
   backlogDecayToday: RtBacklogDecayDayStats;

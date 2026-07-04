@@ -121,7 +121,6 @@ function runQuarterBoundarySmoke() {
   assert(report !== null, "Quarter smoke expected morning report.");
   assert(report.shippedTaskIds.includes(controlledTask.id), "Quarter smoke expected shipped task.");
   assert(Boolean(report.quarterReview), "Quarter smoke expected quarter review.");
-  assert(report.quarterReview?.hitGoal === true, "Quarter smoke expected goals met.");
   assert(currentState.dayInQuarter === 1, "Quarter smoke expected new quarter day 1.");
   assert(startDayAfterMorningReport(currentState), "Quarter smoke expected briefing continue.");
 

@@ -16,6 +16,37 @@ export const DAYS_PER_YEAR = DAYS_PER_QUARTER * QUARTERS_PER_YEAR;
 export const LEGACY_REVIEW_DAYS = DAYS_PER_WEEK;
 export const DONE_REWORK_TRUST_COST = 4;
 
+export const HORIZON_GOAL_CONFIG = {
+  week: {
+    expectedValue: 75,
+    trust: 45,
+    rewardBudget: 1,
+    rewardProcessBoost: 2,
+    missedTrustPenalty: 4,
+  },
+  month: {
+    expectedValue: 150,
+    trust: 48,
+    rewardBudget: 2,
+    rewardProcessBoost: 3,
+    missedTrustPenalty: 6,
+  },
+  quarter: {
+    expectedValue: 320,
+    trust: 52,
+    rewardBudget: 3,
+    rewardProcessBoost: 5,
+    missedTrustPenalty: 8,
+  },
+  year: {
+    expectedValue: 1200,
+    trust: 55,
+    rewardBudget: 6,
+    rewardProcessBoost: 8,
+    missedTrustPenalty: 10,
+  },
+} as const;
+
 export const OUTSOURCE_COST_BY_IMPORTANCE = {
   optional: 3,
   important: 4,
