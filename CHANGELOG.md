@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-07-04 - v0.1.46 Runtime error telemetry
+
+Продолжен рефакторинг логгера:
+
+- добавлен root hook `useRuntimeErrorLogging`;
+- `window.error` и `window.unhandledrejection` пишутся как `kind: error`, `type: runtime_error`;
+- error payload содержит источник, экран, message, stack и компактное состояние игры;
+- при runtime error отдельно сохраняется debug snapshot с `trigger: runtime_error`;
+- handler защищен от рекурсивных ошибок.
+
+Это schema-compatible logging refactor. Gameplay save schema не менялась: `SAVE_SCHEMA_VERSION` остается `rt-campaign-v6`.
+
+---
+
 ## 2026-07-04 - v0.1.45 Persistent log seq
 
 Продолжен рефакторинг логгера:

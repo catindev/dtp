@@ -34,6 +34,7 @@ import {
   useStatusDebugSnapshot,
 } from "./hooks/useRuntimeEffects";
 import { useSelectedTaskSync } from "./hooks/useSelectedTaskSync";
+import { useRuntimeErrorLogging } from "./logging/runtimeErrors";
 import type { ProdView } from "./components/board/types";
 import { USER_DOCS } from "./userdocs";
 import { pauseMainTheme, playSoundEffect } from "./audio/audioManager";
@@ -148,6 +149,7 @@ export function App() {
   });
 
   useBackendLogPump();
+  useRuntimeErrorLogging(screen, latestGameRef, sessionIdRef);
   useGlobalButtonSounds();
   useMainThemePlayback(game, screen, musicEnabled);
   useRealtimeTicker(screen, setGame);
