@@ -25,6 +25,7 @@ interface TeamPanelProps {
   activeCharacterDragId: string | null;
   activeOutsourceDrag: boolean;
   selectedCharacterId: string | null;
+  tutorialFocusCharacterId: string | null;
 }
 
 export function TeamPanel({
@@ -37,6 +38,7 @@ export function TeamPanel({
   onCharacterSelect,
   activeOutsourceDrag,
   selectedCharacterId,
+  tutorialFocusCharacterId,
 }: TeamPanelProps) {
   return (
     <aside className="team-panel panel">
@@ -58,6 +60,7 @@ export function TeamPanel({
               morningReportActive={morningReportActive}
               onClick={() => onCharacterSelect(character.id)}
               selected={selectedCharacterId === character.id}
+              tutorialFocus={tutorialFocusCharacterId === character.id}
             />
           );
         })}
@@ -84,6 +87,7 @@ interface DraggableCharacterCardProps {
   morningReportActive: boolean;
   onClick: () => void;
   selected: boolean;
+  tutorialFocus: boolean;
 }
 
 function DraggableCharacterCard({
@@ -96,6 +100,7 @@ function DraggableCharacterCard({
   morningReportActive,
   onClick,
   selected,
+  tutorialFocus,
 }: DraggableCharacterCardProps) {
   const dragDisabled =
     !isGameScreen ||
@@ -120,6 +125,7 @@ function DraggableCharacterCard({
         character.exhaustedToday ? "exhausted" : "",
         selected ? "selected" : "",
         dragging ? "team-drag-placeholder" : "",
+        tutorialFocus && !dragging ? "tutorial-focus" : "",
       ].join(" ")}
       onClick={onClick}
       ref={setNodeRef}

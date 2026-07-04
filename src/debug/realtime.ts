@@ -41,6 +41,8 @@ import {
   advanceTutorialForTaskMove,
   canDropTutorialCharacter,
   canDropTutorialTask,
+  tutorialFocusCharacterId,
+  tutorialFocusTaskId,
 } from "../tutorial/tutorialDirector";
 
 const seedArg = Number(process.argv[2]);
@@ -387,6 +389,14 @@ function runTutorialStageOneSmoke() {
   const taskId = focusTaskId;
   assert(currentState.board.backlog.includes(taskId), "Tutorial stage smoke expected task in backlog.");
   assert(
+    tutorialFocusTaskId(currentState) === taskId,
+    "Tutorial stage smoke expected task focus on task move step.",
+  );
+  assert(
+    tutorialFocusCharacterId(currentState) === null,
+    "Tutorial stage smoke expected no character focus on task move step.",
+  );
+  assert(
     (currentState.tutorial?.stepId as string | undefined) === TUTORIAL_STEP_MOVE_TASK,
     "Tutorial stage smoke expected move step.",
   );
@@ -401,11 +411,16 @@ function runTutorialStageOneSmoke() {
     (currentState.tutorial?.stepId as string | undefined) === TUTORIAL_STEP_ASSIGN_QA,
     "Tutorial stage smoke expected QA step.",
   );
+  assert(tutorialFocusTaskId(currentState) === null, "Tutorial stage smoke expected no task focus on QA step.");
 
   const qaCandidate = Object.values(currentState.characters).find((character) => character.role === "qa");
   assert(Boolean(qaCandidate), "Tutorial stage smoke expected QA character.");
   if (!qaCandidate) throw new Error("Tutorial stage smoke missing QA character.");
   const qa = qaCandidate;
+  assert(
+    tutorialFocusCharacterId(currentState) === qa.id,
+    "Tutorial stage smoke expected QA character focus on QA step.",
+  );
   assert(
     canDropTutorialCharacter(currentState, qa.id, taskId).allowed,
     "Tutorial stage smoke expected allowed QA drop.",
@@ -429,6 +444,19 @@ function runTutorialStageOneSmoke() {
     "Tutorial stage smoke expected done move step.",
   );
   assert(currentState.tasks[taskId]?.stageComplete, "Tutorial stage smoke expected completed task work.");
+  const completedTask = currentState.tasks[taskId];
+  assert(completedTask.subtasks.length === 1, "Tutorial stage smoke expected no rework subtask.");
+  assert(completedTask.subtasks[0]?.role === "qa", "Tutorial stage smoke expected only QA subtask.");
+  assert(completedTask.subtasks[0]?.done, "Tutorial stage smoke expected scripted QA subtask done.");
+  assert(completedTask.bugs === 0, "Tutorial stage smoke expected no bugs after first QA task.");
+  assert(
+    !completedTask.subtasks.some((subtask) => subtask.role === "design"),
+    "Tutorial stage smoke expected no design subtask in first task.",
+  );
+  assert(
+    tutorialFocusTaskId(currentState) === taskId,
+    "Tutorial stage smoke expected task focus on done move step.",
+  );
 
   moveRealtimeTask(currentState, taskId, "done");
   advanceTutorialForTaskMove(currentState, taskId, "done");

@@ -245,7 +245,23 @@ export function canDropTutorialOutsource(state: RtGameState): TutorialGateResult
 }
 
 export function tutorialFocusTaskId(state: RtGameState): string | null {
-  return getTutorialState(state)?.focusTaskId ?? null;
+  const tutorial = getTutorialState(state);
+  if (!tutorial || expectedTaskDropColumnForStep(tutorial.stepId) === null) return null;
+  return tutorial.focusTaskId;
+}
+
+export function tutorialFocusCharacterId(state: RtGameState): string | null {
+  const tutorial = getTutorialState(state);
+  if (!tutorial) return null;
+  const expectedRole = expectedCharacterRoleForStep(tutorial.stepId);
+  if (!expectedRole) return null;
+  const candidate = Object.values(state.characters).find(
+    (character) =>
+      character.role === expectedRole &&
+      !character.assignedTaskId &&
+      !character.exhaustedToday,
+  );
+  return candidate?.id ?? null;
 }
 
 export function tutorialAllowsReleaseTrain(state: RtGameState): boolean {
@@ -627,9 +643,9 @@ function createStageOneTask(state: RtGameState): RtTask {
   task.engagedOnce = false;
   task.value = 8;
   task.clarity = 100;
-  task.quality = 70;
+  task.quality = 100;
   task.testCoverage = 0;
-  task.bugs = 1;
+  task.bugs = 0;
   task.changedAfterQa = false;
   task.workDone = false;
   task.subtasks = [

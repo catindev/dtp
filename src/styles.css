@@ -1646,8 +1646,9 @@ button:disabled {
   animation: workPassBounce 620ms cubic-bezier(0.2, 0.85, 0.25, 1) 1;
 }
 
-.task-card.tutorial-focus:not(.drag-placeholder):not(:hover):not(:active) {
-  animation: tutorialFocusBounce 1150ms cubic-bezier(0.2, 0.85, 0.22, 1) infinite;
+.task-card.tutorial-focus:not(.drag-placeholder):not(:hover):not(:active),
+.character.tutorial-focus:not(.team-drag-placeholder):not(:hover):not(:active) {
+  animation: tutorialFocusBounce 860ms cubic-bezier(0.2, 0.85, 0.22, 1) 1;
   border-color: var(--color-clean);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.9) inset,
@@ -2091,6 +2092,7 @@ button:disabled {
 }
 
 .tutorial-step-list li.current {
+  animation: tutorialQuestStepPop 420ms cubic-bezier(0.2, 0.85, 0.22, 1) 1;
   border-color: var(--color-clean);
   color: var(--color-ink);
 }
@@ -2499,6 +2501,19 @@ button:disabled {
     transform: translateY(calc(var(--task-card-lift, 0px) - 3px))
       rotate(var(--task-card-tilt, 0deg))
       scale(calc(var(--task-card-scale, 1) + 0.008));
+  }
+}
+
+@keyframes tutorialQuestStepPop {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  38% {
+    transform: translateY(-5px) scale(1.018);
+  }
+  62% {
+    transform: translateY(1px) scale(0.996);
   }
 }
 

@@ -47,7 +47,10 @@ import {
   loadTutorialCompleted,
   saveTutorialCompleted,
 } from "./tutorial/tutorialProgress";
-import { tutorialFocusTaskId } from "./tutorial/tutorialDirector";
+import {
+  tutorialFocusCharacterId,
+  tutorialFocusTaskId,
+} from "./tutorial/tutorialDirector";
 import "./styles.css";
 
 type AppScreen = "menu" | "game" | "docs";
@@ -95,6 +98,7 @@ export function App() {
   const selectedCharacter = selectedCharacterId ? game.characters[selectedCharacterId] : null;
   const attentionTaskIds = new Set(bounceTaskIds);
   const tutorialFocusTask = tutorialFocusTaskId(game);
+  const tutorialFocusCharacter = tutorialFocusCharacterId(game);
   const hasInspectorContent = Boolean(selectedTask || selectedCharacter || game.lossReport);
   const morningReport = game.morningReport;
   const interactionBlocked =
@@ -323,6 +327,9 @@ export function App() {
               morningReportActive={Boolean(morningReport)}
               onCharacterSelect={selectCharacter}
               selectedCharacterId={selectedCharacterId}
+              tutorialFocusCharacterId={
+                tutorialFocusCharacter === activeCharacterDragId ? null : tutorialFocusCharacter
+              }
             />
 
             <BoardPanel
