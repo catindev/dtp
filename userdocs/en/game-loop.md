@@ -33,3 +33,15 @@ The "Prod" column is history. You can switch between shipped tasks and unfinishe
 ## 6. Read the morning fallout
 
 The morning briefing shows what happened after yesterday's release. If yesterday's release carried risk, today may start with a new consequence task. If backlog opportunities faded out, the briefing shows how much value was lost and how much debt was added.
+
+## 7. Watch horizon goals
+
+The header shows the current week, day in week, month, quarter, and nearest business goal.
+
+When a week, month, quarter, or year ends, the morning briefing shows a goal review. It tells you:
+
+- whether Value was high enough;
+- whether trust stayed high enough;
+- which reward or penalty was applied.
+
+If several goals end on the same day, several reviews can appear in the morning. Trust penalties are capped per day so one bad morning does not become an unreadable cliff.

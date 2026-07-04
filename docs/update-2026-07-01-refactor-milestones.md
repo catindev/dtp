@@ -157,7 +157,9 @@ src/components/TaskCard.tsx
 src/components/TaskInspector.tsx
 src/components/MorningReportPage.tsx
 src/components/MorningReportSections.tsx
+src/components/HorizonReviewPanel.tsx
 src/components/LossReport.tsx
+src/components/VictoryReport.tsx
 src/components/RunBanner.tsx
 src/components/SidePanel.tsx
 src/components/ReadinessBadge.tsx
@@ -217,7 +219,7 @@ Completed milestones:
 10. `MorningReportPage.tsx` was reduced to page composition; report subsections moved to `MorningReportSections.tsx`.
 11. Debug/backend snapshot building moved from `frontendLogging.ts` to `src/logging/debugSnapshot.ts`.
 12. `debug:rt` gained narrow regression smoke checks for migration normalization and debug/backend snapshot shape.
-13. Morning report sections were split into resource, flow, quarter review, consequence, shipment, and formatting modules.
+13. Morning report sections were split into resource, flow, horizon review, consequence, shipment, and formatting modules.
 14. Work stage completion was split into analysis, implementation/bugfix, QA/test, subtask progress, and a small facade.
 15. Game drag-and-drop was split so `useGameDragAndDrop.ts` owns drag start/lifecycle and `gameDropHandlers.ts` owns drop target handling.
 16. Backend logging was split into public transport, config, types, and localStorage queue/compaction modules.
@@ -268,7 +270,7 @@ src/engine/workStages.ts                  ~63 lines
 src/engine/consequenceResolution.ts       ~62 lines
 src/engine/workSubtaskProgress.ts         ~60 lines
 src/components/MorningConsequenceList.tsx ~55 lines
-src/components/QuarterReviewPanel.tsx     ~52 lines
+src/components/HorizonReviewPanel.tsx     ~60 lines
 src/frontendLogging.ts                    ~48 lines
 src/components/MorningFlowStrip.tsx       ~24 lines
 src/logging/backendLogTypes.ts            ~24 lines

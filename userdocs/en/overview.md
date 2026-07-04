@@ -13,6 +13,19 @@ You do not write code directly. You manage the flow of work:
 
 The goal is not to make everything perfect. Resources are limited. The core skill is deciding where to take risk and where to clean things up.
 
+A run lasts one in-game year. If the team survives until the end of the year without losing trust, clients, or control of debt, the run is won. The game then shows a year-end postmortem: grade, score, release quality, fallout, debt, and team condition.
+
+## Business goals
+
+The business sets weekly, monthly, quarterly, and yearly goals. At the start, only the weekly goal is visible. Longer horizons unlock later.
+
+A goal usually has two parts:
+
+- earn enough Value;
+- keep trust above the target.
+
+If the goal is met, the team earns a reward. If it is missed, the morning briefing shows a separate review explaining what failed.
+
 ## Main idea
 
 Every task can help the business: value, clients, trust, or lower debt. But if you ship it dirty, it can break something tomorrow.

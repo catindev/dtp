@@ -28,7 +28,7 @@ const seed = Number.isFinite(seedArg) ? seedArg : 184;
 const state = createRealtimeState(seed);
 assertQuarterCadence(state);
 const smoke = [
-  runQuarterBoundarySmoke(),
+  runHorizonBoundarySmoke(),
   runBacklogValueDecaySmoke(),
   runBacklogOpportunityExpirationSmoke(),
   runMissedWorkSmoke(),
@@ -104,7 +104,7 @@ function assertQuarterCadence(currentState: typeof state): void {
   }
 }
 
-function runQuarterBoundarySmoke() {
+function runHorizonBoundarySmoke() {
   const currentState = createRealtimeState(777);
   assertQuarterCadence(currentState);
   currentState.day = currentState.daysPerQuarter;
@@ -114,24 +114,25 @@ function runQuarterBoundarySmoke() {
 
   const controlledTaskId = currentState.board.backlog[0];
   const controlledTask = currentState.tasks[controlledTaskId];
-  assert(Boolean(controlledTask), "Quarter smoke expected an initial task.");
+  assert(Boolean(controlledTask), "Horizon smoke expected an initial task.");
   configureCleanReleaseTask(controlledTask);
-  assert(releaseReadiness(controlledTask).readiness === "clean", "Quarter smoke task should be clean.");
-  assert(moveRealtimeTask(currentState, controlledTask.id, "inProgress"), "Quarter smoke move to work failed.");
-  assert(moveRealtimeTask(currentState, controlledTask.id, "done"), "Quarter smoke move to Done failed.");
+  assert(releaseReadiness(controlledTask).readiness === "clean", "Horizon smoke task should be clean.");
+  assert(moveRealtimeTask(currentState, controlledTask.id, "inProgress"), "Horizon smoke move to work failed.");
+  assert(moveRealtimeTask(currentState, controlledTask.id, "done"), "Horizon smoke move to Done failed.");
 
   tickToMorningReport(currentState);
   const report = currentState.morningReport;
-  assert(report !== null, "Quarter smoke expected morning report.");
-  assert(report.shippedTaskIds.includes(controlledTask.id), "Quarter smoke expected shipped task.");
-  assert(Boolean(report.quarterReview), "Quarter smoke expected quarter review.");
-  assert(currentState.dayInQuarter === 1, "Quarter smoke expected new quarter day 1.");
-  assert(startDayAfterMorningReport(currentState), "Quarter smoke expected briefing continue.");
+  assert(report !== null, "Horizon smoke expected morning report.");
+  assert(report.shippedTaskIds.includes(controlledTask.id), "Horizon smoke expected shipped task.");
+  assert(report.horizonReviews.length >= 3, "Horizon smoke expected stacked horizon reviews.");
+  assert(Boolean(report.quarterReview), "Horizon smoke expected legacy quarter projection.");
+  assert(currentState.dayInQuarter === 1, "Horizon smoke expected new quarter day 1.");
+  assert(startDayAfterMorningReport(currentState), "Horizon smoke expected briefing continue.");
 
   return {
-    name: "quarter-boundary",
+    name: "horizon-boundary",
     shipped: report.shippedTaskIds.length,
-    quarterReview: report.quarterReview?.hitGoal ? "met" : "missed",
+    reviews: report.horizonReviews.map((review) => `${review.kind}:${review.hitGoal ? "met" : "missed"}`),
     dayInQuarter: currentState.dayInQuarter,
   };
 }

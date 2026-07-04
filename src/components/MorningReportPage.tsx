@@ -12,7 +12,7 @@ import {
   MorningFlowStrip,
   MorningResourceGrid,
   MorningShipmentList,
-  QuarterReviewPanel,
+  HorizonReviewPanel,
 } from "./MorningReportSections";
 
 interface MorningReportPageProps {
@@ -39,10 +39,12 @@ export function MorningReportPage({
       <div className="morning-report-hero">
         <div>
           <span>
-            {t(locale, "header.day", {
-              quarter: report.quarter,
-              day: report.day,
-              daysPerQuarter: game.daysPerQuarter,
+            {t(locale, "header.calendar", {
+              week: game.calendar.week,
+              dayInWeek: game.calendar.dayInWeek,
+              daysPerWeek: game.calendar.daysPerWeek,
+              month: game.calendar.month,
+              quarter: game.calendar.quarter,
             })}{" "}
             / {report.at}
           </span>
@@ -71,9 +73,9 @@ export function MorningReportPage({
 
       <MorningFlowStrip locale={locale} summary={summary} />
 
-      {report.quarterReview ? (
-        <QuarterReviewPanel locale={locale} review={report.quarterReview} />
-      ) : null}
+      {report.horizonReviews.map((review) => (
+        <HorizonReviewPanel key={`${review.kind}-${review.id}`} locale={locale} review={review} />
+      ))}
 
       <MorningConsequenceList locale={locale} report={report} />
 
