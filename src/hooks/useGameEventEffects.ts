@@ -46,7 +46,8 @@ export function useGameEventEffects({
       if (loggedEventKeysRef.current.has(key)) continue;
       loggedEventKeysRef.current.add(key);
       newEntries.push(
-        createLogEntry(sessionIdRef.current, "game_event", event.type, {
+        createLogEntry(sessionIdRef.current, "event", event.type, {
+          channel: "game_event",
           ...event,
           gameTime: formatGameTime(game),
           resources: game.resources,

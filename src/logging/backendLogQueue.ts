@@ -6,6 +6,7 @@ import type {
   BackendLogQueue,
   FrontendLogEntry,
 } from "./backendLogTypes";
+import { LOG_SCHEMA_VERSION } from "./backendLogTypes";
 
 export function enqueueBackendLog(entries: FrontendLogEntry[]): void {
   if (entries.length === 0) return;
@@ -141,12 +142,14 @@ function isFrontendLogEntry(value: unknown): value is FrontendLogEntry {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Partial<FrontendLogEntry>;
   return (
+    record.schema === LOG_SCHEMA_VERSION &&
     typeof record.id === "string" &&
+    typeof record.seq === "number" &&
     typeof record.clientCreatedAt === "string" &&
     typeof record.sessionId === "string" &&
     record.source === "dtp2-frontend" &&
-    (record.kind === "action" || record.kind === "game_event" || record.kind === "snapshot") &&
-    typeof record.name === "string"
+    (record.kind === "event" || record.kind === "snapshot" || record.kind === "summary" || record.kind === "error") &&
+    typeof record.type === "string"
   );
 }
 

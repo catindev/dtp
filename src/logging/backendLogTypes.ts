@@ -1,10 +1,16 @@
+export const LOG_SCHEMA_VERSION = "log-v1";
+
+export type FrontendLogKind = "event" | "snapshot" | "summary" | "error";
+
 export interface FrontendLogEntry {
+  schema: typeof LOG_SCHEMA_VERSION;
   id: string;
+  seq: number;
   clientCreatedAt: string;
   sessionId: string;
   source: "dtp2-frontend";
-  kind: "action" | "game_event" | "snapshot";
-  name: string;
+  kind: FrontendLogKind;
+  type: string;
   payload: unknown;
 }
 

@@ -4,6 +4,22 @@
 
 ---
 
+## 2026-07-04 - v0.1.41 Logger contract v1
+
+Начат рефакторинг логгера под серверную модель хранения:
+
+- введен `LOG_SCHEMA_VERSION = log-v1`;
+- frontend log entry получил `schema`, `seq`, `kind`, `type`;
+- новые категории логов: `event`, `snapshot`, `summary`, `error`;
+- `logAction` теперь пишет обычное telemetry event с `channel: action`;
+- игровые события пишутся как `event` с `channel: game_event`;
+- legacy-поле `name` убрано; новым машинным названием события является только `type`;
+- очередь backend-логов теперь валидирует только новый `log-v1` контракт.
+
+Это schema-compatible logging refactor. Gameplay save schema не менялась: `SAVE_SCHEMA_VERSION` остается `rt-campaign-v6`.
+
+---
+
 ## 2026-07-04 - v0.1.40 Partial QA coverage
 
 Исправлена неоднозначность QA-риска:
