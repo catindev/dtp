@@ -97,22 +97,27 @@ export function MenuScreen({
             </div>
           </section>
         ) : null}
-        <div className="menu-actions">
-          {hasResumeCard ? (
-            <>
-              <button className="start-button" onClick={onContinueRun} type="button">
-                {t(locale, "menu.continue")}
+        {!showTutorialPrompt ? (
+          <div className="menu-actions">
+            {hasResumeCard ? (
+              <>
+                <button className="start-button" onClick={onContinueRun} type="button">
+                  {t(locale, "menu.continue")}
+                </button>
+                <button className="ghost-button" onClick={() => onStartRun("menu_new_run_clicked")} type="button">
+                  {t(locale, "menu.newRun")}
+                </button>
+              </>
+            ) : (
+              <button className="start-button" onClick={handleStartClick} type="button">
+                {t(locale, "menu.start")}
               </button>
-              <button className="ghost-button" onClick={() => onStartRun("menu_new_run_clicked")} type="button">
-                {t(locale, "menu.newRun")}
-              </button>
-            </>
-          ) : (
-            <button className="start-button" onClick={handleStartClick} type="button">
-              {t(locale, "menu.start")}
+            )}
+            <button className="ghost-button" onClick={onStartTutorial} type="button">
+              {t(locale, "menu.startTutorial")}
             </button>
-          )}
-        </div>
+          </div>
+        ) : null}
       </section>
     </main>
   );
