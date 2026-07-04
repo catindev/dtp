@@ -34,6 +34,7 @@ const smoke = [
   runMissedWorkSmoke(),
   runDeadlinePressureReadinessSmoke(),
   runHorizonReviewCapSmoke(),
+  runWinContractSmoke(),
   runMigrationNormalizationSmoke(),
   runDebugSnapshotSmoke(),
   runOutsourceSmoke(),
@@ -251,6 +252,31 @@ function runHorizonReviewCapSmoke() {
     rawDamage,
     cappedDamage,
     trust: currentState.resources.trust,
+  };
+}
+
+function runWinContractSmoke() {
+  const currentState = createRealtimeState(891);
+  currentState.day = currentState.calendar.daysPerYear;
+  currentState.calendar = createCampaignCalendar(currentState.day);
+  currentState.resources.trust = 80;
+  currentState.resources.clients = 100;
+  currentState.resources.debt = 20;
+  currentState.gameMinuteOfDay = RELEASE_TRAIN_GAME_MINUTE - 1;
+
+  tickRealtime(currentState, 120000);
+  assert(currentState.morningReport !== null, "Win smoke expected final morning report.");
+  assert(currentState.status === "won", "Win smoke expected won status.");
+  assert(
+    currentState.log.some((event) => event.type === "run_won"),
+    "Win smoke expected run_won event.",
+  );
+
+  return {
+    name: "win-contract",
+    status: currentState.status,
+    day: currentState.day,
+    hasMorningReport: Boolean(currentState.morningReport),
   };
 }
 

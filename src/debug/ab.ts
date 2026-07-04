@@ -128,7 +128,10 @@ function runLongRun(seedValue: number, style: BotStyle) {
     style,
     status: state.status,
     day: state.day,
-    survivedToDay80: state.day > DAYS_PER_YEAR || (state.day === DAYS_PER_YEAR && state.status === "running"),
+    survivedToDay80:
+      state.status === "won" ||
+      state.day > DAYS_PER_YEAR ||
+      (state.day === DAYS_PER_YEAR && state.status === "running"),
     resources: state.resources,
     releaseMix,
     activeGoals: summarizeGoals(state),

@@ -7,6 +7,7 @@ import type {
 type LossEventSink = (event: Omit<RtEvent, "at">) => void;
 
 export function checkRunState(state: RtGameState, emit: LossEventSink): void {
+  if (state.status !== "running") return;
   if (state.resources.trust <= 0) {
     loseRun(state, emit, "business trust reached 0", "trust");
   }
@@ -15,6 +16,9 @@ export function checkRunState(state: RtGameState, emit: LossEventSink): void {
   }
   if (state.resources.debt >= 100) {
     loseRun(state, emit, "technical debt reached 100", "debt");
+  }
+  if (state.status === "running" && state.day > state.calendar.daysPerYear) {
+    winRun(state, emit);
   }
 }
 
@@ -36,6 +40,24 @@ function loseRun(
       `trust ${state.resources.trust}`,
       `clients ${state.resources.clients}`,
       `debt ${state.resources.debt}`,
+    ],
+  });
+}
+
+function winRun(state: RtGameState, emit: LossEventSink): void {
+  if (state.status !== "running") return;
+  state.status = "won";
+  state.paused = true;
+  emit({
+    type: "run_won",
+    title: "Run won",
+    body: "The team survived the production year.",
+    effects: [
+      `day ${state.day - 1}/${state.calendar.daysPerYear}`,
+      `trust ${state.resources.trust}`,
+      `clients ${state.resources.clients}`,
+      `debt ${state.resources.debt}`,
+      `value ${state.resources.value}`,
     ],
   });
 }
