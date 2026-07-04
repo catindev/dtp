@@ -7,14 +7,21 @@ import {
   type RtHorizonKind,
   type RtMorningReport,
 } from "../realtime/simulation";
+import {
+  TIME_SCALE_OPTIONS,
+  timeScaleLabel,
+  type TimeScale,
+} from "../timeScale";
 
 interface GameHeaderProps {
   game: RtGameState;
   locale: Locale;
   morningReport: RtMorningReport | null;
   onOpenMenu: () => void;
+  onTimeScaleChange: (timeScale: TimeScale) => void;
   onTogglePause: () => void;
   pauseShake: boolean;
+  timeScale: TimeScale;
 }
 
 export function GameHeader({
@@ -22,8 +29,10 @@ export function GameHeader({
   locale,
   morningReport,
   onOpenMenu,
+  onTimeScaleChange,
   onTogglePause,
   pauseShake,
+  timeScale,
 }: GameHeaderProps) {
   const releaseCountdown = formatReleaseCountdown(game);
   const clockText = morningReport ? "08:00" : formatGameTime(game);
@@ -50,7 +59,23 @@ export function GameHeader({
         })}</span>
       </div>
       <div className="clock-block">
-        <span className="clock">{clockText}</span>
+        <div className="clock-row">
+          <span className="clock">{clockText}</span>
+          <div className="time-scale-switch" aria-label={t(locale, "header.timeScale")}>
+            {TIME_SCALE_OPTIONS.map((option) => (
+              <button
+                aria-pressed={timeScale === option}
+                className={timeScale === option ? "active" : ""}
+                disabled={game.status !== "running" || Boolean(morningReport)}
+                key={option}
+                onClick={() => onTimeScaleChange(option)}
+                type="button"
+              >
+                {timeScaleLabel(option)}
+              </button>
+            ))}
+          </div>
+        </div>
         <span>
           {activeGoal
             ? t(locale, "header.horizonGoal", {

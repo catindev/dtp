@@ -18,6 +18,7 @@ import {
 } from "../realtime/simulation";
 import { createSessionId, gameEventKey, logAction } from "../frontendLogging";
 import { restartMainThemeOnNextPlay } from "../audio/audioManager";
+import type { TimeScale } from "../timeScale";
 
 type AppScreen = "menu" | "game" | "docs";
 type ProdView = "released" | "unfinished";
@@ -43,6 +44,7 @@ interface UseGameActionsArgs {
   setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
   setSelectedCharacterId: Dispatch<SetStateAction<string | null>>;
   setProdView: Dispatch<SetStateAction<ProdView>>;
+  setTimeScale: Dispatch<SetStateAction<TimeScale>>;
   resetDrag: () => void;
   resetFeedback: () => void;
   flashTask: (taskId: string) => void;
@@ -69,6 +71,7 @@ export function useGameActions({
   setSelectedTaskId,
   setSelectedCharacterId,
   setProdView,
+  setTimeScale,
   resetDrag,
   resetFeedback,
   flashTask,
@@ -87,6 +90,7 @@ export function useGameActions({
     setGame(next);
     setSelectedTaskId(null);
     setSelectedCharacterId(null);
+    setTimeScale(1);
     setHasResumeCard(true);
     setScreen("game");
     saveRun(next, sessionId);

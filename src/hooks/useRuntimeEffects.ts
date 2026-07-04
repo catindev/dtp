@@ -13,6 +13,7 @@ import {
   flushBackendLogQueue,
   postDebugSnapshot,
 } from "../frontendLogging";
+import type { TimeScale } from "../timeScale";
 
 export function useBackendLogPump(): void {
   useEffect(() => {
@@ -50,6 +51,7 @@ export function useNormalizeRealtimeStateOnMount(
 export function useRealtimeTicker(
   screen: string,
   setGame: Dispatch<SetStateAction<RtGameState>>,
+  timeScale: TimeScale,
 ): void {
   useEffect(() => {
     if (screen !== "game") return;
@@ -58,13 +60,13 @@ export function useRealtimeTicker(
         const draft = structuredClone(current) as RtGameState;
         const normalized = normalizeRealtimeState(draft);
         if (draft.paused || draft.status !== "running") return normalized ? draft : current;
-        tickRealtime(draft, TICK_MS);
+        tickRealtime(draft, TICK_MS * timeScale);
         return draft;
       });
     }, TICK_MS);
 
     return () => window.clearInterval(id);
-  }, [screen, setGame]);
+  }, [screen, setGame, timeScale]);
 }
 
 export function useDebugSnapshotPoster(

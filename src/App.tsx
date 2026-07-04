@@ -42,6 +42,7 @@ import {
   loadMusicEnabledPreference,
   saveMusicEnabledPreference,
 } from "./audio/audioPreferences";
+import type { TimeScale } from "./timeScale";
 import "./styles.css";
 
 type AppScreen = "menu" | "game" | "docs";
@@ -62,6 +63,7 @@ export function App() {
   const [game, setGame] = useState<RtGameState>(() => bootGame);
   const [screen, setScreen] = useState<AppScreen>("menu");
   const [musicEnabled, setMusicEnabled] = useState(loadMusicEnabledPreference);
+  const [timeScale, setTimeScale] = useState<TimeScale>(1);
   const [hasResumeCard, setHasResumeCard] = useState(Boolean(restoredSave));
   const [prodView, setProdView] = useState<ProdView>("released");
   const [selectedDocId, setSelectedDocId] = useState(USER_DOCS[0].id);
@@ -144,6 +146,7 @@ export function App() {
     setSelectedTaskId,
     setSelectedCharacterId,
     setProdView,
+    setTimeScale,
     resetDrag,
     resetFeedback,
     flashTask,
@@ -153,7 +156,7 @@ export function App() {
   useRuntimeErrorLogging(screen, latestGameRef, sessionIdRef);
   useGlobalButtonSounds();
   useMainThemePlayback(game, screen, musicEnabled);
-  useRealtimeTicker(screen, setGame);
+  useRealtimeTicker(screen, setGame, timeScale);
   useDebugSnapshotPoster(screen, latestGameRef, sessionIdRef);
   useAutosaveRun(game, screen, latestGameRef, sessionIdRef);
   useStatusDebugSnapshot(game, screen, sessionIdRef);
@@ -252,8 +255,10 @@ export function App() {
         locale={locale}
         morningReport={morningReport}
         onOpenMenu={openMenu}
+        onTimeScaleChange={setTimeScale}
         onTogglePause={togglePause}
         pauseShake={pauseShake}
+        timeScale={timeScale}
       />
 
       {game.status !== "running" ? <RunBanner game={game} locale={locale} /> : null}

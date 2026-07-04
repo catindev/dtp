@@ -440,6 +440,36 @@ button {
   letter-spacing: 0;
 }
 
+.clock-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.time-scale-switch {
+  align-items: center;
+  display: flex;
+  gap: 3px;
+}
+
+.time-scale-switch button {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-soft);
+  color: var(--color-muted);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 800;
+  min-height: 24px;
+  min-width: 34px;
+  padding: 2px 5px;
+}
+
+.time-scale-switch button.active {
+  background: rgba(36, 93, 69, 0.06);
+  border-color: var(--color-clean);
+  color: var(--color-clean);
+}
+
 .stat-strip {
   display: flex;
   flex-wrap: wrap;
