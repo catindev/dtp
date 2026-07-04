@@ -20,15 +20,15 @@ export const HORIZON_GOAL_CONFIG = {
   week: {
     expectedValue: 75,
     trust: 45,
-    rewardBudget: 1,
-    rewardProcessBoost: 2,
+    rewardBudget: 0,
+    rewardProcessBoost: 0,
     missedTrustPenalty: 4,
   },
   month: {
     expectedValue: 150,
     trust: 48,
-    rewardBudget: 2,
-    rewardProcessBoost: 3,
+    rewardBudget: 1,
+    rewardProcessBoost: 1,
     missedTrustPenalty: 6,
   },
   quarter: {
@@ -41,11 +41,12 @@ export const HORIZON_GOAL_CONFIG = {
   year: {
     expectedValue: 1200,
     trust: 55,
-    rewardBudget: 6,
-    rewardProcessBoost: 8,
+    rewardBudget: 4,
+    rewardProcessBoost: 0,
     missedTrustPenalty: 10,
   },
 } as const;
+export const MAX_HORIZON_TRUST_DAMAGE_PER_DAY = 10;
 
 export const OUTSOURCE_COST_BY_IMPORTANCE = {
   optional: 3,

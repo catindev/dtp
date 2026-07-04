@@ -89,6 +89,7 @@ export {
   applyValueGainToHorizonGoals,
   createInitialHorizonGoals,
   ensureUnlockedHorizonGoals,
+  resolveDueHorizonReviews,
 } from "../engine/goals";
 export { RT_COLUMNS } from "../engine/types";
 export {
@@ -122,6 +123,7 @@ export type {
   RtHorizonGoal,
   RtHorizonGoals,
   RtHorizonKind,
+  RtHorizonReviewReport,
   RtLateReleaseReport,
   RtLossReport,
   RtMorningReport,

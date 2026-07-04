@@ -23,6 +23,8 @@ import type {
   RtDaySummary,
   RtEvent,
   RtGameState,
+  RtHorizonReviewReport,
+  RtQuarterReviewReport,
   RtReleaseConsequence,
   RtTask,
 } from "./types";
@@ -43,13 +45,13 @@ export function openMorningReport(state: RtGameState, runtime: MorningRuntime): 
   const resourceAfterRelease = copyResources(state.resources);
   const releaseDelta = diffResources(resourceBefore, resourceAfterRelease);
   const missedTaskIds = collectMissedTaskIds(state);
-  const quarterReview = advanceDay(state, runtime.emit);
-  const resourceAfterQuarter = copyResources(state.resources);
+  const horizonReviews = advanceDay(state, runtime.emit);
+  const resourceAfterHorizons = copyResources(state.resources);
   state.gameMinuteOfDay = GAME_DAY_START_MINUTE;
   const consequences = generateMorningConsequences(state, shippedTaskIds, missedTaskIds, runtime);
   const resourceAfter = copyResources(state.resources);
   const resourceDelta = diffResources(resourceBefore, resourceAfter);
-  const consequenceDelta = diffResources(resourceAfterQuarter, resourceAfter);
+  const consequenceDelta = diffResources(resourceAfterHorizons, resourceAfter);
   const effects = morningReportEffects(resourceDelta);
   const daySummary = buildDaySummary(
     state,
@@ -71,11 +73,13 @@ export function openMorningReport(state: RtGameState, runtime: MorningRuntime): 
     resourceDelta,
     releaseDelta,
     consequenceDelta,
-    quarterReview,
+    horizonReviews,
+    quarterReview: toLegacyQuarterReview(horizonReviews),
     empty:
       shippedTaskIds.length === 0 &&
       missedTaskIds.length === 0 &&
-      daySummary.backlogExpiredCount === 0,
+      daySummary.backlogExpiredCount === 0 &&
+      horizonReviews.length === 0,
     effects,
     missedTaskIds,
     consequences,
@@ -100,6 +104,7 @@ export function openMorningReport(state: RtGameState, runtime: MorningRuntime): 
       `resolved ${daySummary.falloutResolved}`,
       `unresolved ${daySummary.unresolvedFallout}`,
       `terminal ${daySummary.terminalConsequences}`,
+      ...(horizonReviews.length > 0 ? [`horizon reviews ${horizonReviews.length}`] : []),
     ],
   });
 
@@ -109,7 +114,9 @@ export function openMorningReport(state: RtGameState, runtime: MorningRuntime): 
     body:
       shippedTaskIds.length > 0 || missedTaskIds.length > 0 || daySummary.backlogExpiredCount > 0
         ? `${shippedTaskIds.length} shipped, ${missedTaskIds.length} missed, ${daySummary.backlogExpiredCount} backlog expired. ${consequences.length} consequence(s) shaped today's backlog.`
-        : "No tasks shipped or expired yesterday. The team starts with the existing backlog.",
+        : horizonReviews.length > 0
+          ? `${horizonReviews.length} business horizon review(s) completed.`
+          : "No tasks shipped or expired yesterday. The team starts with the existing backlog.",
     effects: [
       ...effects,
       ...(daySummary.backlogExpiredCount > 0
@@ -120,9 +127,29 @@ export function openMorningReport(state: RtGameState, runtime: MorningRuntime): 
           ]
         : ["no backlog decay loss"]),
       ...(consequences.length > 0 ? [`consequences ${consequences.length}`] : ["no fallout"]),
+      ...(horizonReviews.length > 0 ? [`horizon reviews ${horizonReviews.length}`] : ["no horizon review"]),
       `unresolved fallout ${daySummary.unresolvedFallout}`,
     ],
   });
+}
+
+function toLegacyQuarterReview(horizonReviews: RtHorizonReviewReport[]): RtQuarterReviewReport | null {
+  const quarterReview = horizonReviews.find((review) => review.kind === "quarter");
+  if (!quarterReview) return null;
+  return {
+    quarter: quarterReview.id,
+    hitGoal: quarterReview.hitGoal,
+    valueActual: quarterReview.valueActual,
+    valueTarget: quarterReview.valueTarget,
+    valueMet: quarterReview.valueMet,
+    trustActual: quarterReview.trustActual,
+    trustTarget: quarterReview.trustTarget,
+    trustMet: quarterReview.trustMet,
+    resourceBefore: quarterReview.resourceBefore,
+    resourceAfter: quarterReview.resourceAfter,
+    resourceDelta: quarterReview.resourceDelta,
+    effects: quarterReview.effects,
+  };
 }
 
 function buildDaySummary(

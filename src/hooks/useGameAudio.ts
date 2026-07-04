@@ -81,7 +81,7 @@ export function useGameEventSounds({
         playSoundEffect("subtaskCompleted");
       } else if (event.type === "release_train" || event.type === "release_train_empty") {
         playSoundEffect("dayEnd");
-      } else if (event.type === "quarter_review") {
+      } else if (event.type === "quarter_review" || event.type === "horizon_review") {
         playSoundEffect("quarterEnd");
       }
     }

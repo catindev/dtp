@@ -163,6 +163,26 @@ export interface RtQuarterReviewReport {
   effects: string[];
 }
 
+export interface RtHorizonReviewReport {
+  kind: RtHorizonKind;
+  id: number;
+  hitGoal: boolean;
+  valueActual: number;
+  valueTarget: number;
+  valueMet: boolean;
+  trustActual: number;
+  trustTarget: number;
+  trustMet: boolean;
+  rawTrustDamage: number;
+  cappedTrustDamage: number;
+  todayTrustDamage: number;
+  dailyTrustDamageCap: number;
+  resourceBefore: RtResources;
+  resourceAfter: RtResources;
+  resourceDelta: RtResources;
+  effects: string[];
+}
+
 export interface RtMorningReport {
   id: string;
   quarter: number;
@@ -175,6 +195,7 @@ export interface RtMorningReport {
   resourceDelta: RtResources;
   releaseDelta: RtResources;
   consequenceDelta: RtResources;
+  horizonReviews: RtHorizonReviewReport[];
   quarterReview: RtQuarterReviewReport | null;
   empty: boolean;
   effects: string[];

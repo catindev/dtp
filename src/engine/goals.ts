@@ -1,10 +1,20 @@
-import { HORIZON_GOAL_CONFIG } from "./balance";
+import {
+  HORIZON_GOAL_CONFIG,
+  MAX_HORIZON_TRUST_DAMAGE_PER_DAY,
+} from "./balance";
+import { clamp } from "./math";
+import {
+  copyResources,
+  diffResources,
+  morningReportEffects,
+} from "./resources";
 import type {
   RtEvent,
   RtGameState,
   RtHorizonGoal,
   RtHorizonGoals,
   RtHorizonKind,
+  RtHorizonReviewReport,
 } from "./types";
 
 type GoalEventSink = (event: Omit<RtEvent, "at">) => void;
@@ -51,6 +61,95 @@ export function applyValueGainToHorizonGoals(state: RtGameState, valueGain: numb
     goal.currentValue += valueGain;
   }
   syncLegacyQuarterGoalFromHorizon(state);
+}
+
+export function resolveDueHorizonReviews(state: RtGameState, emit: GoalEventSink): RtHorizonReviewReport[] {
+  const dueGoals = (["week", "month", "quarter", "year"] as RtHorizonKind[])
+    .map((kind) => state.horizonGoals[kind])
+    .filter((goal): goal is RtHorizonGoal => goal !== null && state.day >= goal.endsOnDay);
+  if (dueGoals.length === 0) return [];
+
+  let todayTrustDamage = 0;
+  const reviews: RtHorizonReviewReport[] = [];
+  for (const goal of dueGoals) {
+    const valueActual = goal.currentValue;
+    const valueTarget = goal.expectedValue;
+    const valueMet = valueActual >= valueTarget;
+    const trustActual = state.resources.trust;
+    const trustTarget = goal.targetTrust;
+    const trustMet = trustActual >= trustTarget;
+    const hitGoal = valueMet && trustMet;
+    const rawTrustDamage = hitGoal ? 0 : goal.missedTrustPenalty;
+    const cappedTrustDamage = Math.min(
+      rawTrustDamage,
+      Math.max(0, MAX_HORIZON_TRUST_DAMAGE_PER_DAY - todayTrustDamage),
+    );
+    const resourceBefore = copyResources(state.resources);
+
+    if (hitGoal) {
+      state.resources.budget += goal.rewardBudget;
+      state.resources.processBoost = clamp(
+        state.resources.processBoost + goal.rewardProcessBoost,
+        0,
+        25,
+      );
+    } else if (cappedTrustDamage > 0) {
+      state.resources.trust = clamp(state.resources.trust - cappedTrustDamage, 0, 100);
+      todayTrustDamage += cappedTrustDamage;
+    }
+
+    const resourceAfter = copyResources(state.resources);
+    const resourceDelta = diffResources(resourceBefore, resourceAfter);
+    const effects = [
+      ...morningReportEffects(resourceDelta),
+      hitGoal ? "goal met" : "goal missed",
+      `value ${valueActual}/${valueTarget}`,
+      `trust ${trustActual}/${trustTarget}`,
+      `raw trust damage ${rawTrustDamage}`,
+      `capped trust damage ${cappedTrustDamage}`,
+      `today trust damage ${todayTrustDamage}/${MAX_HORIZON_TRUST_DAMAGE_PER_DAY}`,
+    ];
+    const review: RtHorizonReviewReport = {
+      kind: goal.kind,
+      id: goal.id,
+      hitGoal,
+      valueActual,
+      valueTarget,
+      valueMet,
+      trustActual,
+      trustTarget,
+      trustMet,
+      rawTrustDamage,
+      cappedTrustDamage,
+      todayTrustDamage,
+      dailyTrustDamageCap: MAX_HORIZON_TRUST_DAMAGE_PER_DAY,
+      resourceBefore,
+      resourceAfter,
+      resourceDelta,
+      effects,
+    };
+    reviews.push(review);
+    emit({
+      type: "horizon_review",
+      title: `${goal.kind} ${goal.id} review`,
+      body: hitGoal ? "Business goals were met." : "Business goals were missed.",
+      effects,
+      data: {
+        horizon: goal.kind,
+        id: goal.id,
+        hitGoal,
+        valueActual,
+        valueTarget,
+        trustActual,
+        trustTarget,
+        rawTrustDamage,
+        cappedTrustDamage,
+        todayTrustDamage,
+      },
+    });
+  }
+
+  return reviews;
 }
 
 export function syncLegacyQuarterGoalFromHorizon(state: RtGameState): void {

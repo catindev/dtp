@@ -2,12 +2,14 @@ import {
   RELEASE_TRAIN_GAME_MINUTE,
   assignCharacterToTask,
   canAssignCharacterToTask,
+  createCampaignCalendar,
   createRealtimeState,
   getOutsourceTaskWorkStatus,
   moveRealtimeTask,
   normalizeRealtimeState,
   outsourceTaskWork,
   releaseReadiness,
+  resolveDueHorizonReviews,
   RT_COLUMNS,
   runDailyReleaseTrain,
   startDayAfterMorningReport,
@@ -31,6 +33,7 @@ const smoke = [
   runBacklogOpportunityExpirationSmoke(),
   runMissedWorkSmoke(),
   runDeadlinePressureReadinessSmoke(),
+  runHorizonReviewCapSmoke(),
   runMigrationNormalizationSmoke(),
   runDebugSnapshotSmoke(),
   runOutsourceSmoke(),
@@ -191,6 +194,63 @@ function runDeadlinePressureReadinessSmoke() {
     name: "deadline-pressure-readiness",
     readiness: doneReadiness.readiness,
     reasons: doneReadiness.reasons.length,
+  };
+}
+
+function runHorizonReviewCapSmoke() {
+  const currentState = createRealtimeState(890);
+  currentState.day = 10;
+  currentState.calendar = createCampaignCalendar(10);
+  currentState.resources.trust = 70;
+  const baseGoal = currentState.horizonGoals.week;
+  assert(Boolean(baseGoal), "Horizon cap smoke expected a week goal.");
+  if (!baseGoal) throw new Error("Horizon cap smoke expected a week goal.");
+  currentState.horizonGoals.week = {
+    ...baseGoal,
+    kind: "week",
+    id: 2,
+    endsOnDay: 10,
+    currentValue: 0,
+    expectedValue: 999,
+    missedTrustPenalty: 4,
+  };
+  currentState.horizonGoals.month = {
+    ...baseGoal,
+    kind: "month",
+    id: 1,
+    endsOnDay: 10,
+    currentValue: 0,
+    expectedValue: 999,
+    targetTrust: 90,
+    missedTrustPenalty: 6,
+  };
+  currentState.horizonGoals.quarter = {
+    ...baseGoal,
+    kind: "quarter",
+    id: 1,
+    endsOnDay: 10,
+    currentValue: 0,
+    expectedValue: 999,
+    targetTrust: 90,
+    missedTrustPenalty: 8,
+  };
+
+  const emitted: string[] = [];
+  const reviews = resolveDueHorizonReviews(currentState, (event) => emitted.push(event.type));
+  const rawDamage = reviews.reduce((sum, review) => sum + review.rawTrustDamage, 0);
+  const cappedDamage = reviews.reduce((sum, review) => sum + review.cappedTrustDamage, 0);
+  assert(reviews.length === 3, "Horizon cap smoke expected three reviews.");
+  assert(rawDamage === 18, "Horizon cap smoke expected raw damage 18.");
+  assert(cappedDamage === 10, "Horizon cap smoke expected capped damage 10.");
+  assert(currentState.resources.trust === 60, "Horizon cap smoke expected trust to drop by cap only.");
+  assert(emitted.length === 3, "Horizon cap smoke expected review events.");
+
+  return {
+    name: "horizon-review-cap",
+    reviews: reviews.length,
+    rawDamage,
+    cappedDamage,
+    trust: currentState.resources.trust,
   };
 }
 

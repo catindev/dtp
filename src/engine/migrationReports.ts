@@ -40,6 +40,10 @@ export function normalizeMorningReportState(
         (legacyState.releaseReview as RtMorningReport & {
           quarterReview?: RtQuarterReviewReport | null;
         }).quarterReview ?? null,
+      horizonReviews:
+        (legacyState.releaseReview as RtMorningReport & {
+          horizonReviews?: RtMorningReport["horizonReviews"];
+        }).horizonReviews ?? [],
       missedTaskIds: legacyState.releaseReview.missedTaskIds ?? [],
       consequences: legacyState.releaseReview.consequences ?? [],
       daySummary:
@@ -52,6 +56,7 @@ export function normalizeMorningReportState(
     const legacyMorningReport = state.morningReport as RtMorningReport & {
       releaseDelta?: RtResources;
       consequenceDelta?: RtResources;
+      horizonReviews?: RtMorningReport["horizonReviews"];
       quarterReview?: RtQuarterReviewReport | null;
     };
     if (!Array.isArray(state.morningReport.missedTaskIds)) {
@@ -74,6 +79,10 @@ export function normalizeMorningReportState(
     }
     if (legacyMorningReport.quarterReview === undefined) {
       legacyMorningReport.quarterReview = null;
+      changed = true;
+    }
+    if (!Array.isArray(legacyMorningReport.horizonReviews)) {
+      legacyMorningReport.horizonReviews = [];
       changed = true;
     }
     for (const consequence of state.morningReport.consequences) {
