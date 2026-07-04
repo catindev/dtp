@@ -39,6 +39,7 @@ const smoke = [
   runDebugSnapshotSmoke(),
   runOutsourceSmoke(),
   runOutsourcedQaCoverageSmoke(),
+  runPartialQaCoverageSmoke(),
   runQaRecheckSmoke(),
   runCharacterEventPayloadSmoke(),
   runDragRejectHelperSmoke(),
@@ -537,6 +538,39 @@ function runOutsourcedQaCoverageSmoke() {
   };
 }
 
+function runPartialQaCoverageSmoke() {
+  const currentState = createRealtimeState(2301);
+  const controlledTaskId = currentState.board.backlog[0];
+  const controlledTask = currentState.tasks[controlledTaskId];
+  assert(Boolean(controlledTask), "Partial QA smoke expected an initial task.");
+  configurePartialQaTask(controlledTask);
+  assert(moveRealtimeTask(currentState, controlledTask.id, "inProgress"), "Partial QA smoke move failed.");
+
+  const frontend = Object.values(currentState.characters).find((character) => character.role === "frontend");
+  const qa = Object.values(currentState.characters).find((character) => character.role === "qa");
+  assert(frontend !== undefined, "Partial QA smoke expected frontend character.");
+  assert(qa !== undefined, "Partial QA smoke expected QA character.");
+  assert(assignCharacterToTask(currentState, frontend.id, controlledTask.id), "Partial QA smoke assign failed.");
+  tickUntilTaskIdleInState(currentState, controlledTask.id, 900);
+
+  const qaSubtask = controlledTask.subtasks.find((subtask) => subtask.role === "qa");
+  const readiness = releaseReadiness(controlledTask);
+  assert(qaSubtask !== undefined, "Partial QA smoke expected QA subtask.");
+  assert(!qaSubtask.done, "Partial QA smoke expected QA subtask to remain open.");
+  assert(controlledTask.testCoverage < 45, "Partial QA smoke expected coverage below threshold.");
+  assert(readiness.reasons.includes("no_qa"), "Partial QA smoke expected no_qa to remain.");
+  assert(canAssignCharacterToTask(currentState, qa.id, controlledTask.id), "Partial QA smoke expected QA reassignment.");
+  assert(/QA coverage is partial/.test(controlledTask.lastNote), "Partial QA smoke expected partial coverage note.");
+
+  return {
+    name: "partial-qa-coverage",
+    testCoverage: controlledTask.testCoverage,
+    qaSubtaskDone: qaSubtask.done,
+    qaSubtaskProgress: qaSubtask.progress,
+    canReassignQa: true,
+  };
+}
+
 function runQaRecheckSmoke() {
   const currentState = createRealtimeState(3003);
   const controlledTaskId = currentState.board.backlog[0];
@@ -769,6 +803,30 @@ function configureOutsourcedQaTask(task: RtTask): void {
   task.subtasks = [
     completeSubtask(task, "frontend", "critical", "Fix root cause"),
     openSubtask(task, "qa", "important", "Reproduce and verify fix"),
+  ];
+}
+
+function configurePartialQaTask(task: RtTask): void {
+  task.kind = "feature";
+  task.domain = "payments";
+  task.blastRadius = "low";
+  task.pressure = 1;
+  task.complexity = 1;
+  task.value = 18;
+  task.clarity = 100;
+  task.quality = 100;
+  task.testCoverage = 0;
+  task.bugs = 0;
+  task.changedAfterQa = false;
+  task.workDone = true;
+  task.assignedCharacterId = null;
+  task.outsourcing = null;
+  task.currentSubtaskId = null;
+  task.stageProgress = 0;
+  task.stageComplete = false;
+  task.subtasks = [
+    completeSubtask(task, "backend", "critical", "Implement integration contract"),
+    openSubtask(task, "qa", "important", "Validate happy path and edge cases"),
   ];
 }
 

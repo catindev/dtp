@@ -1,4 +1,5 @@
 import {
+  RELEASE_QA_COVERAGE_THRESHOLD,
   WORK_QA_OFF_ROLE_COVERAGE_FACTOR,
   WORK_QA_SUBTASK_COVERAGE_BASE,
   WORK_QA_SUBTASK_RANDOM_MAX,
@@ -29,6 +30,7 @@ import type { WorkStageEventSink } from "./workStageTypes";
 
 export interface QaPassResult {
   coverageGain: number;
+  coverageComplete: boolean;
   discoveredBugs: number;
   triagedBugs: number;
   bugfixes: RtSubtask[];
@@ -57,6 +59,9 @@ export function completeQaSubtaskStage(
       subtask.importance,
       offRole ? "off-role" : "on-role",
       `qa +${qaResult.coverageGain}`,
+      ...(qaResult.coverageComplete
+        ? []
+        : [`qa coverage ${task.testCoverage}/${RELEASE_QA_COVERAGE_THRESHOLD}`, "QA recheck required"]),
       ...(qaResult.discoveredBugs > 0 ? [`found +${qaResult.discoveredBugs}`] : []),
       ...(qaResult.triagedBugs > 0 ? [`bugs -${qaResult.triagedBugs}`] : ["bugs 0"]),
       ...(qaResult.bugfixes.length > 0 ? [`rework +${qaResult.bugfixes.length}`] : []),
@@ -68,6 +73,9 @@ export function completeQaSubtaskStage(
       subtaskImportance: subtask.importance,
       offRole,
       coverageGain: qaResult.coverageGain,
+      coverageComplete: qaResult.coverageComplete,
+      testCoverage: task.testCoverage,
+      coverageThreshold: RELEASE_QA_COVERAGE_THRESHOLD,
       discoveredBugs: qaResult.discoveredBugs,
       triagedBugs: qaResult.triagedBugs,
       reworkCount: qaResult.bugfixes.length,
@@ -100,14 +108,26 @@ export function completeQaSubtaskPass(
   task.testCoverage = clamp(task.testCoverage + coverageGain, 0, 100);
   task.changedAfterQa = false;
   const qaResult = applyQaResult(state, task, testSkill, roleFit);
+  const coverageComplete = task.testCoverage >= RELEASE_QA_COVERAGE_THRESHOLD;
+  if (coverageComplete) {
+    subtask.done = true;
+    subtask.progress = 100;
+  } else {
+    subtask.done = false;
+    subtask.completedBy = null;
+    subtask.progress = qaCoverageProgress(task.testCoverage);
+  }
   task.currentSubtaskId = null;
   task.stageComplete = true;
   task.lastNote =
     qaResult.bugfixes.length > 0
       ? `QA converted ${qaResult.bugfixes.length} bug(s) into rework.`
-      : "QA pass complete.";
+      : coverageComplete
+        ? "QA pass complete."
+        : `QA coverage is partial (${task.testCoverage}/${RELEASE_QA_COVERAGE_THRESHOLD}). Assign QA again to clear release risk.`;
   return {
     coverageGain,
+    coverageComplete,
     ...qaResult,
   };
 }
@@ -125,17 +145,28 @@ export function completeTestStage(
   task.testCoverage = clamp(task.testCoverage + coverageGain, 0, 100);
   task.changedAfterQa = false;
   const qaResult = applyQaResult(state, task, character.skill.test, character.specialty.qa);
+  const coverageComplete = task.testCoverage >= RELEASE_QA_COVERAGE_THRESHOLD;
   const qaSubtask = task.subtasks.find(
     (subtask) => subtask.revealed && !subtask.done && subtask.role === "qa",
   );
   if (qaSubtask) {
-    qaSubtask.done = true;
-    qaSubtask.progress = 100;
-    qaSubtask.completedBy = character.id;
+    if (coverageComplete) {
+      qaSubtask.done = true;
+      qaSubtask.progress = 100;
+      qaSubtask.completedBy = character.id;
+    } else {
+      qaSubtask.done = false;
+      qaSubtask.progress = qaCoverageProgress(task.testCoverage);
+      qaSubtask.completedBy = null;
+    }
   }
   task.currentSubtaskId = null;
   task.lastNote =
-    qaResult.bugfixes.length > 0 ? `QA converted ${qaResult.bugfixes.length} bug(s) into rework.` : "QA pass complete.";
+    qaResult.bugfixes.length > 0
+      ? `QA converted ${qaResult.bugfixes.length} bug(s) into rework.`
+      : coverageComplete
+        ? "QA pass complete."
+        : `QA coverage is partial (${task.testCoverage}/${RELEASE_QA_COVERAGE_THRESHOLD}). Assign QA again to clear release risk.`;
   emitQaDoneEvent(
     task,
     character,
@@ -143,6 +174,9 @@ export function completeTestStage(
     qaResult.bugfixes.length,
     [
       `qa +${coverageGain}`,
+      ...(coverageComplete
+        ? []
+        : [`qa coverage ${task.testCoverage}/${RELEASE_QA_COVERAGE_THRESHOLD}`, "QA recheck required"]),
       ...(qaResult.discoveredBugs > 0 ? [`found +${qaResult.discoveredBugs}`] : []),
       ...(qaResult.triagedBugs > 0 ? [`bugs -${qaResult.triagedBugs}`] : ["bugs 0"]),
       ...(qaResult.bugfixes.length > 0 ? [`rework +${qaResult.bugfixes.length}`] : []),
@@ -153,6 +187,9 @@ export function completeTestStage(
       subtaskRole: qaSubtask?.role ?? "qa",
       subtaskImportance: qaSubtask?.importance ?? null,
       coverageGain,
+      coverageComplete,
+      testCoverage: task.testCoverage,
+      coverageThreshold: RELEASE_QA_COVERAGE_THRESHOLD,
       discoveredBugs: qaResult.discoveredBugs,
       triagedBugs: qaResult.triagedBugs,
       reworkCount: qaResult.bugfixes.length,
@@ -195,16 +232,24 @@ function emitQaDoneEvent(
   effects: string[],
   data: Record<string, string | number | boolean | null>,
 ): void {
+  const coverageComplete = data.coverageComplete !== false;
   emit({
     type: "qa_done",
-    title: `${task.id} QA pass done`,
-    body: bugfixCount > 0
-      ? `${character.name} triaged ${bugfixCount} bug(s) into rework.`
-      : `${character.name} found no blocking bugs.`,
+    title: coverageComplete ? `${task.id} QA pass done` : `${task.id} QA coverage partial`,
+    body:
+      bugfixCount > 0
+        ? `${character.name} triaged ${bugfixCount} bug(s) into rework.`
+        : coverageComplete
+          ? `${character.name} found no blocking bugs.`
+          : `${character.name} added partial QA coverage.`,
     data: characterEventData(character, {
       taskId: task.id,
       ...data,
     }),
     effects,
   });
+}
+
+function qaCoverageProgress(testCoverage: number): number {
+  return clamp(Math.round((testCoverage / RELEASE_QA_COVERAGE_THRESHOLD) * 100), 0, 95);
 }

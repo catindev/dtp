@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-07-04 - v0.1.40 Partial QA coverage
+
+Исправлена неоднозначность QA-риска:
+
+- частичный QA-проход больше не закрывает QA-подзадачу, если итоговое покрытие ниже порога релиза;
+- карточка продолжает показывать риск `no_qa`, пока `testCoverage` ниже `RELEASE_QA_COVERAGE_THRESHOLD`;
+- QA-подзадача остается доступной для повторного назначения;
+- события `qa_done` получили поля `coverageComplete`, `testCoverage`, `coverageThreshold`;
+- в логах и UI появилось отдельное событие `QA coverage partial`;
+- добавлен smoke `partial-qa-coverage`.
+
+Формат gameplay state изменился: `SAVE_SCHEMA_VERSION` поднят до `rt-campaign-v6`, старые несовместимые autosave-забеги в 0.x не мигрируются.
+
+---
+
 ## 2026-07-02 - v0.1.8 Music toggle
 
 Добавлена настройка фоновой музыки:
