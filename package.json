@@ -1,7 +1,7 @@
 {
   "name": "dont-touch-prod-kanban-pivot",
   "private": true,
-  "version": "0.1.46",
+  "version": "0.1.47",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,11 @@
     "debug": "tsx src/debug/realtime.ts",
     "debug:legacy": "tsx src/debug/legacy.ts",
     "debug:rt": "tsx src/debug/realtime.ts",
-    "debug:ab": "tsx src/debug/ab.ts"
+    "debug:ab": "tsx src/debug/ab.ts",
+    "logs:session": "tsx src/debug/logs.ts session",
+    "logs:summary": "tsx src/debug/logs.ts summary",
+    "logs:events": "tsx src/debug/logs.ts events",
+    "logs:timeline": "tsx src/debug/logs.ts timeline"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

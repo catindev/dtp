@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-07-04 - v0.1.47 JSONL log inspection CLI
+
+Добавлены инструменты чтения новых JSONL-логов:
+
+- `npm run logs:session -- <sessionId>`;
+- `npm run logs:summary -- <sessionId>`;
+- `npm run logs:events -- <sessionId> [--type task_spawned]`;
+- `npm run logs:timeline -- <sessionId>`;
+- по умолчанию читается `/Users/vladimirtitskiy/Dev/dtp-backend/logs`;
+- путь можно переопределить через `DTP_BACKEND_LOG_DIR`.
+
+Это tooling-only refactor. Gameplay save schema не менялась: `SAVE_SCHEMA_VERSION` остается `rt-campaign-v6`.
+
+---
+
 ## 2026-07-04 - v0.1.46 Runtime error telemetry
 
 Продолжен рефакторинг логгера:
