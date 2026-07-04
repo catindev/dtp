@@ -36,6 +36,7 @@ interface BoardPanelProps {
   rejectColumnIds: Set<RtColumn>;
   rejectTaskIds: Set<string>;
   selectedTaskId: string | null;
+  tutorialFocusTaskId: string | null;
 }
 
 export function BoardPanel({
@@ -53,6 +54,7 @@ export function BoardPanel({
   rejectColumnIds,
   rejectTaskIds,
   selectedTaskId,
+  tutorialFocusTaskId,
 }: BoardPanelProps) {
   const prodTaskIds = prodView === "released" ? game.board.released : archivedUnfinishedTaskIds(game);
   const {
@@ -88,6 +90,7 @@ export function BoardPanel({
                     rejectTaskIds,
                     selectedTaskId,
                     taskIds,
+                    tutorialFocusTaskId,
                   })
                 : taskIds.map((taskId) => {
                     const task = game.tasks[taskId];
@@ -104,6 +107,9 @@ export function BoardPanel({
                         reject={rejectTaskIds.has(task.id)}
                         selected={selectedTaskId === task.id}
                         task={task}
+                        tutorialFocus={
+                          tutorialFocusTaskId === task.id && activeTaskDragId !== task.id
+                        }
                       />
                     );
                   })}
@@ -136,6 +142,7 @@ interface RenderBacklogTaskCardsArgs {
   rejectTaskIds: Set<string>;
   selectedTaskId: string | null;
   taskIds: string[];
+  tutorialFocusTaskId: string | null;
 }
 
 function renderBacklogTaskCards({
@@ -150,6 +157,7 @@ function renderBacklogTaskCards({
   rejectTaskIds,
   selectedTaskId,
   taskIds,
+  tutorialFocusTaskId,
 }: RenderBacklogTaskCardsArgs): ReactNode[] {
   const entries: Array<
     | { kind: "task"; taskId: string }
@@ -197,6 +205,7 @@ function renderBacklogTaskCards({
         reject={rejectTaskIds.has(task.id)}
         selected={selectedTaskId === task.id}
         task={task}
+        tutorialFocus={tutorialFocusTaskId === task.id && activeTaskDragId !== task.id}
       />
     );
   });

@@ -18,6 +18,7 @@ interface SortableTaskCardProps {
   reject: boolean;
   selected: boolean;
   task: RtTask;
+  tutorialFocus?: boolean;
 }
 
 export function SortableTaskCard({
@@ -31,6 +32,7 @@ export function SortableTaskCard({
   reject,
   selected,
   task,
+  tutorialFocus = false,
 }: SortableTaskCardProps) {
   const {
     attributes,
@@ -72,6 +74,7 @@ export function SortableTaskCard({
       selected={selected}
       style={style}
       task={task}
+      tutorialFocus={tutorialFocus}
     />
   );
 }

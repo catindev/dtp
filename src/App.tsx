@@ -93,9 +93,8 @@ export function App() {
   const latestGameRef = useRef(game);
   const selectedTask = selectedTaskId ? game.tasks[selectedTaskId] : null;
   const selectedCharacter = selectedCharacterId ? game.characters[selectedCharacterId] : null;
-  const tutorialAttentionTaskId = tutorialFocusTaskId(game);
   const attentionTaskIds = new Set(bounceTaskIds);
-  if (tutorialAttentionTaskId) attentionTaskIds.add(tutorialAttentionTaskId);
+  const tutorialFocusTask = tutorialFocusTaskId(game);
   const hasInspectorContent = Boolean(selectedTask || selectedCharacter || game.lossReport);
   const morningReport = game.morningReport;
   const interactionBlocked =
@@ -341,6 +340,7 @@ export function App() {
               rejectColumnIds={shakeColumnIds}
               rejectTaskIds={shakeTaskIds}
               selectedTaskId={selectedTaskId}
+              tutorialFocusTaskId={tutorialFocusTask}
             />
 
             <SidePanel

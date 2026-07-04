@@ -37,6 +37,7 @@ interface TaskCardProps {
   selected: boolean;
   style?: CSSProperties;
   task: RtTask;
+  tutorialFocus?: boolean;
 }
 
 export const TaskCard = forwardRef<HTMLElement, TaskCardProps>(function TaskCard({
@@ -54,6 +55,7 @@ export const TaskCard = forwardRef<HTMLElement, TaskCardProps>(function TaskCard
   selected,
   style,
   task,
+  tutorialFocus = false,
 }: TaskCardProps, ref) {
   const deadlineRatio = taskDeadlineRatio(task);
   const untouchedBacklog = isUntouchedBacklogTask(task);
@@ -86,6 +88,7 @@ export const TaskCard = forwardRef<HTMLElement, TaskCardProps>(function TaskCard
         entering ? "backlog-enter" : "",
         exiting ? "backlog-exit" : "",
         attention ? "work-pass-bounce" : "",
+        tutorialFocus && !dragging ? "tutorial-focus" : "",
         flash ? "drop-flash" : "",
         reject ? "reject-shake" : "",
         dropTargetActive ? "dnd-task-target" : "",
