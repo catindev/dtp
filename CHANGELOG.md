@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-07-04 - v0.1.45 Persistent log seq
+
+Продолжен рефакторинг логгера:
+
+- frontend `seq` теперь сохраняется в `localStorage` по session id;
+- после reload новые события продолжают sequence, а не начинают с 1;
+- backend JSONL repository хранит `lastSeq` в `meta.json`;
+- повторные retry batches с `seq <= lastSeq` игнорируются;
+- проверен live smoke: первый POST `appended=1`, повторный POST `appended=0`.
+
+Это schema-compatible logging refactor. Gameplay save schema не менялась: `SAVE_SCHEMA_VERSION` остается `rt-campaign-v6`.
+
+---
+
 ## 2026-07-04 - v0.1.44 Day summary telemetry
 
 Продолжен рефакторинг логгера:

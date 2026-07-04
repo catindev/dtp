@@ -1,6 +1,7 @@
 import {
   BACKEND_LOG_BATCH_SIZE,
   BACKEND_LOG_FLUSH_INTERVAL_MS,
+  BACKEND_LOG_SEQ_KEY_PREFIX,
   BACKEND_LOG_URL,
   BACKEND_RESET_URL,
 } from "./backendLogConfig";
@@ -120,8 +121,10 @@ export function getBackendLogStatus(): BackendLogStatus {
 }
 
 function nextLogSeq(sessionId: string): number {
-  const next = (sessionSeq.get(sessionId) ?? 0) + 1;
+  const current = sessionSeq.get(sessionId) ?? readStoredLogSeq(sessionId);
+  const next = current + 1;
   sessionSeq.set(sessionId, next);
+  writeStoredLogSeq(sessionId, next);
   return next;
 }
 
@@ -129,4 +132,34 @@ function objectPayload(payload: unknown): Record<string, unknown> {
   return typeof payload === "object" && payload !== null && !Array.isArray(payload)
     ? payload as Record<string, unknown>
     : { value: payload };
+}
+
+function readStoredLogSeq(sessionId: string): number {
+  const storage = getBrowserStorage();
+  if (!storage) return 0;
+  const raw = storage.getItem(seqStorageKey(sessionId));
+  const parsed = raw ? Number(raw) : 0;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+}
+
+function writeStoredLogSeq(sessionId: string, seq: number): void {
+  const storage = getBrowserStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(seqStorageKey(sessionId), String(seq));
+  } catch {
+    // Sequence persistence is a telemetry convenience. Logging still works in memory.
+  }
+}
+
+function seqStorageKey(sessionId: string): string {
+  return `${BACKEND_LOG_SEQ_KEY_PREFIX}.${sessionId}`;
+}
+
+function getBrowserStorage(): Storage | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
 }
