@@ -30,6 +30,12 @@ If implementation changes after QA, the old test coverage can become stale. Then
 
 Bugs are known problems. QA can find bugs. Developers then turn them into rework.
 
+## Tech debt
+
+Tech debt tasks are about the internal state of the product: simplify old code, remove a hack, split a tangled module.
+
+Normal clean releases reduce debt a little. Clean tech debt releases reduce debt much more. This is not free recovery: to pay debt down, you still need to take the task, work on it, check it, and ship it.
+
 ## Dirty, risky, clean
 
 Card color and status show the rough state:

@@ -25,6 +25,11 @@ const seed = Number.isFinite(seedArg) ? seedArg : 4242;
 const batchSize = Number.isFinite(Number(process.env.DTP_AB_SEEDS))
   ? Math.max(1, Number(process.env.DTP_AB_SEEDS))
   : 12;
+const COMPETENT_MIN_SURVIVAL_RATE = 0.5;
+const COMPETENT_MAX_SURVIVAL_RATE = 0.95;
+const RECKLESS_MAX_SURVIVAL_RATE = 0.2;
+const COMPETENT_MAX_AVERAGE_DEBT = 85;
+const COMPETENT_MAX_DEBT_CAPPED_RATE = 0.5;
 
 const oneCardResults = (["clean", "mildDirty", "heavyDirty"] as Scenario[]).map((scenario) =>
   runOneCardScenario(seed, scenario),
@@ -92,8 +97,11 @@ function runLongRunBatch(baseSeed: number, style: BotStyle, count: number) {
   const averageDay = average(runs.map((run) => run.day));
   const averageTrust = average(runs.map((run) => run.resources.trust));
   const averageValue = average(runs.map((run) => run.resources.value));
+  const averageDebt = average(runs.map((run) => run.resources.debt));
   const averageDirty = average(runs.map((run) => run.releaseMix.dirty));
   const averageClean = average(runs.map((run) => run.releaseMix.clean));
+  const averageTechDebt = average(runs.map((run) => run.releaseMix.techDebt));
+  const debtCapped = runs.filter((run) => run.resources.debt >= 100).length;
 
   return {
     style,
@@ -103,9 +111,13 @@ function runLongRunBatch(baseSeed: number, style: BotStyle, count: number) {
     lost,
     averageDay,
     averageTrust,
+    averageDebt,
     averageValue,
     averageClean,
     averageDirty,
+    averageTechDebt,
+    debtCapped,
+    debtCappedRate: round(debtCapped / count),
     samples: runs.slice(0, 5),
   };
 }
@@ -138,6 +150,7 @@ function runLongRun(seedValue: number, style: BotStyle) {
     unresolvedFallout: Object.values(state.tasks).filter(
       (task) => Boolean(task.rootCauseTaskId) && !task.resolved && !task.released,
     ).length,
+    lossPrimaryMetric: state.lossReport?.primaryMetric ?? null,
   };
 }
 
@@ -230,6 +243,7 @@ function countReleaseMix(state: RtGameState) {
     clean: released.filter((task) => releaseReadiness(task).readiness === "clean").length,
     risky: released.filter((task) => releaseReadiness(task).readiness === "risky").length,
     dirty: released.filter((task) => releaseReadiness(task).readiness === "dirty").length,
+    techDebt: released.filter((task) => task.kind === "techDebt").length,
   };
 }
 
@@ -322,12 +336,21 @@ function evaluateLongRun(results: ReturnType<typeof runLongRunBatch>[]) {
     competentSurvivalRate: competent?.survivalRate ?? 0,
     recklessSurvivalRate: reckless?.survivalRate ?? 0,
     separation: round((competent?.survivalRate ?? 0) - (reckless?.survivalRate ?? 0)),
+    targets: {
+      competentMinSurvivalRate: COMPETENT_MIN_SURVIVAL_RATE,
+      competentMaxSurvivalRate: COMPETENT_MAX_SURVIVAL_RATE,
+      recklessMaxSurvivalRate: RECKLESS_MAX_SURVIVAL_RATE,
+      competentMaxAverageDebt: COMPETENT_MAX_AVERAGE_DEBT,
+      competentMaxDebtCappedRate: COMPETENT_MAX_DEBT_CAPPED_RATE,
+    },
     needsTuning:
       !competent ||
       !reckless ||
-      competent.survivalRate < 0.35 ||
-      competent.survivalRate > 0.95 ||
-      reckless.survivalRate > 0.55,
+      competent.survivalRate < COMPETENT_MIN_SURVIVAL_RATE ||
+      competent.survivalRate > COMPETENT_MAX_SURVIVAL_RATE ||
+      reckless.survivalRate > RECKLESS_MAX_SURVIVAL_RATE ||
+      competent.averageDebt > COMPETENT_MAX_AVERAGE_DEBT ||
+      competent.debtCappedRate > COMPETENT_MAX_DEBT_CAPPED_RATE,
   };
 }
 

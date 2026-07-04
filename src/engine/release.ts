@@ -1,4 +1,13 @@
 import { removeTaskFromBoard } from "./board";
+import {
+  RELEASE_CLEAN_DEBT_REDUCTION,
+  RELEASE_TECH_DEBT_CLEANUP_MAX,
+  RELEASE_TECH_DEBT_CLEANUP_MIN,
+  RELEASE_TECH_DEBT_CLEANUP_VALUE_DIVISOR,
+  RELEASE_TECH_DEBT_RISKY_CLEANUP_MAX,
+  RELEASE_TECH_DEBT_RISKY_CLEANUP_MIN,
+  RELEASE_TECH_DEBT_RISKY_CLEANUP_VALUE_DIVISOR,
+} from "./balance";
 import { applyValueGainToHorizonGoals } from "./goals";
 import { clamp } from "./math";
 import { formatDelta } from "./resources";
@@ -36,8 +45,7 @@ export function releaseRealtimeTask(
   const blastMultiplier = sreSafety ? 0.65 : 1.15;
   const trustDelta = releaseTrustDelta(readiness.readiness, score, blastMultiplier, state.resources.trust);
   const clientDelta = releaseClientDelta(readiness.readiness, score, blastMultiplier, state.resources.trust);
-  const debtDelta =
-    score >= 75 ? -1 : Math.ceil(((75 - score) / 12 + task.bugs) * blastMultiplier);
+  const debtDelta = releaseDebtDelta(task, readiness.readiness, score, blastMultiplier);
 
   state.resources.value += valueGain;
   state.resources.budget += budgetGain;
@@ -199,6 +207,32 @@ function releaseClientDelta(
   if (readiness === "dirty" && score >= 60) return currentTrust < 45 ? -1 : 0;
   if (score >= 50) return -Math.ceil(1 * blastMultiplier * pressureMultiplier);
   return -Math.ceil(((60 - score) / 5) * blastMultiplier * pressureMultiplier);
+}
+
+function releaseDebtDelta(
+  task: RtTask,
+  readiness: RtReleaseReadiness,
+  score: number,
+  blastMultiplier: number,
+): number {
+  if (task.kind === "techDebt" && readiness === "clean" && score >= 75) {
+    return -clamp(
+      Math.round(task.value / RELEASE_TECH_DEBT_CLEANUP_VALUE_DIVISOR),
+      RELEASE_TECH_DEBT_CLEANUP_MIN,
+      RELEASE_TECH_DEBT_CLEANUP_MAX,
+    );
+  }
+
+  if (task.kind === "techDebt" && readiness === "risky" && score >= 65) {
+    return -clamp(
+      Math.round(task.value / RELEASE_TECH_DEBT_RISKY_CLEANUP_VALUE_DIVISOR),
+      RELEASE_TECH_DEBT_RISKY_CLEANUP_MIN,
+      RELEASE_TECH_DEBT_RISKY_CLEANUP_MAX,
+    );
+  }
+
+  if (score >= 75) return -RELEASE_CLEAN_DEBT_REDUCTION;
+  return Math.ceil(((75 - score) / 12 + task.bugs) * blastMultiplier);
 }
 
 function releaseBudgetGain(valueGain: number, score: number): number {

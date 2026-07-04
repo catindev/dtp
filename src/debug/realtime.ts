@@ -34,6 +34,7 @@ const smoke = [
   runHorizonBoundarySmoke(),
   runBacklogValueDecaySmoke(),
   runBacklogOpportunityExpirationSmoke(),
+  runTechDebtReleaseSinkSmoke(),
   runMissedWorkSmoke(),
   runDeadlinePressureReadinessSmoke(),
   runHorizonReviewCapSmoke(),
@@ -364,6 +365,34 @@ function runBacklogOpportunityExpirationSmoke() {
     name: "backlog-opportunity-expiration",
     expired: report.daySummary.backlogExpiredCount,
     debtAdded: report.daySummary.backlogDebtAdded,
+  };
+}
+
+function runTechDebtReleaseSinkSmoke() {
+  const currentState = createRealtimeState(4444);
+  assertQuarterCadence(currentState);
+  currentState.resources.debt = 80;
+
+  const controlledTaskId = currentState.board.backlog[0];
+  const controlledTask = currentState.tasks[controlledTaskId];
+  assert(Boolean(controlledTask), "Tech debt sink smoke expected an initial task.");
+  configureCleanReleaseTask(controlledTask);
+  controlledTask.kind = "techDebt";
+  controlledTask.value = 32;
+  controlledTask.baseValue = 32;
+  controlledTask.backlogValue = 32;
+
+  assert(moveRealtimeTask(currentState, controlledTask.id, "inProgress"), "Tech debt sink smoke move failed.");
+  assert(moveRealtimeTask(currentState, controlledTask.id, "done"), "Tech debt sink smoke done move failed.");
+  runDailyReleaseTrain(currentState);
+
+  assert(controlledTask.released, "Tech debt sink smoke expected released task.");
+  assert(currentState.resources.debt <= 72, "Tech debt sink smoke expected meaningful debt reduction.");
+
+  return {
+    name: "tech-debt-release-sink",
+    debt: currentState.resources.debt,
+    releaseScore: controlledTask.releaseScore,
   };
 }
 
