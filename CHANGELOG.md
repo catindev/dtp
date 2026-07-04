@@ -4,6 +4,19 @@
 
 ---
 
+## 2026-07-04 - v0.1.48 Log size guardrails
+
+Добавлены guardrails против повторного раздувания логов:
+
+- realtime smoke теперь проверяет размер типового telemetry event;
+- проверяет размер day summary;
+- проверяет, что snapshot остается отдельным и тяжелым diagnostic-классом;
+- текущие контрольные размеры: event ~599B, summary ~1175B, snapshot ~7486B.
+
+Это tooling-only refactor. Gameplay save schema не менялась: `SAVE_SCHEMA_VERSION` остается `rt-campaign-v6`.
+
+---
+
 ## 2026-07-04 - v0.1.47 JSONL log inspection CLI
 
 Добавлены инструменты чтения новых JSONL-логов:

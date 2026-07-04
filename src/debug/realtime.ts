@@ -21,6 +21,9 @@ import {
   buildBackendSnapshot,
   buildDebugSnapshot,
 } from "../logging/debugSnapshot";
+import { createLogEntry } from "../logging/backendLog";
+import { buildGameEventTelemetry } from "../logging/gameEventTelemetry";
+import { buildDaySummaryTelemetry } from "../logging/summaryTelemetry";
 import { characterDropRejectReason } from "../hooks/dragAndDropHelpers";
 
 const seedArg = Number(process.argv[2]);
@@ -43,6 +46,7 @@ const smoke = [
   runQaRecheckSmoke(),
   runCharacterEventPayloadSmoke(),
   runDragRejectHelperSmoke(),
+  runLogSizeBudgetSmoke(),
 ];
 
 const taskId = state.board.backlog[0];
@@ -478,6 +482,55 @@ function runDebugSnapshotSmoke() {
     loggerQueued: backendSnapshot.logger.queuedEntries,
     boardCounts: backendSnapshot.boardCounts,
   };
+}
+
+function runLogSizeBudgetSmoke() {
+  const currentState = createRealtimeState(8301);
+  const event = currentState.log[0];
+  assert(event !== undefined, "Log size smoke expected an initial event.");
+
+  const eventEntry = createLogEntry(
+    "log-size-smoke",
+    "event",
+    event.type,
+    buildGameEventTelemetry(currentState, event),
+  );
+  const eventBytes = byteLength(eventEntry);
+  assert(eventBytes < 2500, `Log size smoke expected compact event, got ${eventBytes} bytes.`);
+
+  for (let guard = 0; guard < 160 && !currentState.morningReport; guard += 1) {
+    tickRealtime(currentState, 5000);
+  }
+  assert(currentState.morningReport !== null, "Log size smoke expected a morning report.");
+
+  const summaryEntry = createLogEntry(
+    "log-size-smoke",
+    "summary",
+    "day_summary",
+    buildDaySummaryTelemetry(currentState, currentState.morningReport),
+  );
+  const summaryBytes = byteLength(summaryEntry);
+  assert(summaryBytes < 8000, `Log size smoke expected compact summary, got ${summaryBytes} bytes.`);
+
+  const snapshotEntry = createLogEntry(
+    "log-size-smoke",
+    "snapshot",
+    "debug_snapshot",
+    buildBackendSnapshot(buildDebugSnapshot(currentState, "log-size-smoke")),
+  );
+  const snapshotBytes = byteLength(snapshotEntry);
+  assert(snapshotBytes > eventBytes, "Log size smoke expected snapshot to remain separate from events.");
+
+  return {
+    name: "log-size-budget",
+    eventBytes,
+    summaryBytes,
+    snapshotBytes,
+  };
+}
+
+function byteLength(value: unknown): number {
+  return Buffer.byteLength(JSON.stringify(value), "utf8");
 }
 
 function runOutsourceSmoke() {
