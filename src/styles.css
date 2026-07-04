@@ -196,6 +196,26 @@ button {
   margin: 0;
 }
 
+.tutorial-recommendation {
+  border-color: var(--color-clean);
+}
+
+.tutorial-recommendation p {
+  color: var(--color-muted-strong);
+  font-size: 13px;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.tutorial-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.tutorial-actions button {
+  flex: 1;
+}
+
 .resume-card header {
   display: flex;
   gap: 10px;

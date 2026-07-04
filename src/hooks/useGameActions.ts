@@ -9,6 +9,7 @@ import {
 import {
   cancelTaskWork,
   createRealtimeState,
+  createTutorialRealtimeState,
   formatGameTime,
   normalizeRealtimeState,
   startDayAfterMorningReport,
@@ -96,10 +97,44 @@ export function useGameActions({
     saveRun(next, sessionId);
     logAction(sessionId, actionName, {
       seed: next.seed,
+      runMode: next.runMode,
       startedAt: new Date().toISOString(),
       appCommit: APP_COMMIT,
       saveSchemaVersion: SAVE_SCHEMA_VERSION,
     });
+  }
+
+  function startTutorialRun() {
+    clearSavedRun();
+    const next = createTutorialRealtimeState(Date.now(), locale);
+    const sessionId = createSessionId();
+    sessionIdRef.current = sessionId;
+    loggedEventKeysRef.current = new Set();
+    animatedWorkEventKeysRef.current = new Set();
+    soundEventKeysRef.current = new Set(next.log.map(gameEventKey));
+    restartMainThemeOnNextPlay();
+    resetDrag();
+    resetFeedback();
+    setGame(next);
+    setSelectedTaskId(null);
+    setSelectedCharacterId(null);
+    setTimeScale(1);
+    setHasResumeCard(true);
+    setScreen("game");
+    saveRun(next, sessionId);
+    logAction(sessionId, "tutorial_started", {
+      seed: next.seed,
+      runMode: next.runMode,
+      stageId: next.tutorial?.stageId ?? null,
+      stepId: next.tutorial?.stepId ?? null,
+      startedAt: new Date().toISOString(),
+      appCommit: APP_COMMIT,
+      saveSchemaVersion: SAVE_SCHEMA_VERSION,
+    });
+  }
+
+  function skipTutorialAndStartRun() {
+    startRun("tutorial_skipped");
   }
 
   function togglePause() {
@@ -223,6 +258,8 @@ export function useGameActions({
     openMenu,
     startBriefedDay,
     startRun,
+    startTutorialRun,
+    skipTutorialAndStartRun,
     togglePause,
   };
 }

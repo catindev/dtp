@@ -4,6 +4,7 @@ import {
   canAssignCharacterToTask,
   createCampaignCalendar,
   createRealtimeState,
+  createTutorialRealtimeState,
   getOutsourceTaskWorkStatus,
   moveRealtimeTask,
   normalizeRealtimeState,
@@ -41,6 +42,7 @@ const smoke = [
   runHorizonReviewCapSmoke(),
   runWinContractSmoke(),
   runTutorialFoundationSmoke(),
+  runTutorialEntrySmoke(),
   runMigrationNormalizationSmoke(),
   runDebugSnapshotSmoke(),
   runOutsourceSmoke(),
@@ -325,6 +327,34 @@ function runTutorialFoundationSmoke() {
     name: "tutorial-foundation",
     runMode: currentState.runMode,
     repairedStage: repairedTutorial.stageId,
+  };
+}
+
+function runTutorialEntrySmoke() {
+  const currentState = createTutorialRealtimeState(4204);
+  assert(currentState.runMode === "tutorial", "Tutorial entry smoke expected tutorial run mode.");
+  assert(currentState.tutorial !== null, "Tutorial entry smoke expected tutorial director state.");
+  assert(currentState.tutorial?.stageId === "team-basics", "Tutorial entry smoke expected first stage.");
+  assert(currentState.tutorial?.stepId === "move-task-to-work", "Tutorial entry smoke expected first step.");
+  assert(
+    RT_COLUMNS.every((column) => currentState.board[column].length === 0),
+    "Tutorial entry smoke expected empty guided board.",
+  );
+  assert(Object.keys(currentState.tasks).length === 0, "Tutorial entry smoke expected no normal seed tasks.");
+  assert(
+    currentState.spawn.nextInMs === Number.MAX_SAFE_INTEGER,
+    "Tutorial entry smoke expected normal spawner disabled.",
+  );
+  assert(
+    currentState.log.some((event) => event.type === "tutorial_started"),
+    "Tutorial entry smoke expected tutorial_started event.",
+  );
+
+  return {
+    name: "tutorial-entry",
+    runMode: currentState.runMode,
+    stageId: currentState.tutorial?.stageId,
+    stepId: currentState.tutorial?.stepId,
   };
 }
 

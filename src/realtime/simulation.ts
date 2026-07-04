@@ -64,6 +64,7 @@ import {
   type RtStage,
   type RtWorkColumn,
 } from "../engine/types";
+import { createInitialTutorialState } from "../tutorial/tutorialState";
 export {
   DAYS_PER_QUARTER,
   DAYS_PER_MONTH,
@@ -212,6 +213,29 @@ export function createRealtimeState(seed = Date.now(), locale: Locale = DEFAULT_
     effects: ["trust 70", "clients 100", "day starts at 08:00"],
   });
 
+  return state;
+}
+
+export function createTutorialRealtimeState(seed = Date.now(), locale: Locale = DEFAULT_LOCALE): RtGameState {
+  const state = createRealtimeState(seed, locale);
+  state.runMode = "tutorial";
+  state.tutorial = createInitialTutorialState();
+  state.board = createBoard();
+  state.tasks = {};
+  state.nextTaskId = 1;
+  state.spawn.nextInMs = Number.MAX_SAFE_INTEGER;
+  state.spawn.nextBurstInMs = Number.MAX_SAFE_INTEGER;
+  state.log = [];
+  pushEvent(state, {
+    type: "tutorial_started",
+    title: "Tutorial started",
+    body: "The guided first run is live.",
+    effects: ["mode tutorial"],
+    data: {
+      stageId: state.tutorial.stageId,
+      stepId: state.tutorial.stepId,
+    },
+  });
   return state;
 }
 

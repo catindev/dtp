@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { t, type Locale } from "../i18n";
 import type {
   RtGameState,
@@ -18,8 +19,11 @@ export function MenuScreen({
   onMusicEnabledChange,
   onOpenDocs,
   onStartRun,
+  onStartTutorial,
+  onSkipTutorial,
   saveReset,
   sessionId,
+  tutorialCompleted,
 }: {
   game: RtGameState;
   hasResumeCard: boolean;
@@ -30,9 +34,23 @@ export function MenuScreen({
   onMusicEnabledChange: (enabled: boolean) => void;
   onOpenDocs: () => void;
   onStartRun: (actionName?: string) => void;
+  onStartTutorial: () => void;
+  onSkipTutorial: () => void;
   saveReset: Extract<AutosaveLoadResult, { status: "reset" }> | null;
   sessionId: string;
+  tutorialCompleted: boolean;
 }) {
+  const [showTutorialPrompt, setShowTutorialPrompt] = useState(false);
+  const shouldRecommendTutorial = !hasResumeCard && !tutorialCompleted;
+
+  function handleStartClick(): void {
+    if (shouldRecommendTutorial) {
+      setShowTutorialPrompt(true);
+      return;
+    }
+    onStartRun();
+  }
+
   return (
     <main className="shell menu-shell">
       <section className="main-menu">
@@ -62,6 +80,23 @@ export function MenuScreen({
         {!hasResumeCard && saveReset ? (
           <ResetSaveCard locale={locale} reset={saveReset} />
         ) : null}
+        {showTutorialPrompt ? (
+          <section className="resume-card tutorial-recommendation">
+            <header>
+              <span>{t(locale, "menu.tutorialRecommended")}</span>
+              <strong>{t(locale, "menu.tutorialTime")}</strong>
+            </header>
+            <p>{t(locale, "menu.tutorialDescription")}</p>
+            <div className="tutorial-actions">
+              <button className="start-button" onClick={onStartTutorial} type="button">
+                {t(locale, "menu.startTutorial")}
+              </button>
+              <button className="ghost-button" onClick={onSkipTutorial} type="button">
+                {t(locale, "menu.skipTutorial")}
+              </button>
+            </div>
+          </section>
+        ) : null}
         <div className="menu-actions">
           {hasResumeCard ? (
             <>
@@ -73,7 +108,7 @@ export function MenuScreen({
               </button>
             </>
           ) : (
-            <button className="start-button" onClick={() => onStartRun()} type="button">
+            <button className="start-button" onClick={handleStartClick} type="button">
               {t(locale, "menu.start")}
             </button>
           )}

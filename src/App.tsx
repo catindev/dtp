@@ -43,6 +43,7 @@ import {
   saveMusicEnabledPreference,
 } from "./audio/audioPreferences";
 import type { TimeScale } from "./timeScale";
+import { loadTutorialCompleted } from "./tutorial/tutorialProgress";
 import "./styles.css";
 
 type AppScreen = "menu" | "game" | "docs";
@@ -63,6 +64,7 @@ export function App() {
   const [game, setGame] = useState<RtGameState>(() => bootGame);
   const [screen, setScreen] = useState<AppScreen>("menu");
   const [musicEnabled, setMusicEnabled] = useState(loadMusicEnabledPreference);
+  const [tutorialCompleted] = useState(loadTutorialCompleted);
   const [timeScale, setTimeScale] = useState<TimeScale>(1);
   const [hasResumeCard, setHasResumeCard] = useState(Boolean(restoredSave));
   const [prodView, setProdView] = useState<ProdView>("released");
@@ -122,8 +124,10 @@ export function App() {
     openDocs,
     openLinkedTask,
     openMenu,
+    skipTutorialAndStartRun,
     startBriefedDay,
     startRun,
+    startTutorialRun,
     togglePause,
   } = useGameActions({
     game,
@@ -234,8 +238,11 @@ export function App() {
         onMusicEnabledChange={setMusicEnabled}
         onOpenDocs={openDocs}
         onStartRun={startRun}
+        onStartTutorial={startTutorialRun}
+        onSkipTutorial={skipTutorialAndStartRun}
         saveReset={saveReset}
         sessionId={sessionIdRef.current}
+        tutorialCompleted={tutorialCompleted}
       />
     );
   }
