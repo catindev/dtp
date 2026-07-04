@@ -29,9 +29,13 @@ import { characterDropRejectReason } from "../hooks/dragAndDropHelpers";
 import { loadTutorialCompleted } from "../tutorial/tutorialProgress";
 import {
   TUTORIAL_STEP_ASSIGN_QA,
+  TUTORIAL_STAGE_DAY_END,
+  TUTORIAL_STAGE_MULTI_WORK,
+  TUTORIAL_STEP_CHOOSE_DEADLINE,
   TUTORIAL_STEP_MOVE_DONE,
   TUTORIAL_STEP_MOVE_TASK,
-  TUTORIAL_STEP_STAGE_COMPLETE,
+  TUTORIAL_STEP_REPORT_READY,
+  TUTORIAL_STEP_WAIT_DAY_END,
   TUTORIAL_STEP_WAIT_WORK,
   advanceTutorialForCharacterAssignment,
   advanceTutorialForTaskMove,
@@ -55,6 +59,7 @@ const smoke = [
   runTutorialFoundationSmoke(),
   runTutorialEntrySmoke(),
   runTutorialStageOneSmoke(),
+  runTutorialFullFlowSmoke(),
   runMigrationNormalizationSmoke(),
   runDebugSnapshotSmoke(),
   runOutsourceSmoke(),
@@ -428,20 +433,118 @@ function runTutorialStageOneSmoke() {
   moveRealtimeTask(currentState, taskId, "done");
   advanceTutorialForTaskMove(currentState, taskId, "done");
   assert(
-    (currentState.tutorial?.stepId as string | undefined) === TUTORIAL_STEP_STAGE_COMPLETE,
-    "Tutorial stage smoke expected stage complete.",
+    currentState.tutorial?.stageId === TUTORIAL_STAGE_MULTI_WORK,
+    "Tutorial stage smoke expected transition to multi-work.",
   );
-  assert(
-    currentState.tutorial?.completedStepIds.includes(TUTORIAL_STEP_MOVE_DONE) === true,
-    "Tutorial stage smoke expected completed Done step.",
-  );
+  assert(currentState.tutorial?.focusTaskId !== taskId, "Tutorial stage smoke expected a new focus task.");
 
   return {
     name: "tutorial-stage-one",
     taskId,
     completed: currentState.tutorial?.completedStepIds.length,
+    stageId: currentState.tutorial?.stageId,
     stepId: currentState.tutorial?.stepId,
   };
+}
+
+function runTutorialFullFlowSmoke() {
+  const shipLateState = createTutorialRealtimeState(4305);
+  progressTutorialToDeadlineChoice(shipLateState);
+  const lateTaskId = shipLateState.tutorial?.focusTaskId;
+  assert(typeof lateTaskId === "string", "Tutorial full smoke expected deadline task.");
+  moveRealtimeTask(shipLateState, lateTaskId, "done");
+  advanceTutorialForTaskMove(shipLateState, lateTaskId, "done");
+  assert(shipLateState.tutorial?.stageId === TUTORIAL_STAGE_DAY_END, "Tutorial full smoke expected day-end stage.");
+  assert(shipLateState.tutorial?.activeBranchId === "ship_late", "Tutorial full smoke expected late branch.");
+  tickRealtime(shipLateState, 10000);
+  assert(shipLateState.morningReport !== null, "Tutorial full smoke expected morning report after late branch.");
+  assert(shipLateState.tutorial?.completed, "Tutorial full smoke expected tutorial completion.");
+  assert(
+    (shipLateState.tutorial?.stepId as string | undefined) === TUTORIAL_STEP_REPORT_READY,
+    "Tutorial full smoke expected report-ready step.",
+  );
+
+  const waitState = createTutorialRealtimeState(4306);
+  progressTutorialToDeadlineChoice(waitState);
+  tickRealtime(waitState, 3000);
+  assert(waitState.tutorial?.stageId === TUTORIAL_STAGE_DAY_END, "Tutorial full smoke expected wait day-end stage.");
+  assert(waitState.tutorial?.activeBranchId === "wait_missed", "Tutorial full smoke expected wait branch.");
+  assert(
+    (waitState.tutorial?.stepId as string | undefined) === TUTORIAL_STEP_WAIT_DAY_END,
+    "Tutorial full smoke expected wait-day-end step.",
+  );
+
+  return {
+    name: "tutorial-full-flow",
+    lateBranch: shipLateState.tutorial?.activeBranchId,
+    waitBranch: waitState.tutorial?.activeBranchId,
+    reportReady: shipLateState.tutorial?.stepId,
+  };
+}
+
+function progressTutorialToDeadlineChoice(currentState: RtGameState): void {
+  tickRealtime(currentState, 2500);
+  completeTutorialTaskMove(currentState, "inProgress");
+  completeTutorialAssignment(currentState, "qa");
+  tickUntilTutorialStepChanges(currentState, TUTORIAL_STEP_WAIT_WORK);
+  completeTutorialTaskMove(currentState, "done");
+
+  completeTutorialTaskMove(currentState, "inProgress");
+  completeTutorialAssignment(currentState, "backend");
+  tickUntilTutorialStepChanges(currentState, "wait-backend");
+  completeTutorialAssignment(currentState, "frontend");
+  tickUntilTutorialStepChanges(currentState, "wait-frontend");
+  completeTutorialAssignment(currentState, "qa");
+  tickUntilTutorialStepChanges(currentState, "wait-qa-multi");
+  completeTutorialTaskMove(currentState, "done");
+
+  completeTutorialTaskMove(currentState, "inProgress");
+  completeTutorialAssignment(currentState, "backend");
+  tickUntilTutorialStepChanges(currentState, "wait-compromise-work");
+  completeTutorialTaskMove(currentState, "done");
+
+  completeTutorialTaskMove(currentState, "inProgress");
+  completeTutorialAssignment(currentState, "sre");
+  tickUntilTutorialStepChanges(currentState, "wait-deadline-work");
+  assert(
+    (currentState.tutorial?.stepId as string | undefined) === TUTORIAL_STEP_CHOOSE_DEADLINE,
+    "Tutorial full smoke expected deadline choice.",
+  );
+}
+
+function completeTutorialTaskMove(currentState: RtGameState, column: "inProgress" | "done"): void {
+  const taskId = currentState.tutorial?.focusTaskId;
+  assert(typeof taskId === "string", "Tutorial helper expected focus task.");
+  if (typeof taskId !== "string") throw new Error("Tutorial helper missing focus task.");
+  assert(canDropTutorialTask(currentState, taskId, column).allowed, `Tutorial helper expected ${column} move.`);
+  moveRealtimeTask(currentState, taskId, column);
+  advanceTutorialForTaskMove(currentState, taskId, column);
+}
+
+function completeTutorialAssignment(currentState: RtGameState, role: "backend" | "frontend" | "qa" | "sre"): void {
+  const taskId = currentState.tutorial?.focusTaskId;
+  assert(typeof taskId === "string", "Tutorial helper expected focus task for assignment.");
+  if (typeof taskId !== "string") throw new Error("Tutorial helper missing focus task for assignment.");
+  const character = Object.values(currentState.characters).find((candidate) => candidate.role === role);
+  assert(Boolean(character), `Tutorial helper expected ${role}.`);
+  if (!character) throw new Error(`Tutorial helper missing ${role}.`);
+  assert(canDropTutorialCharacter(currentState, character.id, taskId).allowed, `Tutorial helper expected ${role} drop.`);
+  assignCharacterToTask(currentState, character.id, taskId);
+  advanceTutorialForCharacterAssignment(currentState, character.id, taskId);
+}
+
+function tickUntilTutorialStepChanges(currentState: RtGameState, stepId: string): void {
+  for (
+    let guard = 0;
+    guard < 100 && (currentState.tutorial?.stepId as string | undefined) === stepId;
+    guard += 1
+  ) {
+    tickRealtime(currentState, 5000);
+  }
+  assert(
+    (currentState.tutorial?.stepId as string | undefined) !== stepId,
+    `Tutorial helper expected step ${stepId} to advance.`,
+  );
 }
 
 function runBacklogValueDecaySmoke() {

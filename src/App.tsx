@@ -11,7 +11,7 @@ import { SidePanel } from "./components/SidePanel";
 import { TeamPanel } from "./components/TeamPanel";
 import { VictoryReport } from "./components/VictoryReport";
 import { type RtGameState } from "./realtime/simulation";
-import { type Locale } from "./i18n";
+import { t, type Locale } from "./i18n";
 import { useTaskFeedback } from "./hooks/useTaskFeedback";
 import {
   useGameEventSounds,
@@ -43,7 +43,10 @@ import {
   saveMusicEnabledPreference,
 } from "./audio/audioPreferences";
 import type { TimeScale } from "./timeScale";
-import { loadTutorialCompleted } from "./tutorial/tutorialProgress";
+import {
+  loadTutorialCompleted,
+  saveTutorialCompleted,
+} from "./tutorial/tutorialProgress";
 import { tutorialFocusTaskId } from "./tutorial/tutorialDirector";
 import "./styles.css";
 
@@ -65,7 +68,7 @@ export function App() {
   const [game, setGame] = useState<RtGameState>(() => bootGame);
   const [screen, setScreen] = useState<AppScreen>("menu");
   const [musicEnabled, setMusicEnabled] = useState(loadMusicEnabledPreference);
-  const [tutorialCompleted] = useState(loadTutorialCompleted);
+  const [tutorialCompleted, setTutorialCompleted] = useState(loadTutorialCompleted);
   const [timeScale, setTimeScale] = useState<TimeScale>(1);
   const [hasResumeCard, setHasResumeCard] = useState(Boolean(restoredSave));
   const [prodView, setProdView] = useState<ProdView>("released");
@@ -217,6 +220,12 @@ export function App() {
     setSelectedCharacterId(null);
   }
 
+  function completeTutorialAndStartCampaign(): void {
+    saveTutorialCompleted(true);
+    setTutorialCompleted(true);
+    startRun("tutorial_completed_start_campaign");
+  }
+
   if (screen === "docs") {
     return (
       <DocsScreen
@@ -282,9 +291,18 @@ export function App() {
         />
       ) : morningReport ? (
         <MorningReportPage
+          continueLabel={
+            game.runMode === "tutorial" && game.tutorial?.completed
+              ? t(locale, "tutorial.startCampaign")
+              : undefined
+          }
           game={game}
           locale={locale}
-          onContinue={startBriefedDay}
+          onContinue={
+            game.runMode === "tutorial" && game.tutorial?.completed
+              ? completeTutorialAndStartCampaign
+              : startBriefedDay
+          }
           report={morningReport}
         />
       ) : (

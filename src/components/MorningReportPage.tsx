@@ -17,6 +17,7 @@ import {
 
 interface MorningReportPageProps {
   game: RtGameState;
+  continueLabel?: string;
   locale: Locale;
   onContinue: () => void;
   report: RtMorningReport;
@@ -24,6 +25,7 @@ interface MorningReportPageProps {
 
 export function MorningReportPage({
   game,
+  continueLabel,
   locale,
   onContinue,
   report,
@@ -65,7 +67,7 @@ export function MorningReportPage({
           onClick={onContinue}
           type="button"
         >
-          {t(locale, "morning.startDay")}
+          {continueLabel ?? t(locale, "morning.startDay")}
         </button>
       </div>
 

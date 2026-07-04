@@ -99,7 +99,7 @@ function TutorialQuest({
   return (
     <section className="panel tutorial-quest-panel side-panel-slide">
       <span className="tutorial-quest-kicker">{t(locale, "tutorial.kicker")}</span>
-      <h2>{t(locale, "tutorial.stage.teamBasics")}</h2>
+      <h2>{t(locale, `tutorial.stage.${tutorial.stageId}`)}</h2>
       <ol className="tutorial-step-list">
         {steps.map((step) => (
           <li
