@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-07-04 - v0.1.43 Compact game event telemetry
+
+Продолжен рефакторинг логгера:
+
+- игровые события теперь проходят через `buildGameEventTelemetry`;
+- telemetry payload больше не тащит `title/body` игровых событий;
+- payload хранит структурные поля: `eventType`, время, день, `taskId`, `characterId`, роли, `effects`, `data`, компактный snapshot ресурсов;
+- action logs очищены от части шумных текстовых полей (`taskTitle`, `characterName`);
+- лог старта дня больше не отправляет полный массив consequences/effects, только ids/counts.
+
+Это schema-compatible logging refactor. Gameplay save schema не менялась: `SAVE_SCHEMA_VERSION` остается `rt-campaign-v6`.
+
+---
+
 ## 2026-07-04 - v0.1.42 Snapshot logging opt-in
 
 Продолжен рефакторинг логгера:

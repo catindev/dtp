@@ -99,7 +99,6 @@ function dropOutsourceOnTask(context: GameDropContext, task: RtTask): void {
     canOutsource ? "outsourcing_dropped_on_task" : "outsourcing_drop_rejected",
     {
       taskId: task.id,
-      taskTitle: task.title,
       column: task.column,
       budget: context.game.resources.budget,
       reason: outsourceStatusText(outsourceStatus, context.locale),
@@ -139,10 +138,8 @@ function dropCharacterOnTask(
     canAssign ? "character_dropped_on_task" : "character_drop_rejected",
     {
       characterId,
-      characterName: character?.name,
       role: character?.role,
       taskId: task.id,
-      taskTitle: task.title,
       column: task.column,
       reason: canAssign ? "assigned" : characterDropRejectReason(context.game, characterId, task),
       gameTime: formatGameTime(context.game),

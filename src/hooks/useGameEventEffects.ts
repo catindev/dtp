@@ -1,6 +1,6 @@
 import { useEffect, type MutableRefObject } from "react";
 import { APP_COMMIT, type AutosaveLoadResult } from "../save";
-import { formatGameTime, type RtEvent, type RtGameState } from "../realtime/simulation";
+import { type RtEvent, type RtGameState } from "../realtime/simulation";
 import {
   createLogEntry,
   gameEventKey,
@@ -8,6 +8,7 @@ import {
   postBackendLog,
   type FrontendLogEntry,
 } from "../frontendLogging";
+import { buildGameEventTelemetry } from "../logging/gameEventTelemetry";
 
 interface UseGameEventEffectsArgs {
   game: RtGameState;
@@ -46,14 +47,7 @@ export function useGameEventEffects({
       if (loggedEventKeysRef.current.has(key)) continue;
       loggedEventKeysRef.current.add(key);
       newEntries.push(
-        createLogEntry(sessionIdRef.current, "event", event.type, {
-          channel: "game_event",
-          ...event,
-          gameTime: formatGameTime(game),
-          resources: game.resources,
-          status: game.status,
-          lossReason: game.lossReason,
-        }),
+        createLogEntry(sessionIdRef.current, "event", event.type, buildGameEventTelemetry(game, event)),
       );
     }
     if (newEntries.length > 0) {

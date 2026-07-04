@@ -162,8 +162,10 @@ export function useGameActions({
       day: currentReport.day,
       previousDay: currentReport.previousDay,
       shippedTaskIds: currentReport.shippedTaskIds,
-      effects: currentReport.effects,
-      consequences: currentReport.consequences,
+      shippedCount: currentReport.shippedTaskIds.length,
+      missedCount: currentReport.missedTaskIds.length,
+      consequenceCount: currentReport.consequences.length,
+      effectCount: currentReport.effects.length,
     });
   }
 
@@ -175,9 +177,7 @@ export function useGameActions({
     });
     logAction(sessionIdRef.current, "cancel_task_clicked", {
       taskId: selectedTask.id,
-      taskTitle: selectedTask.title,
       characterId: character?.id,
-      characterName: character?.name,
       stageProgress: selectedTask.stageProgress,
       gameTime: formatGameTime(game),
     });
