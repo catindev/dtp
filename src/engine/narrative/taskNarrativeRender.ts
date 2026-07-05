@@ -88,6 +88,6 @@ function renderTemplate(
   return template.replace(/\{(?<key>[a-zA-Z0-9_]+)\}/g, (match, key: string) => {
     const valueId = variableValueIds[key];
     const value = valueId ? variables[key]?.values[valueId] : undefined;
-    return value?.[locale] ?? value?.en ?? match;
+    return value?.[locale] ?? value?.en ?? valueId ?? match;
   });
 }

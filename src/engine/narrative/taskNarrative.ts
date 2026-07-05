@@ -5,6 +5,7 @@ import type {
   RtTaskDomain,
   RtTaskKind,
   RtTaskNarrativeRef,
+  RtReleaseConsequenceCause,
 } from "../types";
 import {
   TASK_NARRATIVE_ARCHETYPE_IDS_BY_KIND,
@@ -75,4 +76,33 @@ export function assertTaskNarrative(task: RtTask): void {
       `Task ${task.id} narrative branch missing: ${task.narrativeRef.archetypeId}/${task.narrativeRef.branchId}`,
     );
   }
+}
+
+export function setFalloutTaskNarrativeRef(
+  task: RtTask,
+  sourceTask: RtTask,
+  cause: RtReleaseConsequenceCause,
+): void {
+  const archetypeId = falloutArchetypeIdForKind(task.kind);
+  task.narrativeRef = {
+    archetypeId,
+    variantSeed: task.narrativeRef.variantSeed,
+    branchId: "default",
+    variableValueIds: {
+      area: sourceTask.domain,
+      sourceTaskId: sourceTask.id,
+      cause,
+    },
+    tags: ["fallout", cause],
+    tone: "tense",
+    density: "core",
+  };
+  task.title = `${task.id}: ${archetypeId}`;
+}
+
+function falloutArchetypeIdForKind(kind: RtTaskKind): string {
+  if (kind === "bug") return "fallout.bug.regression";
+  if (kind === "integration") return "fallout.integration.escalation";
+  if (kind === "feature") return "fallout.feature.rework";
+  return "fallout.incident.escalation";
 }

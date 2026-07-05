@@ -9,6 +9,7 @@ export {
   assertTaskNarrative,
   createTaskNarrativeRef,
   getTaskNarrativeArchetype,
+  setFalloutTaskNarrativeRef,
 } from "./taskNarrative";
 export {
   TASK_NARRATIVE_ARCHETYPE_IDS_BY_KIND,

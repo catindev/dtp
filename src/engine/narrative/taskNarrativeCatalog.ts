@@ -67,8 +67,55 @@ export const DOMAIN_AREA_VALUES: Record<RtTaskDomain, Record<EngineLocale, strin
   },
 };
 
+export const FALLOUT_CAUSE_VALUES: Record<string, Record<EngineLocale, string>> = {
+  known_bug: {
+    en: "known bugs",
+    ru: "известных багов",
+  },
+  changed_after_qa: {
+    en: "changes after QA",
+    ru: "изменений после QA",
+  },
+  no_qa: {
+    en: "no QA pass",
+    ru: "отсутствия QA-прохода",
+  },
+  no_sre: {
+    en: "missing SRE safety",
+    ru: "отсутствия SRE-защиты",
+  },
+  critical_open: {
+    en: "open critical work",
+    ru: "открытой критичной работы",
+  },
+  important_open: {
+    en: "open important work",
+    ru: "открытой важной работы",
+  },
+  low_clarity: {
+    en: "low clarity",
+    ru: "низкой понятности",
+  },
+  missed_deadline: {
+    en: "missed deadline",
+    ru: "сорванного дедлайна",
+  },
+  ignored_work: {
+    en: "ignored work",
+    ru: "проигнорированной работы",
+  },
+  terminal_chain: {
+    en: "terminal fallout",
+    ru: "завершенного хвоста",
+  },
+};
+
 const areaVariable: TaskNarrativeVariable = {
   values: DOMAIN_AREA_VALUES,
+};
+
+const causeVariable: TaskNarrativeVariable = {
+  values: FALLOUT_CAUSE_VALUES,
 };
 
 export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> = {
@@ -681,6 +728,142 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             problem: "Партнерский экспорт нужно стабилизировать прямо перед закрытием окна релиза.",
             stakes: "Ты учишься принимать решение под давлением дедлайна.",
             failurePreview: "Поздний релиз теряет value; игнорирование создает последствия сорванной работы.",
+          },
+        },
+      },
+    },
+  },
+  "fallout.bug.regression": {
+    id: "fallout.bug.regression",
+    kind: "bug",
+    tags: ["fallout", "core", "defect"],
+    meaning: [
+      "This bug exists because an earlier task created fallout.",
+      "The source task id and cause must remain structured.",
+      "The player should recognize the consequence without reading a noisy title.",
+    ],
+    variables: {
+      area: areaVariable,
+      cause: causeVariable,
+    },
+    branches: {
+      default: {
+        id: "default",
+        layer: "core",
+        core: {
+          en: {
+            headline: "Fix fallout in {area}",
+            problem: "The {area} regressed after {sourceTaskId} because of {cause}.",
+            stakes: "Closing the follow-up prevents yesterday's compromise from becoming normal work.",
+            failurePreview: "If ignored, the fallout chain can keep consuming team capacity.",
+          },
+          ru: {
+            headline: "Починить хвост в зоне: {area}",
+            problem: "{area} сломалось после {sourceTaskId} из-за {cause}.",
+            stakes: "Закрытый хвост не дает вчерашнему компромиссу стать постоянной работой.",
+            failurePreview: "Если игнорировать, цепочка хвостов продолжит съедать capacity команды.",
+          },
+        },
+      },
+    },
+  },
+  "fallout.incident.escalation": {
+    id: "fallout.incident.escalation",
+    kind: "incident",
+    tags: ["fallout", "core", "incident"],
+    meaning: [
+      "This incident is a consequence of earlier dirty, late, or missed work.",
+      "It should feel like a named escalation, not a random new task.",
+      "The source task id and cause must be available for logs and UI links.",
+    ],
+    variables: {
+      area: areaVariable,
+      cause: causeVariable,
+    },
+    branches: {
+      default: {
+        id: "default",
+        layer: "core",
+        core: {
+          en: {
+            headline: "Handle fallout escalation in {area}",
+            problem: "A problem from {sourceTaskId} reached production because of {cause}.",
+            stakes: "Stabilizing it protects trust and closes a visible consequence chain.",
+            failurePreview: "If it misses again, the chain can terminate as direct business damage.",
+          },
+          ru: {
+            headline: "Разобрать эскалацию в зоне: {area}",
+            problem: "Проблема из {sourceTaskId} дошла до production из-за {cause}.",
+            stakes: "Стабилизация защищает доверие и закрывает видимую цепочку последствий.",
+            failurePreview: "Если снова пропустить, цепочка может закрыться прямым бизнес-уроном.",
+          },
+        },
+      },
+    },
+  },
+  "fallout.integration.escalation": {
+    id: "fallout.integration.escalation",
+    kind: "integration",
+    tags: ["fallout", "core", "partner"],
+    meaning: [
+      "This is partner-facing follow-up work caused by an earlier task.",
+      "The source task remains structured for inspector links and telemetry.",
+      "It should read as consequence work, not a fresh opportunity.",
+    ],
+    variables: {
+      area: areaVariable,
+      cause: causeVariable,
+    },
+    branches: {
+      default: {
+        id: "default",
+        layer: "core",
+        core: {
+          en: {
+            headline: "Repair partner fallout in {area}",
+            problem: "Partner work around {area} came back after {sourceTaskId} because of {cause}.",
+            stakes: "A clean fix turns the follow-up back into controlled delivery.",
+            failurePreview: "If ignored, the partner issue can become another escalation.",
+          },
+          ru: {
+            headline: "Починить партнерский хвост: {area}",
+            problem: "Партнерская работа вокруг {area} вернулась после {sourceTaskId} из-за {cause}.",
+            stakes: "Чистый фикс возвращает хвост в управляемую доставку.",
+            failurePreview: "Если игнорировать, партнерская проблема может стать новой эскалацией.",
+          },
+        },
+      },
+    },
+  },
+  "fallout.feature.rework": {
+    id: "fallout.feature.rework",
+    kind: "feature",
+    tags: ["fallout", "core", "rework"],
+    meaning: [
+      "This feature work is rework caused by a previous compromise.",
+      "The card should explain the consequence without bloating the headline.",
+      "The source task id and cause remain structured.",
+    ],
+    variables: {
+      area: areaVariable,
+      cause: causeVariable,
+    },
+    branches: {
+      default: {
+        id: "default",
+        layer: "core",
+        core: {
+          en: {
+            headline: "Rework fallout in {area}",
+            problem: "The request around {area} came back after {sourceTaskId} because of {cause}.",
+            stakes: "Doing the rework cleanly stops the old compromise from leaking into new work.",
+            failurePreview: "If skipped, the same confusion can return as another follow-up.",
+          },
+          ru: {
+            headline: "Переделать хвост в зоне: {area}",
+            problem: "Запрос вокруг {area} вернулся после {sourceTaskId} из-за {cause}.",
+            stakes: "Чистая переделка не дает старому компромиссу протечь в новую работу.",
+            failurePreview: "Если пропустить, та же путаница может вернуться новым хвостом.",
           },
         },
       },

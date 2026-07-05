@@ -196,14 +196,39 @@ function runMissedWorkSmoke() {
       consequence.cause === "missed_deadline",
   );
   assert(Boolean(fallout), "Missed-work smoke expected missed in-progress fallout.");
+  if (!fallout) throw new Error("Missed-work smoke missing fallout.");
   assert(controlledTask.resolved, "Missed-work smoke expected source task resolved.");
   assert(report.daySummary.missedInProgress >= 1, "Missed-work smoke expected missed progress summary.");
+  const falloutTask = fallout?.generatedTaskId ? currentState.tasks[fallout.generatedTaskId] : null;
+  assert(Boolean(falloutTask), "Missed-work smoke expected generated fallout task.");
+  if (!falloutTask) throw new Error("Missed-work smoke missing generated fallout task.");
+  assert(
+    falloutTask.narrativeRef.tags.includes("fallout"),
+    "Missed-work smoke expected fallout narrative tag.",
+  );
+  assert(
+    falloutTask.narrativeRef.variableValueIds.sourceTaskId === controlledTask.id,
+    "Missed-work smoke expected structured source task id.",
+  );
+  assert(
+    falloutTask.narrativeRef.variableValueIds.cause === "missed_deadline",
+    "Missed-work smoke expected structured fallout cause.",
+  );
+  assert(
+    !falloutTask.title.includes("after"),
+    "Missed-work smoke expected no noisy source wording in debug title.",
+  );
+  assert(
+    renderTaskNarrative(falloutTask, "en").core.problem.includes(controlledTask.id),
+    "Missed-work smoke expected rendered fallout problem to mention source id.",
+  );
 
   return {
     name: "missed-work",
     missedInProgress: report.daySummary.missedInProgress,
-    fallout: fallout?.generatedTaskId ?? fallout?.effects.join(", "),
+    fallout: fallout.generatedTaskId ?? fallout.effects.join(", "),
     resolution: controlledTask.resolution,
+    archetypeId: falloutTask.narrativeRef.archetypeId,
   };
 }
 
@@ -421,7 +446,7 @@ function runNarrativeContractSmoke() {
 
 function runNarrativeCatalogSmoke() {
   const coreArchetypes = Object.values(TASK_NARRATIVE_ARCHETYPES).filter(
-    (archetype) => !archetype.id.startsWith("tutorial."),
+    (archetype) => archetype.id.startsWith("core."),
   );
   assert(coreArchetypes.length >= 14, "Narrative catalog smoke expected at least 14 core archetypes.");
   for (const [kind, ids] of Object.entries(TASK_NARRATIVE_ARCHETYPE_IDS_BY_KIND)) {
