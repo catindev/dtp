@@ -9,6 +9,10 @@ export {
   getTaskNarrativeArchetype,
 } from "./taskNarrative";
 export {
+  TASK_NARRATIVE_ARCHETYPE_IDS_BY_KIND,
+  TASK_NARRATIVE_ARCHETYPES,
+} from "./taskNarrativeCatalog";
+export {
   renderTaskNarrative,
   type RenderedTaskNarrative,
 } from "./taskNarrativeRender";

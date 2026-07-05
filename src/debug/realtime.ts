@@ -27,7 +27,11 @@ import { createLogEntry } from "../logging/backendLog";
 import { buildGameEventTelemetry } from "../logging/gameEventTelemetry";
 import { buildDaySummaryTelemetry } from "../logging/summaryTelemetry";
 import { characterDropRejectReason } from "../hooks/dragAndDropHelpers";
-import { createTaskNarrativeRef } from "../engine/narrative";
+import {
+  TASK_NARRATIVE_ARCHETYPE_IDS_BY_KIND,
+  TASK_NARRATIVE_ARCHETYPES,
+  createTaskNarrativeRef,
+} from "../engine/narrative";
 import { loadTutorialCompleted } from "../tutorial/tutorialProgress";
 import {
   TUTORIAL_STEP_ASSIGN_QA,
@@ -65,6 +69,7 @@ const smoke = [
   runTutorialStageOneSmoke(),
   runTutorialFullFlowSmoke(),
   runNarrativeContractSmoke(),
+  runNarrativeCatalogSmoke(),
   runMigrationNormalizationSmoke(),
   runDebugSnapshotSmoke(),
   runOutsourceSmoke(),
@@ -409,6 +414,42 @@ function runNarrativeContractSmoke() {
     archetypeId: task.narrativeRef.archetypeId,
     en: en.headline,
     ru: ru.headline,
+  };
+}
+
+function runNarrativeCatalogSmoke() {
+  const coreArchetypes = Object.values(TASK_NARRATIVE_ARCHETYPES).filter(
+    (archetype) => !archetype.id.startsWith("tutorial."),
+  );
+  assert(coreArchetypes.length >= 14, "Narrative catalog smoke expected at least 14 core archetypes.");
+  for (const [kind, ids] of Object.entries(TASK_NARRATIVE_ARCHETYPE_IDS_BY_KIND)) {
+    assert(ids.length >= 2, `Narrative catalog smoke expected at least 2 archetypes for ${kind}.`);
+  }
+  for (const archetype of coreArchetypes) {
+    assert(archetype.meaning.length >= 3, `Narrative catalog smoke expected meaning for ${archetype.id}.`);
+    const branches = Object.values(archetype.branches);
+    assert(branches.length > 0, `Narrative catalog smoke expected branches for ${archetype.id}.`);
+    for (const branch of branches) {
+      for (const locale of ["en", "ru"] as const) {
+        const core = branch.core[locale];
+        assert(Boolean(core), `Narrative catalog smoke expected ${locale} core for ${archetype.id}.`);
+        assert(core.headline.length > 0, `Narrative catalog smoke expected ${locale} headline for ${archetype.id}.`);
+        assert(core.problem.length > 0, `Narrative catalog smoke expected ${locale} problem for ${archetype.id}.`);
+        assert(core.stakes.length > 0, `Narrative catalog smoke expected ${locale} stakes for ${archetype.id}.`);
+        assert(
+          core.failurePreview.length > 0,
+          `Narrative catalog smoke expected ${locale} failure preview for ${archetype.id}.`,
+        );
+      }
+    }
+  }
+
+  return {
+    name: "narrative-catalog",
+    coreArchetypes: coreArchetypes.length,
+    kinds: Object.fromEntries(
+      Object.entries(TASK_NARRATIVE_ARCHETYPE_IDS_BY_KIND).map(([kind, ids]) => [kind, ids.length]),
+    ),
   };
 }
 

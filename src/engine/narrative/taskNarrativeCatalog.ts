@@ -32,6 +32,8 @@ export interface TaskNarrativeVariable {
 export interface TaskNarrativeArchetype {
   id: string;
   kind: RtTaskKind;
+  domains?: readonly RtTaskDomain[];
+  weight?: number;
   tags: string[];
   meaning: string[];
   variables: Record<string, TaskNarrativeVariable>;
@@ -101,6 +103,37 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       },
     },
   },
+  "core.feature.saved-view": {
+    id: "core.feature.saved-view",
+    kind: "feature",
+    tags: ["core", "delivery", "workflow"],
+    meaning: [
+      "Business wants a small workflow improvement.",
+      "The task is valuable when the user-facing path is clear.",
+      "It can become waste if shipped without enough clarity or QA.",
+    ],
+    variables: { area: areaVariable },
+    branches: {
+      default: {
+        id: "default",
+        layer: "core",
+        core: {
+          en: {
+            headline: "Add a saved view for {area}",
+            problem: "A team keeps repeating the same setup in the {area} and wants it saved.",
+            stakes: "Clean delivery saves time for real users and adds product value.",
+            failurePreview: "If the flow is unclear, users get another confusing switch instead of relief.",
+          },
+          ru: {
+            headline: "Добавить сохраненный вид для зоны: {area}",
+            problem: "Команда каждый день повторяет одну настройку в зоне: {area}, и просит ее сохранять.",
+            stakes: "Чистая поставка экономит время реальным пользователям и добавляет ценность.",
+            failurePreview: "Если сценарий непонятен, пользователи получат не облегчение, а еще один мутный переключатель.",
+          },
+        },
+      },
+    },
+  },
   "core.bug.visible": {
     id: "core.bug.visible",
     kind: "bug",
@@ -127,6 +160,37 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             problem: "Пользователи упираются в поломанный путь в зоне: {area}.",
             stakes: "Проверенный фикс снижает шум поддержки и повторные обращения.",
             failurePreview: "Если выпустить наполовину, QA найдет доработки или клиенты снова заметят баг.",
+          },
+        },
+      },
+    },
+  },
+  "core.bug.duplicate-action": {
+    id: "core.bug.duplicate-action",
+    kind: "bug",
+    tags: ["core", "defect", "workflow"],
+    meaning: [
+      "The system performs a visible action incorrectly.",
+      "The task needs implementation and verification.",
+      "A partial fix can create repeated user-facing damage.",
+    ],
+    variables: { area: areaVariable },
+    branches: {
+      default: {
+        id: "default",
+        layer: "core",
+        core: {
+          en: {
+            headline: "Stop duplicate action in {area}",
+            problem: "The {area} sometimes applies the same user action twice.",
+            stakes: "A verified fix prevents visible mistakes and support churn.",
+            failurePreview: "If released dirty, the duplicate action can come back as a customer-facing bug.",
+          },
+          ru: {
+            headline: "Убрать двойное действие в зоне: {area}",
+            problem: "{area} иногда применяет одно действие пользователя дважды.",
+            stakes: "Проверенный фикс убирает заметные ошибки и шум поддержки.",
+            failurePreview: "Если выпустить грязно, двойное действие вернется клиентским багом.",
           },
         },
       },
@@ -163,6 +227,37 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       },
     },
   },
+  "core.techDebt.split-module": {
+    id: "core.techDebt.split-module",
+    kind: "techDebt",
+    tags: ["core", "debt", "maintainability"],
+    meaning: [
+      "The task is maintenance work with future payoff.",
+      "Clean release should reduce debt rather than only add value.",
+      "Skipping it leaves future tasks more expensive.",
+    ],
+    variables: { area: areaVariable },
+    branches: {
+      default: {
+        id: "default",
+        layer: "core",
+        core: {
+          en: {
+            headline: "Untangle the {area} module",
+            problem: "Several unrelated behaviors are mixed inside the {area} implementation.",
+            stakes: "Clean tech debt work lowers debt and makes future fixes cheaper.",
+            failurePreview: "If ignored, ordinary changes keep dragging extra risk behind them.",
+          },
+          ru: {
+            headline: "Распутать модуль зоны: {area}",
+            problem: "В реализации зоны {area} смешаны несколько несвязанных поведений.",
+            stakes: "Чистая работа по техдолгу снижает долг и удешевляет будущие фиксы.",
+            failurePreview: "Если игнорировать, обычные изменения продолжат тащить за собой лишний риск.",
+          },
+        },
+      },
+    },
+  },
   "core.integration.flow": {
     id: "core.integration.flow",
     kind: "integration",
@@ -189,6 +284,37 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             problem: "Другой системе нужны надежные данные из зоны: {area}.",
             stakes: "Чистая интеграция поддержит партнерский процесс без ручных обходов.",
             failurePreview: "Слабый релиз может сломать передачу данных и вернуться инцидентом.",
+          },
+        },
+      },
+    },
+  },
+  "core.integration.partner-sync": {
+    id: "core.integration.partner-sync",
+    kind: "integration",
+    tags: ["core", "dependency", "partner"],
+    meaning: [
+      "The task connects an internal flow to a partner-facing dependency.",
+      "Bad integration work can create high-impact fallout.",
+      "QA and SRE coverage are important when impact is high.",
+    ],
+    variables: { area: areaVariable },
+    branches: {
+      default: {
+        id: "default",
+        layer: "core",
+        core: {
+          en: {
+            headline: "Sync {area} with partner system",
+            problem: "A partner system expects the {area} data to arrive in a reliable format.",
+            stakes: "Clean integration keeps external commitments predictable.",
+            failurePreview: "A weak handoff can break the partner flow and return as an escalation.",
+          },
+          ru: {
+            headline: "Синхронизировать {area} с партнерской системой",
+            problem: "Партнерская система ждет данные из зоны {area} в надежном формате.",
+            stakes: "Чистая интеграция делает внешние обязательства предсказуемыми.",
+            failurePreview: "Слабая передача данных может сломать партнерский процесс и вернуться эскалацией.",
           },
         },
       },
@@ -225,6 +351,37 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       },
     },
   },
+  "core.incident.restore-path": {
+    id: "core.incident.restore-path",
+    kind: "incident",
+    tags: ["core", "incident", "production"],
+    meaning: [
+      "Something important is already failing in production.",
+      "The player should treat it as urgent and trust-sensitive.",
+      "Incomplete work can create another morning fallout card.",
+    ],
+    variables: { area: areaVariable },
+    branches: {
+      default: {
+        id: "default",
+        layer: "core",
+        core: {
+          en: {
+            headline: "Restore failing {area} path",
+            problem: "A production path in the {area} is failing often enough for business to notice.",
+            stakes: "Clean stabilization protects trust and reduces follow-up pressure.",
+            failurePreview: "If the fix is late or unfinished, the failure can escalate tomorrow.",
+          },
+          ru: {
+            headline: "Восстановить падающий путь в зоне: {area}",
+            problem: "Production-путь в зоне {area} падает достаточно часто, чтобы бизнес это заметил.",
+            stakes: "Чистая стабилизация защищает доверие и снижает давление хвостов.",
+            failurePreview: "Если фикс опоздает или останется незавершенным, завтра проблема эскалируется.",
+          },
+        },
+      },
+    },
+  },
   "core.performance.slow": {
     id: "core.performance.slow",
     kind: "performance",
@@ -256,6 +413,37 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       },
     },
   },
+  "core.performance.cache": {
+    id: "core.performance.cache",
+    kind: "performance",
+    tags: ["core", "performance", "load"],
+    meaning: [
+      "The flow is slow and needs a technical performance fix.",
+      "Clean work improves value without adding instability.",
+      "Untested optimization can create production fallout.",
+    ],
+    variables: { area: areaVariable },
+    branches: {
+      default: {
+        id: "default",
+        layer: "core",
+        core: {
+          en: {
+            headline: "Cache slow {area} response",
+            problem: "The {area} waits on the same expensive response too often.",
+            stakes: "A clean performance fix makes the product feel faster without hiding bugs.",
+            failurePreview: "A rushed cache can show stale data or fail under load.",
+          },
+          ru: {
+            headline: "Закешировать медленный ответ: {area}",
+            problem: "{area} слишком часто ждет один и тот же дорогой ответ.",
+            stakes: "Чистый performance-фикс ускоряет продукт и не прячет баги.",
+            failurePreview: "Поспешный кеш может показать устаревшие данные или сломаться под нагрузкой.",
+          },
+        },
+      },
+    },
+  },
   "core.compliance.sensitive": {
     id: "core.compliance.sensitive",
     kind: "compliance",
@@ -282,6 +470,37 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             problem: "{area} работает с чувствительными данными, и бизнес просит усилить защиту.",
             stakes: "Чистый релиз снижает compliance-риск и сохраняет доверие.",
             failurePreview: "Если поспешить, задача может вернуться заметной политической проблемой.",
+          },
+        },
+      },
+    },
+  },
+  "core.compliance.masking": {
+    id: "core.compliance.masking",
+    kind: "compliance",
+    tags: ["core", "compliance", "privacy"],
+    meaning: [
+      "The task is about protecting sensitive information.",
+      "The player should recognize high trust risk if shipped dirty.",
+      "QA/SRE coverage helps prevent policy fallout.",
+    ],
+    variables: { area: areaVariable },
+    branches: {
+      default: {
+        id: "default",
+        layer: "core",
+        core: {
+          en: {
+            headline: "Mask sensitive fields in {area}",
+            problem: "The {area} exposes fields that should be hidden from everyday users.",
+            stakes: "Clean compliance work prevents trust damage before anyone escalates it.",
+            failurePreview: "A dirty release can become a visible policy problem tomorrow.",
+          },
+          ru: {
+            headline: "Скрыть чувствительные поля в зоне: {area}",
+            problem: "{area} показывает поля, которые обычные пользователи видеть не должны.",
+            stakes: "Чистая compliance-работа предотвращает удар по доверию до эскалации.",
+            failurePreview: "Грязный релиз может завтра стать заметной политической проблемой.",
           },
         },
       },
@@ -414,11 +633,11 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
 };
 
 export const TASK_NARRATIVE_ARCHETYPE_IDS_BY_KIND: Record<RtTaskKind, readonly string[]> = {
-  feature: ["core.feature.workflow"],
-  bug: ["core.bug.visible"],
-  techDebt: ["core.techDebt.fragile"],
-  integration: ["core.integration.flow"],
-  incident: ["core.incident.stabilize"],
-  performance: ["core.performance.slow"],
-  compliance: ["core.compliance.sensitive"],
+  feature: ["core.feature.workflow", "core.feature.saved-view"],
+  bug: ["core.bug.visible", "core.bug.duplicate-action"],
+  techDebt: ["core.techDebt.fragile", "core.techDebt.split-module"],
+  integration: ["core.integration.flow", "core.integration.partner-sync"],
+  incident: ["core.incident.stabilize", "core.incident.restore-path"],
+  performance: ["core.performance.slow", "core.performance.cache"],
+  compliance: ["core.compliance.sensitive", "core.compliance.masking"],
 };

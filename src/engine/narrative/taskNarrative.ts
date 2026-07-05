@@ -1,4 +1,4 @@
-import { pickOne, randomInt } from "../rng";
+import { randomInt, weightedPick } from "../rng";
 import type {
   RtGameState,
   RtTask,
@@ -17,7 +17,7 @@ export function createTaskNarrativeRef(
   kind: RtTaskKind,
   domain: RtTaskDomain,
 ): RtTaskNarrativeRef {
-  const archetypeId = pickOne(state, TASK_NARRATIVE_ARCHETYPE_IDS_BY_KIND[kind]);
+  const archetypeId = chooseTaskNarrativeArchetypeId(state, kind, domain);
   return {
     archetypeId,
     variantSeed: randomInt(state, 1, 999999),
@@ -29,6 +29,26 @@ export function createTaskNarrativeRef(
     tone: "neutral",
     density: "core",
   };
+}
+
+function chooseTaskNarrativeArchetypeId(
+  state: RtGameState,
+  kind: RtTaskKind,
+  domain: RtTaskDomain,
+): string {
+  const candidates = TASK_NARRATIVE_ARCHETYPE_IDS_BY_KIND[kind]
+    .map((archetypeId) => getTaskNarrativeArchetype(archetypeId))
+    .filter((archetype) => !archetype.domains || archetype.domains.includes(domain));
+  if (candidates.length === 0) {
+    throw new Error(`No task narrative archetype for ${kind}/${domain}`);
+  }
+  return weightedPick(
+    state,
+    candidates.map((archetype) => ({
+      item: archetype.id,
+      weight: archetype.weight ?? 1,
+    })),
+  );
 }
 
 export function getTaskNarrativeArchetype(archetypeId: string): TaskNarrativeArchetype {
