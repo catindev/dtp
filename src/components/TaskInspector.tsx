@@ -5,6 +5,7 @@ import {
   isUntouchedBacklogTask,
   lateReleaseReport,
   releaseReadiness,
+  renderTaskComment,
   renderTaskNarrative,
   taskDeadlineRatio,
   type RtCharacter,
@@ -94,6 +95,7 @@ export function TaskInspector({
         {narrative.flavor?.aside ? <p className="task-story-flavor">{narrative.flavor.aside}</p> : null}
       </div>
       <ReadinessBadge locale={locale} report={readiness} />
+      {task.comments.length > 0 ? <TaskCommentList locale={locale} task={task} /> : null}
       <SubtaskList locale={locale} task={task} />
       {task.column === "done" && !task.released ? (
         <p>{t(locale, "inspector.queued", { cost: DONE_REWORK_TRUST_COST })}</p>
@@ -175,6 +177,19 @@ export function TaskInspector({
 
 function taskLinkLabel(task: RtTask, locale: Locale): string {
   return renderTaskNarrative(task, locale).title;
+}
+
+function TaskCommentList({ locale, task }: { locale: Locale; task: RtTask }) {
+  return (
+    <div className="task-comments">
+      <h3>{t(locale, "comments.title")}</h3>
+      {task.comments.map((comment) => (
+        <p className={`task-comment ${comment.class}`} key={comment.id}>
+          {renderTaskComment(comment, locale)}
+        </p>
+      ))}
+    </div>
+  );
 }
 
 function SubtaskList({ locale, task }: { locale: Locale; task: RtTask }) {

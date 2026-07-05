@@ -16,6 +16,11 @@ export {
   TASK_NARRATIVE_ARCHETYPES,
 } from "./taskNarrativeCatalog";
 export {
+  TASK_COMMENT_TEMPLATES,
+  addTaskComment,
+  renderTaskComment,
+} from "./taskComments";
+export {
   renderTaskNarrative,
   type RenderedTaskNarrative,
 } from "./taskNarrativeRender";

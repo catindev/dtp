@@ -2170,6 +2170,7 @@ button:disabled {
 .subtask-list,
 .source-link-panel,
 .task-story,
+.task-comments,
 .postmortem {
   border: 1px solid var(--border-soft);
   display: grid;
@@ -2179,6 +2180,7 @@ button:disabled {
 
 .subtask-list h3,
 .source-link-panel h3,
+.task-comments h3,
 .postmortem h3 {
   font-size: 12px;
   margin: 0;
@@ -2202,6 +2204,26 @@ button:disabled {
 .task-story-flavor {
   border-top: 1px solid var(--border-faint);
   padding-top: 5px;
+}
+
+.task-comments {
+  background: var(--surface-panel);
+}
+
+.task-comment {
+  border-left: 3px solid var(--border-soft);
+  color: var(--color-muted-strong);
+  line-height: 1.35;
+  margin: 0;
+  padding-left: 7px;
+}
+
+.task-comment.signal {
+  border-left-color: var(--color-risk);
+}
+
+.task-comment.flavor {
+  border-left-color: var(--border-clean-muted);
 }
 
 .task-link-chip {

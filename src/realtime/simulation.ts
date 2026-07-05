@@ -119,6 +119,7 @@ export {
   taskDeadlineRatio,
 } from "../engine/readiness";
 export {
+  renderTaskComment,
   renderTaskNarrative,
 } from "../engine/narrative";
 export type {

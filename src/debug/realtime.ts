@@ -31,6 +31,7 @@ import {
   TASK_NARRATIVE_ARCHETYPE_IDS_BY_KIND,
   TASK_NARRATIVE_ARCHETYPES,
   createTaskNarrativeRef,
+  renderTaskComment,
 } from "../engine/narrative";
 import { generateTask } from "../engine/taskFactory";
 import { loadTutorialCompleted } from "../tutorial/tutorialProgress";
@@ -1022,6 +1023,15 @@ function runPartialQaCoverageSmoke() {
   assert(readiness.reasons.includes("no_qa"), "Partial QA smoke expected no_qa to remain.");
   assert(canAssignCharacterToTask(currentState, qa.id, controlledTask.id), "Partial QA smoke expected QA reassignment.");
   assert(/QA coverage is partial/.test(controlledTask.lastNote), "Partial QA smoke expected partial coverage note.");
+  const partialQaComment = controlledTask.comments.find(
+    (comment) => comment.narrativeId === "signal.partial-qa-coverage",
+  );
+  assert(Boolean(partialQaComment), "Partial QA smoke expected signal comment.");
+  if (!partialQaComment) throw new Error("Partial QA smoke missing signal comment.");
+  assert(
+    renderTaskComment(partialQaComment, "ru").includes("QA-покрытие частичное"),
+    "Partial QA smoke expected localized comment render.",
+  );
 
   return {
     name: "partial-qa-coverage",
@@ -1029,6 +1039,7 @@ function runPartialQaCoverageSmoke() {
     qaSubtaskDone: qaSubtask.done,
     qaSubtaskProgress: qaSubtask.progress,
     canReassignQa: true,
+    comments: controlledTask.comments.length,
   };
 }
 
@@ -1054,12 +1065,17 @@ function runQaRecheckSmoke() {
     currentState.log.some((event) => event.effects.includes("QA recheck required")),
     "QA recheck smoke expected event marker.",
   );
+  assert(
+    controlledTask.comments.some((comment) => comment.narrativeId === "signal.changed-after-qa"),
+    "QA recheck smoke expected changed-after-QA signal comment.",
+  );
 
   return {
     name: "qa-recheck",
     changedAfterQa: controlledTask.changedAfterQa,
     testCoverage: controlledTask.testCoverage,
     recheckId: recheck?.id,
+    comments: controlledTask.comments.length,
   };
 }
 

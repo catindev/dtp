@@ -25,6 +25,7 @@ import {
 } from "./bugs";
 import { characterEventData } from "./eventData";
 import { clamp } from "./math";
+import { addTaskComment } from "./narrative";
 import {
   chance,
   randomInt,
@@ -61,6 +62,7 @@ export function completeImplementationSubtaskStage(
       task,
       "Implementation changed after QA, so prior test coverage became stale.",
     );
+    addTaskComment(state, task, "signal", "signal.changed-after-qa");
   }
   const rawQuality =
     task.clarity * WORK_RAW_QUALITY_CLARITY_FACTOR +

@@ -19,6 +19,7 @@ import {
 } from "./bugs";
 import { characterEventData } from "./eventData";
 import { clamp } from "./math";
+import { addTaskComment } from "./narrative";
 import { randomInt } from "./rng";
 import type {
   RtCharacter,
@@ -125,6 +126,16 @@ export function completeQaSubtaskPass(
       : coverageComplete
         ? "QA pass complete."
         : `QA coverage is partial (${task.testCoverage}/${RELEASE_QA_COVERAGE_THRESHOLD}). Assign QA again to clear release risk.`;
+  if (qaResult.bugfixes.length > 0) {
+    addTaskComment(state, task, "signal", "signal.bugs-to-rework", {
+      count: String(qaResult.bugfixes.length),
+    });
+  } else if (!coverageComplete) {
+    addTaskComment(state, task, "signal", "signal.partial-qa-coverage", {
+      actual: String(task.testCoverage),
+      target: String(RELEASE_QA_COVERAGE_THRESHOLD),
+    });
+  }
   return {
     coverageGain,
     coverageComplete,
@@ -167,6 +178,16 @@ export function completeTestStage(
       : coverageComplete
         ? "QA pass complete."
         : `QA coverage is partial (${task.testCoverage}/${RELEASE_QA_COVERAGE_THRESHOLD}). Assign QA again to clear release risk.`;
+  if (qaResult.bugfixes.length > 0) {
+    addTaskComment(state, task, "signal", "signal.bugs-to-rework", {
+      count: String(qaResult.bugfixes.length),
+    });
+  } else if (!coverageComplete) {
+    addTaskComment(state, task, "signal", "signal.partial-qa-coverage", {
+      actual: String(task.testCoverage),
+      target: String(RELEASE_QA_COVERAGE_THRESHOLD),
+    });
+  }
   emitQaDoneEvent(
     task,
     character,
