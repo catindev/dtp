@@ -7,15 +7,15 @@ This update fixes two player-facing narrative problems found in a live RU card:
 
 ## Rule
 
-Narrative templates must not require generated variables to carry Russian grammatical agreement.
+Narrative templates must not require a single generated variable to work in every Russian case.
 
-Prefer stable wrappers:
+Use explicit domain variables for Russian grammar:
 
-- `раздел «{area}»`;
-- `в разделе «{area}»`;
-- `сценарий вокруг «{area}»`.
+- `{areaAcc}`: `уведомления клиентов`, `экспорт отчетов`, `логин`;
+- `{areaGen}`: `уведомлений клиентов`, `экспорта отчетов`, `логина`;
+- `{areaPrep}`: `уведомлениях клиентов`, `экспорте отчетов`, `логине`.
 
-Avoid constructions where `{area}` is the subject of a gendered or numbered verb.
+Avoid generic wrappers like `зона: {area}`. They avoid grammar bugs but read like translated English.
 
 ## Player-Facing Terms
 
@@ -38,6 +38,7 @@ Player-facing task narrative should use ordinary product language instead:
 `npm run debug:rt` now renders narrative archetypes across domains and checks player-facing text for banned terms and known bad phrases:
 
 - RU: `хвост`, `фоллаут`, `закрывал`, `породить`;
+- RU: `зона` / `зоне` / `зоны` / `зону`;
 - EN: `fallout`.
 
 The smoke checks rendered core and flavor text, not internal ids or tags.

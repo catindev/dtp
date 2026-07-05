@@ -27,9 +27,7 @@ export function createTaskNarrativeRef(
     archetypeId,
     variantSeed: randomInt(state, 1, 999999),
     branchId,
-    variableValueIds: {
-      area: domain,
-    },
+    variableValueIds: domainNarrativeVariableIds(domain),
     tags: [...archetype.tags],
     tone: "neutral",
     density: chooseNarrativeDensity(state, hasFlavorLayer),
@@ -89,7 +87,7 @@ export function setFalloutTaskNarrativeRef(
     variantSeed: task.narrativeRef.variantSeed,
     branchId: "default",
     variableValueIds: {
-      area: sourceTask.domain,
+      ...domainNarrativeVariableIds(sourceTask.domain),
       sourceTaskId: sourceTask.id,
       cause,
     },
@@ -105,4 +103,13 @@ function falloutArchetypeIdForKind(kind: RtTaskKind): string {
   if (kind === "integration") return "fallout.integration.escalation";
   if (kind === "feature") return "fallout.feature.rework";
   return "fallout.incident.escalation";
+}
+
+function domainNarrativeVariableIds(domain: RtTaskDomain): Record<string, string> {
+  return {
+    area: domain,
+    areaAcc: domain,
+    areaGen: domain,
+    areaPrep: domain,
+  };
 }

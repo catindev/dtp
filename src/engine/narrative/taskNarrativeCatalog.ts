@@ -67,6 +67,87 @@ export const DOMAIN_AREA_VALUES: Record<RtTaskDomain, Record<EngineLocale, strin
   },
 };
 
+export const DOMAIN_AREA_ACCUSATIVE_VALUES: Record<RtTaskDomain, Record<EngineLocale, string>> = {
+  payments: {
+    en: "partner payouts",
+    ru: "партнерские выплаты",
+  },
+  auth: {
+    en: "login flow",
+    ru: "логин",
+  },
+  admin: {
+    en: "admin workflow",
+    ru: "админский сценарий",
+  },
+  search: {
+    en: "search results",
+    ru: "поиск",
+  },
+  reports: {
+    en: "report export",
+    ru: "экспорт отчетов",
+  },
+  notifications: {
+    en: "customer notifications",
+    ru: "уведомления клиентов",
+  },
+};
+
+export const DOMAIN_AREA_GENITIVE_VALUES: Record<RtTaskDomain, Record<EngineLocale, string>> = {
+  payments: {
+    en: "partner payouts",
+    ru: "партнерских выплат",
+  },
+  auth: {
+    en: "login flow",
+    ru: "логина",
+  },
+  admin: {
+    en: "admin workflow",
+    ru: "админского сценария",
+  },
+  search: {
+    en: "search results",
+    ru: "поиска",
+  },
+  reports: {
+    en: "report export",
+    ru: "экспорта отчетов",
+  },
+  notifications: {
+    en: "customer notifications",
+    ru: "уведомлений клиентов",
+  },
+};
+
+export const DOMAIN_AREA_PREPOSITIONAL_VALUES: Record<RtTaskDomain, Record<EngineLocale, string>> = {
+  payments: {
+    en: "partner payouts",
+    ru: "партнерских выплатах",
+  },
+  auth: {
+    en: "login flow",
+    ru: "логине",
+  },
+  admin: {
+    en: "admin workflow",
+    ru: "админском сценарии",
+  },
+  search: {
+    en: "search results",
+    ru: "поиске",
+  },
+  reports: {
+    en: "report export",
+    ru: "экспорте отчетов",
+  },
+  notifications: {
+    en: "customer notifications",
+    ru: "уведомлениях клиентов",
+  },
+};
+
 export const FALLOUT_CAUSE_VALUES: Record<string, Record<EngineLocale, string>> = {
   known_bug: {
     en: "known bugs",
@@ -114,6 +195,25 @@ const areaVariable: TaskNarrativeVariable = {
   values: DOMAIN_AREA_VALUES,
 };
 
+const areaAccVariable: TaskNarrativeVariable = {
+  values: DOMAIN_AREA_ACCUSATIVE_VALUES,
+};
+
+const areaGenVariable: TaskNarrativeVariable = {
+  values: DOMAIN_AREA_GENITIVE_VALUES,
+};
+
+const areaPrepVariable: TaskNarrativeVariable = {
+  values: DOMAIN_AREA_PREPOSITIONAL_VALUES,
+};
+
+const domainVariables = {
+  area: areaVariable,
+  areaAcc: areaAccVariable,
+  areaGen: areaGenVariable,
+  areaPrep: areaPrepVariable,
+};
+
 const causeVariable: TaskNarrativeVariable = {
   values: FALLOUT_CAUSE_VALUES,
 };
@@ -128,7 +228,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "The work should create value if shipped cleanly.",
       "Ignoring or rushing it can disappoint users.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -141,8 +241,8 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "A rushed release can confuse users and create follow-up work.",
           },
           ru: {
-            headline: "Улучшить раздел «{area}»",
-            problem: "Бизнес просит добавить новый ежедневный сценарий в раздел «{area}».",
+            headline: "Улучшить {areaAcc}",
+            problem: "Бизнес просит добавить новый ежедневный сценарий для {areaGen}.",
             stakes: "Чистый релиз добавит ценность продукту и сохранит доверие.",
             failurePreview: "Поспешный релиз может запутать пользователей и вернуться дополнительной работой завтра.",
           },
@@ -167,7 +267,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "The task is valuable when the user-facing path is clear.",
       "It can become waste if shipped without enough clarity or QA.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -180,8 +280,8 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "If the flow is unclear, users get another confusing switch instead of relief.",
           },
           ru: {
-            headline: "Добавить сохраненный вид для зоны: {area}",
-            problem: "Команда каждый день повторяет одну настройку в зоне: {area}, и просит ее сохранять.",
+            headline: "Сохранять частый сценарий для {areaGen}",
+            problem: "Команда каждый день повторяет одну настройку в {areaPrep} и просит ее сохранять.",
             stakes: "Чистая поставка экономит время реальным пользователям и добавляет ценность.",
             failurePreview: "Если сценарий непонятен, пользователи получат не облегчение, а еще один мутный переключатель.",
           },
@@ -206,7 +306,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "Fixing it protects trust and reduces future noise.",
       "Shipping without QA risks another defect.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -219,8 +319,8 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "If it goes out half-fixed, QA can find more rework or customers can notice again.",
           },
           ru: {
-            headline: "Починить {area}",
-            problem: "Пользователи упираются в поломанный путь в зоне: {area}.",
+            headline: "Починить {areaAcc}",
+            problem: "Пользователи упираются в сломанный сценарий в {areaPrep}.",
             stakes: "Проверенный фикс снижает шум поддержки и повторные обращения.",
             failurePreview: "Если выпустить наполовину, QA найдет доработки или клиенты снова заметят баг.",
           },
@@ -245,7 +345,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "The task needs implementation and verification.",
       "A partial fix can create repeated user-facing damage.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -258,8 +358,8 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "If released dirty, the duplicate action can come back as a customer-facing bug.",
           },
           ru: {
-            headline: "Убрать двойное действие в зоне: {area}",
-            problem: "{area} иногда применяет одно действие пользователя дважды.",
+            headline: "Убрать двойное действие в {areaPrep}",
+            problem: "В {areaPrep} одно действие пользователя иногда применяется дважды.",
             stakes: "Проверенный фикс убирает заметные ошибки и шум поддержки.",
             failurePreview: "Если выпустить грязно, двойное действие вернется клиентским багом.",
           },
@@ -284,7 +384,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "Clean tech debt work should lower product debt.",
       "Ignoring it keeps future delivery slower and riskier.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -297,8 +397,8 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "If skipped, future changes in this area stay slower and noisier.",
           },
           ru: {
-            headline: "Уменьшить хрупкость в зоне: {area}",
-            problem: "{area} держится на ломких технических решениях.",
+            headline: "Сделать {areaAcc} надежнее",
+            problem: "В {areaPrep} слишком много хрупких технических решений.",
             stakes: "Чистая работа должна снизить технический долг и упростить будущие задачи.",
             failurePreview: "Если отложить, следующие изменения здесь останутся медленными и рискованными.",
           },
@@ -323,7 +423,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "Clean release should reduce debt rather than only add value.",
       "Skipping it leaves future tasks more expensive.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -336,8 +436,8 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "If ignored, ordinary changes keep dragging extra risk behind them.",
           },
           ru: {
-            headline: "Распутать модуль зоны: {area}",
-            problem: "В реализации зоны {area} смешаны несколько несвязанных поведений.",
+            headline: "Разобрать путаницу в {areaPrep}",
+            problem: "В реализации {areaGen} смешаны несколько несвязанных поведений.",
             stakes: "Чистая работа по техдолгу снижает долг и удешевляет будущие фиксы.",
             failurePreview: "Если игнорировать, обычные изменения продолжат тащить за собой лишний риск.",
           },
@@ -362,7 +462,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "SRE and QA matter more when blast radius is high.",
       "Poor integration work can create partner-facing consequences.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -375,8 +475,8 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "A weak release can break handoffs and return as an incident.",
           },
           ru: {
-            headline: "Подключить поток данных: {area}",
-            problem: "Другой системе нужны надежные данные из зоны: {area}.",
+            headline: "Подключить поток данных для {areaGen}",
+            problem: "Другой системе нужны надежные данные из {areaGen}.",
             stakes: "Чистая интеграция поддержит партнерский процесс без ручных обходов.",
             failurePreview: "Слабый релиз может сломать передачу данных и вернуться инцидентом.",
           },
@@ -401,7 +501,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "Bad integration work can create high-impact consequences.",
       "QA and SRE coverage are important when impact is high.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -414,8 +514,8 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "A weak handoff can break the partner flow and return as an escalation.",
           },
           ru: {
-            headline: "Синхронизировать {area} с партнерской системой",
-            problem: "Партнерская система ждет данные из зоны {area} в надежном формате.",
+            headline: "Синхронизировать {areaAcc} с партнерской системой",
+            problem: "Партнерская система ждет надежный формат данных для {areaGen}.",
             stakes: "Чистая интеграция делает внешние обязательства предсказуемыми.",
             failurePreview: "Слабая передача данных может сломать партнерский процесс и вернуться эскалацией.",
           },
@@ -432,7 +532,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "The task is urgent and trust-sensitive.",
       "Incomplete work can escalate into follow-up work.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -445,8 +545,8 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "If the team misses it, the problem can escalate tomorrow.",
           },
           ru: {
-            headline: "Стабилизировать инцидент: {area}",
-            problem: "{area} уже создает заметную production-проблему.",
+            headline: "Стабилизировать инцидент в {areaPrep}",
+            problem: "В {areaPrep} уже есть заметная production-проблема.",
             stakes: "Чистая реакция защищает доверие до того, как ущерб расползется.",
             failurePreview: "Если команда не успеет, завтра проблема может стать эскалацией.",
           },
@@ -463,7 +563,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "The player should treat it as urgent and trust-sensitive.",
       "Incomplete work can create another morning consequence card.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -476,8 +576,8 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "If the fix is late or unfinished, the failure can escalate tomorrow.",
           },
           ru: {
-            headline: "Восстановить падающий путь в зоне: {area}",
-            problem: "Production-путь в зоне {area} падает достаточно часто, чтобы бизнес это заметил.",
+            headline: "Восстановить падающий путь в {areaPrep}",
+            problem: "Production-путь в {areaPrep} падает достаточно часто, чтобы бизнес это заметил.",
             stakes: "Чистая стабилизация защищает доверие и снижает давление последствий.",
             failurePreview: "Если фикс опоздает или останется незавершенным, завтра проблема эскалируется.",
           },
@@ -494,7 +594,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "Performance work protects users and future delivery.",
       "Rushed performance changes can create regressions.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -507,7 +607,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "Untested optimizations can create new failures under load.",
           },
           ru: {
-            headline: "Ускорить {area}",
+            headline: "Ускорить {areaAcc}",
             problem: "{area} работает настолько медленно, что пользователи меняют поведение.",
             stakes: "Чистый фикс добавит ценность и не раскачает стабильность.",
             failurePreview: "Непроверенная оптимизация может сломаться под нагрузкой.",
@@ -525,7 +625,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "Clean work improves value without adding instability.",
       "Untested optimization can create production consequences.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -538,8 +638,8 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "A rushed cache can show stale data or fail under load.",
           },
           ru: {
-            headline: "Закешировать медленный ответ: {area}",
-            problem: "{area} слишком часто ждет один и тот же дорогой ответ.",
+            headline: "Закешировать медленный ответ для {areaGen}",
+            problem: "В {areaPrep} слишком часто повторяется один и тот же дорогой запрос.",
             stakes: "Чистый performance-фикс ускоряет продукт и не прячет баги.",
             failurePreview: "Поспешный кеш может показать устаревшие данные или сломаться под нагрузкой.",
           },
@@ -556,7 +656,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "Clean QA/SRE coverage matters because trust damage can be high.",
       "Skipping work can produce compliance consequences.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -569,8 +669,8 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "If rushed, the task can return as a visible policy problem.",
           },
           ru: {
-            headline: "Защитить чувствительные данные: {area}",
-            problem: "{area} работает с чувствительными данными, и бизнес просит усилить защиту.",
+            headline: "Защитить чувствительные данные в {areaPrep}",
+            problem: "В {areaPrep} есть чувствительные данные, и бизнес просит усилить защиту.",
             stakes: "Чистый релиз снижает compliance-риск и сохраняет доверие.",
             failurePreview: "Если поспешить, задача может вернуться заметной политической проблемой.",
           },
@@ -587,7 +687,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "The player should recognize high trust risk if shipped dirty.",
       "QA/SRE coverage helps prevent policy consequences.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -600,8 +700,8 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "A dirty release can become a visible policy problem tomorrow.",
           },
           ru: {
-            headline: "Скрыть чувствительные поля в зоне: {area}",
-            problem: "{area} показывает поля, которые обычные пользователи видеть не должны.",
+            headline: "Скрыть чувствительные поля в {areaPrep}",
+            problem: "В {areaPrep} видны поля, которые обычные пользователи видеть не должны.",
             stakes: "Чистая compliance-работа предотвращает удар по доверию до эскалации.",
             failurePreview: "Грязный релиз может завтра стать заметной политической проблемой.",
           },
@@ -618,7 +718,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "It must have exactly one QA subtask.",
       "It should complete quickly and cleanly.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -649,7 +749,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "It should require backend, frontend, and QA.",
       "It should complete cleanly when all specialists are used.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -680,7 +780,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "QA is unavailable by script.",
       "The player should understand that Done can still be risky.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -711,7 +811,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "The director controls the deadline so no long wait is required.",
       "The player chooses between shipping late or letting the card miss.",
     ],
-    variables: { area: areaVariable },
+    variables: domainVariables,
     branches: {
       default: {
         id: "default",
@@ -743,7 +843,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "The player should recognize the consequence without reading a noisy title.",
     ],
     variables: {
-      area: areaVariable,
+      ...domainVariables,
       cause: causeVariable,
     },
     branches: {
@@ -758,8 +858,8 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "If ignored, the follow-up work can keep consuming team capacity.",
           },
           ru: {
-            headline: "Починить последствие в разделе «{area}»",
-            problem: "{area} сломалось после {sourceTaskId} из-за {cause}.",
+            headline: "Починить последствие в {areaPrep}",
+            problem: "После {sourceTaskId} в {areaPrep} появилась поломка из-за {cause}.",
             stakes: "Закрытая проблема не дает вчерашнему компромиссу стать постоянной работой.",
             failurePreview: "Если игнорировать, дополнительные работы продолжат съедать время команды.",
           },
@@ -777,7 +877,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "The source task id and cause must be available for logs and UI links.",
     ],
     variables: {
-      area: areaVariable,
+      ...domainVariables,
       cause: causeVariable,
     },
     branches: {
@@ -792,7 +892,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "If it misses again, the chain can terminate as direct business damage.",
           },
           ru: {
-            headline: "Разобрать эскалацию в зоне: {area}",
+            headline: "Разобрать эскалацию в {areaPrep}",
             problem: "Проблема из {sourceTaskId} дошла до production из-за {cause}.",
             stakes: "Стабилизация защищает доверие и закрывает видимую цепочку последствий.",
             failurePreview: "Если снова пропустить, цепочка может закрыться прямым бизнес-уроном.",
@@ -811,7 +911,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "It should read as consequence work, not a fresh opportunity.",
     ],
     variables: {
-      area: areaVariable,
+      ...domainVariables,
       cause: causeVariable,
     },
     branches: {
@@ -826,8 +926,8 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "If ignored, the partner issue can become another escalation.",
           },
           ru: {
-            headline: "Починить партнерскую проблему в разделе «{area}»",
-            problem: "Партнерская работа вокруг {area} вернулась после {sourceTaskId} из-за {cause}.",
+            headline: "Починить партнерскую проблему в {areaPrep}",
+            problem: "Партнерская проблема в {areaPrep} вернулась после {sourceTaskId} из-за {cause}.",
             stakes: "Чистый фикс возвращает проблему в управляемую доставку.",
             failurePreview: "Если игнорировать, партнерская проблема может стать новой эскалацией.",
           },
@@ -845,7 +945,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
       "The source task id and cause remain structured.",
     ],
     variables: {
-      area: areaVariable,
+      ...domainVariables,
       cause: causeVariable,
     },
     branches: {
@@ -860,8 +960,8 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "If skipped, the same confusion can return as another follow-up.",
           },
           ru: {
-            headline: "Переделать последствие в разделе «{area}»",
-            problem: "Запрос вокруг {area} вернулся после {sourceTaskId} из-за {cause}.",
+            headline: "Переделать последствие в {areaPrep}",
+            problem: "После {sourceTaskId} в {areaPrep} снова появился запрос из-за {cause}.",
             stakes: "Чистая переделка не дает старому компромиссу протечь в новую работу.",
             failurePreview: "Если пропустить, та же путаница может вернуться новой задачей.",
           },

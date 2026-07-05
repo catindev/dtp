@@ -59,6 +59,7 @@ const RU_PLAYER_COPY_BANLIST = [
   { label: "internal slang фоллаут", pattern: /\bфоллаут\w*/iu },
   { label: "agreement-prone verb закрывал", pattern: /\bзакрывал\b/iu },
   { label: "awkward generated phrase породить", pattern: /\bпородить\b/iu },
+  { label: "translationese зона", pattern: /\bзон[аеуы]\b/iu },
 ];
 
 const EN_PLAYER_COPY_BANLIST = [
@@ -514,7 +515,9 @@ function createNarrativeCopySmokeTask(
   domain: RtTask["domain"],
 ): RtTask {
   const variableValueIds: Record<string, string> = {};
-  if (archetype.variables.area) variableValueIds.area = domain;
+  for (const key of ["area", "areaAcc", "areaGen", "areaPrep"]) {
+    if (archetype.variables[key]) variableValueIds[key] = domain;
+  }
   if (archetype.variables.cause) variableValueIds.cause = "no_qa";
   if (archetype.id.startsWith("fallout.")) variableValueIds.sourceTaskId = "PAY-001";
 

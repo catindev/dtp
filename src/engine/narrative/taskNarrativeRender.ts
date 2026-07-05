@@ -86,7 +86,7 @@ function renderTemplate(
   locale: EngineLocale,
 ): string {
   return template.replace(/\{(?<key>[a-zA-Z0-9_]+)\}/g, (match, key: string) => {
-    const valueId = variableValueIds[key];
+    const valueId = variableValueIds[key] ?? (key.startsWith("area") ? variableValueIds.area : undefined);
     const value = valueId ? variables[key]?.values[valueId] : undefined;
     return value?.[locale] ?? value?.en ?? valueId ?? match;
   });
