@@ -12,10 +12,13 @@ import {
 import {
   BASE_SKILLS,
   BASE_SPECIALTIES,
-  CHARACTER_NAMES,
 } from "./catalog";
 import { renderTaskNarrative } from "./narrative";
-import { randomBetween } from "./rng";
+import {
+  randomBetween,
+  randomInt,
+  shuffle,
+} from "./rng";
 import { generateTask } from "./taskFactory";
 import type {
   RtCharacter,
@@ -23,12 +26,62 @@ import type {
   RtGameState,
   RtRole,
   RtSpawnState,
+  RtStage,
+  RtSubtaskRole,
   RtTask,
 } from "./types";
 
 type SpawnEventSink = (event: Omit<RtEvent, "at">) => void;
 
 export const STARTING_ROLES: RtRole[] = ["analyst", "backend", "frontend", "qa", "sre"];
+
+const CHARACTER_NAME_POOL = [
+  "Ari",
+  "Dina",
+  "Egor",
+  "Ilya",
+  "Inga",
+  "Ira",
+  "Kai",
+  "Kirill",
+  "Lena",
+  "Maks",
+  "Mila",
+  "Mira",
+  "Nadia",
+  "Nika",
+  "Nina",
+  "Oleg",
+  "Pavel",
+  "Rada",
+  "Roma",
+  "Sasha",
+  "Sema",
+  "Tanya",
+  "Tim",
+  "Vadim",
+  "Vera",
+  "Yana",
+  "Zhenya",
+] as const;
+
+const ROLE_PRIMARY_STAGE: Record<RtRole, RtStage> = {
+  analyst: "analysis",
+  designer: "todo",
+  backend: "todo",
+  frontend: "todo",
+  qa: "test",
+  sre: "test",
+};
+
+const ROLE_PRIMARY_SUBTASKS: Record<RtRole, RtSubtaskRole[]> = {
+  analyst: [],
+  designer: ["design"],
+  backend: ["backend", "bugfix"],
+  frontend: ["frontend", "bugfix"],
+  qa: ["qa"],
+  sre: ["sre"],
+};
 
 export function createInitialSpawnState(seed: number): RtSpawnState {
   const normalizedSeed = seed >>> 0 || 1;
@@ -47,8 +100,9 @@ export function createInitialSpawnState(seed: number): RtSpawnState {
 }
 
 export function seedInitialTeam(state: RtGameState): void {
-  for (const role of STARTING_ROLES) {
-    const character = createCharacter(state, role);
+  const names = shuffle(state, CHARACTER_NAME_POOL);
+  for (const [index, role] of STARTING_ROLES.entries()) {
+    const character = createCharacter(state, role, names[index] ?? `Teammate ${index + 1}`);
     state.characters[character.id] = character;
   }
 }
@@ -121,16 +175,13 @@ export function updateSpawner(
   }
 }
 
-function createCharacter(state: RtGameState, role: RtRole): RtCharacter {
+function createCharacter(state: RtGameState, role: RtRole, name: string): RtCharacter {
   return {
     id: `C-${state.nextCharacterId++}`,
-    name:
-      CHARACTER_NAMES[
-        (state.nextCharacterId + Object.keys(state.characters).length) % CHARACTER_NAMES.length
-      ],
+    name,
     role,
-    skill: { ...BASE_SKILLS[role] },
-    specialty: { ...BASE_SPECIALTIES[role] },
+    skill: createCharacterSkills(state, role),
+    specialty: createCharacterSpecialties(state, role),
     xp: { backend: 0, frontend: 0, design: 0, qa: 0, sre: 0, bugfix: 0 },
     stamina: 100,
     burnout: 0,
@@ -138,6 +189,53 @@ function createCharacter(state: RtGameState, role: RtRole): RtCharacter {
     shockGameMinutes: 0,
     exhaustedToday: false,
   };
+}
+
+function createCharacterSkills(state: RtGameState, role: RtRole): Record<RtStage, number> {
+  const base = BASE_SKILLS[role];
+  const primaryStage = ROLE_PRIMARY_STAGE[role];
+  return {
+    analysis: variedSkillValue(state, base.analysis, primaryStage === "analysis"),
+    todo: variedSkillValue(state, base.todo, primaryStage === "todo"),
+    test: variedSkillValue(state, base.test, primaryStage === "test"),
+  };
+}
+
+function createCharacterSpecialties(
+  state: RtGameState,
+  role: RtRole,
+): Record<RtSubtaskRole, number> {
+  const base = BASE_SPECIALTIES[role];
+  const primarySubtasks = ROLE_PRIMARY_SUBTASKS[role];
+  return {
+    backend: variedSpecialtyValue(state, base.backend, primarySubtasks.includes("backend")),
+    frontend: variedSpecialtyValue(state, base.frontend, primarySubtasks.includes("frontend")),
+    design: variedSpecialtyValue(state, base.design, primarySubtasks.includes("design")),
+    qa: variedSpecialtyValue(state, base.qa, primarySubtasks.includes("qa")),
+    sre: variedSpecialtyValue(state, base.sre, primarySubtasks.includes("sre")),
+    bugfix: variedSpecialtyValue(state, base.bugfix, primarySubtasks.includes("bugfix")),
+  };
+}
+
+function variedSkillValue(state: RtGameState, base: number, primary: boolean): number {
+  const jitter = randomInt(state, -1, 1);
+  const primaryBonus = primary ? randomInt(state, 0, 1) : 0;
+  const minimum = primary ? 4 : 1;
+  return clampStat(base + jitter + primaryBonus, minimum, 6);
+}
+
+function variedSpecialtyValue(state: RtGameState, base: number, primary: boolean): number {
+  if (base <= 0) {
+    return primary || randomInt(state, 1, 100) <= 20 ? 1 : 0;
+  }
+  const jitter = randomInt(state, -1, 1);
+  const primaryBonus = primary ? randomInt(state, 0, 1) : 0;
+  const minimum = primary ? 4 : 1;
+  return clampStat(base + jitter + primaryBonus, minimum, 6);
+}
+
+function clampStat(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function randomSpawnInterval(state: RtGameState): number {

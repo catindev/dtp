@@ -16,6 +16,7 @@ import {
   type RtReleaseReadiness,
   type RtTask,
 } from "../realtime/simulation";
+import { createTaskNarrativeRef } from "../engine/narrative";
 
 type Scenario = "clean" | "mildDirty" | "heavyDirty";
 type BotStyle = "competent" | "reckless";
@@ -63,7 +64,7 @@ function runOneCardScenario(seedValue: number, scenario: Scenario) {
   const task = state.tasks[taskId];
   if (!task) throw new Error("No initial task to configure.");
 
-  configureTask(task, scenario);
+  configureTask(state, task, scenario);
   moveRealtimeTask(state, task.id, "inProgress");
   moveRealtimeTask(state, task.id, "done");
   state.gameMinuteOfDay = RELEASE_TRAIN_GAME_MINUTE - 1;
@@ -269,9 +270,11 @@ function summarizeGoals(state: RtGameState) {
   );
 }
 
-function configureTask(task: RtTask, scenario: Scenario): void {
+function configureTask(state: RtGameState, task: RtTask, scenario: Scenario): void {
   task.domain = "payments";
   task.kind = "integration";
+  task.narrativeRef = createTaskNarrativeRef(state, task.kind, task.domain);
+  task.title = `${task.id}: ${task.narrativeRef.archetypeId}`;
   task.pressure = scenario === "heavyDirty" ? 5 : 2;
   task.complexity = scenario === "heavyDirty" ? 5 : 2;
   task.value = scenario === "heavyDirty" ? 42 : 24;

@@ -16,6 +16,7 @@ import {
   runDailyReleaseTrain,
   startDayAfterMorningReport,
   tickRealtime,
+  type RtCharacter,
   type RtGameState,
   type RtTask,
 } from "../realtime/simulation";
@@ -119,6 +120,7 @@ const smoke = [
   runPartialQaCoverageSmoke(),
   runQaRecheckSmoke(),
   runCharacterEventPayloadSmoke(),
+  runGeneratedTeamSmoke(),
   runDragRejectHelperSmoke(),
   runLogSizeBudgetSmoke(),
 ];
@@ -1276,6 +1278,52 @@ function runCharacterEventPayloadSmoke() {
     taskId: completedEvent.data.taskId,
     subtaskRole: completedEvent.data.subtaskRole,
   };
+}
+
+function runGeneratedTeamSmoke() {
+  const first = createRealtimeState(5151);
+  const sameSeed = createRealtimeState(5151);
+  const otherSeed = createRealtimeState(5152);
+  const firstTeam = Object.values(first.characters);
+  const sameSeedTeam = Object.values(sameSeed.characters);
+  const otherSeedTeam = Object.values(otherSeed.characters);
+  const firstNames = firstTeam.map((character) => character.name);
+  const uniqueNames = new Set(firstNames);
+  assert(uniqueNames.size === firstNames.length, "Generated team smoke expected unique names.");
+  assert(
+    teamSignature(firstTeam) === teamSignature(sameSeedTeam),
+    "Generated team smoke expected same seed to reproduce the same team.",
+  );
+  assert(
+    teamSignature(firstTeam) !== teamSignature(otherSeedTeam),
+    "Generated team smoke expected different seeds to generate different teams.",
+  );
+
+  return {
+    name: "generated-team",
+    roles: firstTeam.map((character) => character.role).join(","),
+    names: firstNames.join(","),
+  };
+}
+
+function teamSignature(team: RtCharacter[]): string {
+  return team
+    .map((character) =>
+      [
+        character.name,
+        character.role,
+        character.skill.analysis,
+        character.skill.todo,
+        character.skill.test,
+        character.specialty.backend,
+        character.specialty.frontend,
+        character.specialty.design,
+        character.specialty.qa,
+        character.specialty.sre,
+        character.specialty.bugfix,
+      ].join(":"),
+    )
+    .join("|");
 }
 
 function runDragRejectHelperSmoke() {

@@ -23,8 +23,6 @@ export const DOMAIN_PREFIXES: Record<RtTaskDomain, string> = {
   notifications: "NTF",
 };
 
-export const CHARACTER_NAMES = ["Nina", "Oleg", "Mira", "Anton", "Lena", "Max"];
-
 export const BASE_SKILLS: Record<RtRole, Record<RtStage, number>> = {
   analyst: { analysis: 5, todo: 2, test: 2 },
   designer: { analysis: 3, todo: 3, test: 1 },
