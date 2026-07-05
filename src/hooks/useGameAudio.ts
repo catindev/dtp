@@ -1,5 +1,5 @@
 import { useEffect, type MutableRefObject } from "react";
-import type { RtEvent, RtGameState } from "../realtime/simulation";
+import type { RtGameState } from "../realtime/simulation";
 import { gameEventKey } from "../frontendLogging";
 import {
   pauseMainTheme,
@@ -10,6 +10,7 @@ import {
   SOUND_EFFECT_NAMES,
   type SoundEffectName,
 } from "../audio/soundCatalog";
+import { isWorkPassCompletedEvent } from "../engine/eventData";
 
 export function useMainThemePlayback(
   game: RtGameState,
@@ -79,7 +80,7 @@ export function useGameEventSounds({
         playSoundEffect("backlogEnd");
       } else if (event.type === "tutorial_task_spawned" || event.type === "tutorial_step_completed") {
         playSoundEffect("quest");
-      } else if (isCharacterWorkCompletedEvent(event)) {
+      } else if (isWorkPassCompletedEvent(event)) {
         playSoundEffect("subtaskCompleted");
       } else if (event.type === "release_train" || event.type === "release_train_empty") {
         playSoundEffect("dayEnd");
@@ -88,13 +89,4 @@ export function useGameEventSounds({
       }
     }
   }, [game.log, screen, soundEventKeysRef]);
-}
-
-function isCharacterWorkCompletedEvent(event: RtEvent): boolean {
-  return (
-    event.type === "analysis_done" ||
-    event.type === "subtask_done" ||
-    event.type === "bugfix_done" ||
-    event.type === "qa_done"
-  );
 }

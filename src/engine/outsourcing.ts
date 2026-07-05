@@ -15,6 +15,7 @@ import {
   importanceWeight,
 } from "./workRules";
 import { completeQaSubtaskPass } from "./workQaStage";
+import { outsourceWorkPassCompletedData } from "./eventData";
 import type {
   RtEvent,
   RtGameState,
@@ -240,9 +241,20 @@ function completeOutsourcedWork(
   task.lastNote = `Outsourcing completed ${subtask.role} work.`;
 
   emit({
-    type: "outsourced",
-    title: `${task.id} outsourced`,
+    type: bugfixWork ? "bugfix_done" : "subtask_done",
+    title: `${task.id} ${subtask.role} done`,
     body: `External contractor completed ${subtask.title}.`,
+    data: outsourceWorkPassCompletedData({
+      taskId: task.id,
+      workType: bugfixWork ? "bugfix" : "subtask",
+      subtaskId: subtask.id,
+      subtaskRole: subtask.role,
+      subtaskImportance: subtask.importance,
+      cost,
+      quality: task.quality,
+      bugs: task.bugs,
+      changedAfterQa: task.changedAfterQa,
+    }),
     effects: [
       `budget -${cost}`,
       `subtask ${subtask.role}`,
@@ -273,9 +285,24 @@ function completeOutsourcedQaWork(
   task.stageComplete = true;
 
   emit({
-    type: "outsourced",
-    title: `${task.id} outsourced`,
+    type: "qa_done",
+    title: qaResult.coverageComplete ? `${task.id} QA pass done` : `${task.id} QA coverage partial`,
     body: `External contractor completed ${subtask.title}.`,
+    data: outsourceWorkPassCompletedData({
+      taskId: task.id,
+      workType: "qa",
+      subtaskId: subtask.id,
+      subtaskRole: subtask.role,
+      subtaskImportance: subtask.importance,
+      cost,
+      coverageGain: qaResult.coverageGain,
+      coverageComplete: qaResult.coverageComplete,
+      testCoverage: task.testCoverage,
+      discoveredBugs: qaResult.discoveredBugs,
+      triagedBugs: qaResult.triagedBugs,
+      reworkCount: qaResult.bugfixes.length,
+      bugs: task.bugs,
+    }),
     effects: [
       `budget -${cost}`,
       `subtask ${subtask.role}`,

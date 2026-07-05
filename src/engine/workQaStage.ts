@@ -17,7 +17,7 @@ import {
   discoverBugsDuringQa,
   ensureBugReviewSubtask,
 } from "./bugs";
-import { characterEventData } from "./eventData";
+import { characterWorkPassCompletedData } from "./eventData";
 import { clamp } from "./math";
 import { addTaskComment } from "./narrative";
 import { randomInt } from "./rng";
@@ -263,8 +263,9 @@ function emitQaDoneEvent(
         : coverageComplete
           ? `${character.name} found no blocking bugs.`
           : `${character.name} added partial QA coverage.`,
-    data: characterEventData(character, {
+    data: characterWorkPassCompletedData(character, {
       taskId: task.id,
+      workType: "qa",
       ...data,
     }),
     effects,

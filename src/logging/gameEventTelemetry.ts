@@ -18,6 +18,9 @@ export interface GameEventTelemetryPayload {
   taskId: string | null;
   characterId: string | null;
   characterRole: string | null;
+  actorType: string | null;
+  actorId: string | null;
+  workType: string | null;
   subtaskRole: string | null;
   effects: string[];
   data: RtEventData | null;
@@ -48,6 +51,9 @@ export function buildGameEventTelemetry(
     taskId: stringData(data, "taskId") ?? parseTaskId(event.title),
     characterId: stringData(data, "characterId"),
     characterRole: stringData(data, "characterRole"),
+    actorType: stringData(data, "actorType"),
+    actorId: stringData(data, "actorId"),
+    workType: stringData(data, "workType"),
     subtaskRole: stringData(data, "subtaskRole"),
     effects: event.effects,
     data,

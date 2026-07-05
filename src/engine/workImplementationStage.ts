@@ -23,7 +23,7 @@ import {
   introduceImplementationBugs,
   isBugfixWork,
 } from "./bugs";
-import { characterEventData } from "./eventData";
+import { characterWorkPassCompletedData } from "./eventData";
 import { clamp } from "./math";
 import { addTaskComment } from "./narrative";
 import {
@@ -111,8 +111,9 @@ export function completeImplementationSubtaskStage(
     type: bugfixWork ? "bugfix_done" : "subtask_done",
     title: `${task.id} ${subtask.role} done`,
     body: `${character.name} completed ${subtask.title}.`,
-    data: characterEventData(character, {
+    data: characterWorkPassCompletedData(character, {
       taskId: task.id,
+      workType: bugfixWork ? "bugfix" : "subtask",
       subtaskId: subtask.id,
       subtaskRole: subtask.role,
       subtaskImportance: subtask.importance,

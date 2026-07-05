@@ -1,6 +1,6 @@
 import { useEffect, useRef, type MutableRefObject } from "react";
 import { APP_COMMIT, type AutosaveLoadResult } from "../save";
-import { type RtEvent, type RtGameState } from "../realtime/simulation";
+import { type RtGameState } from "../realtime/simulation";
 import {
   createLogEntry,
   gameEventKey,
@@ -10,6 +10,10 @@ import {
 } from "../frontendLogging";
 import { buildGameEventTelemetry } from "../logging/gameEventTelemetry";
 import { buildDaySummaryTelemetry } from "../logging/summaryTelemetry";
+import {
+  isWorkPassCompletedEvent,
+  workPassCompletedTaskId,
+} from "../engine/eventData";
 
 interface UseGameEventEffectsArgs {
   game: RtGameState;
@@ -76,21 +80,13 @@ export function useGameEventEffects({
   useEffect(() => {
     if (screen !== "game") return;
     for (const event of game.log.slice().reverse()) {
-      if (!isWorkPassDoneEvent(event)) continue;
+      if (!isWorkPassCompletedEvent(event)) continue;
       const key = gameEventKey(event);
       if (animatedWorkEventKeysRef.current.has(key)) continue;
       animatedWorkEventKeysRef.current.add(key);
-      const taskId = event.title.split(" ")[0];
+      const taskId = workPassCompletedTaskId(event);
+      if (!taskId) continue;
       if (game.tasks[taskId]) bounceTask(taskId);
     }
   }, [animatedWorkEventKeysRef, bounceTask, game.log, game.tasks, screen]);
-}
-
-function isWorkPassDoneEvent(event: RtEvent): boolean {
-  return (
-    event.type === "analysis_done" ||
-    event.type === "subtask_done" ||
-    event.type === "bugfix_done" ||
-    event.type === "qa_done"
-  );
 }

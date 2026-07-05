@@ -9,7 +9,7 @@ import {
   WORK_ANALYSIS_REVEAL_MEDIUM_COUNT,
   WORK_ANALYSIS_REVEAL_MEDIUM_GAIN,
 } from "./balance";
-import { characterEventData } from "./eventData";
+import { characterWorkPassCompletedData } from "./eventData";
 import { clamp } from "./math";
 import {
   randomInt,
@@ -47,8 +47,11 @@ export function completeAnalysisStage(
     type: "analysis_done",
     title: `${task.id} clarified`,
     body: `${character.name} improved task clarity.`,
-    data: characterEventData(character, {
+    data: characterWorkPassCompletedData(character, {
       taskId: task.id,
+      workType: "analysis",
+      subtaskId: null,
+      subtaskRole: null,
       clarityGain: gain,
       revealedCount: revealed.length,
     }),

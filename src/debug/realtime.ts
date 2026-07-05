@@ -35,6 +35,7 @@ import {
 } from "../engine/narrative";
 import { DOMAINS } from "../engine/catalog";
 import { SIM_TEXT, TASK_TITLES } from "../engine/content";
+import { isWorkPassCompletedEvent } from "../engine/eventData";
 import { generateTask } from "../engine/taskFactory";
 import { loadTutorialCompleted } from "../tutorial/tutorialProgress";
 import {
@@ -1102,12 +1103,26 @@ function runOutsourceSmoke() {
   assert(controlledTask.currentSubtaskId === status.subtask.id, "Outsource smoke expected current subtask.");
   const busyStatus = getOutsourceTaskWorkStatus(currentState, controlledTask.id);
   assert(!busyStatus.allowed && busyStatus.reason === "task_busy", "Outsource smoke expected busy blocker.");
+  tickUntilOutsourcingIdleInState(currentState, controlledTask.id, 900);
+  const completedEvent = currentState.log.find(
+    (event) =>
+      isWorkPassCompletedEvent(event) &&
+      event.data?.actorType === "outsource" &&
+      event.data.taskId === controlledTask.id,
+  );
+  assert(completedEvent !== undefined, "Outsource smoke expected completed work event.");
+  assert(completedEvent.type === "subtask_done", "Outsource smoke expected outsourced subtask_done event.");
+  assert(completedEvent.data?.subtaskId === status.subtask.id, "Outsource smoke expected subtask id in event.");
+  assert(completedEvent.data?.subtaskRole === "backend", "Outsource smoke expected subtask role in event.");
+  assert(controlledTask.outsourcing === null, "Outsource smoke expected outsourcing cleared after completion.");
+  assert(status.subtask.done, "Outsource smoke expected subtask done after completion.");
 
   return {
     name: "outsource-status",
     budget: currentState.resources.budget,
     blockerAfterStart: busyStatus.reason,
     subtaskRole: status.subtask.role,
+    completedActor: completedEvent.data?.actorType,
   };
 }
 
@@ -1133,11 +1148,22 @@ function runOutsourcedQaCoverageSmoke() {
   assert(qaSubtask.completedBy === "outsourcing", "Outsourced QA smoke expected outsourced completion.");
   assert(controlledTask.testCoverage >= 45, "Outsourced QA smoke expected real test coverage.");
   assert(!readiness.reasons.includes("no_qa"), "Outsourced QA smoke expected no_qa cleared.");
+  const completedEvent = currentState.log.find(
+    (event) =>
+      isWorkPassCompletedEvent(event) &&
+      event.data?.actorType === "outsource" &&
+      event.data.taskId === controlledTask.id &&
+      event.data.subtaskRole === "qa",
+  );
+  assert(completedEvent !== undefined, "Outsourced QA smoke expected completed work event.");
+  assert(completedEvent.type === "qa_done", "Outsourced QA smoke expected qa_done event.");
+  assert(completedEvent.data?.workType === "qa", "Outsourced QA smoke expected qa work type.");
 
   return {
     name: "outsourced-qa-coverage",
     testCoverage: controlledTask.testCoverage,
     readiness: readiness.readiness,
+    completedActor: completedEvent.data?.actorType,
   };
 }
 
@@ -1239,10 +1265,14 @@ function runCharacterEventPayloadSmoke() {
   assert(completedEvent?.data?.characterId === backend.id, "Completion event should include characterId.");
   assert(completedEvent.data.taskId === controlledTask.id, "Completion event should include taskId.");
   assert(completedEvent.data.subtaskRole === "backend", "Completion event should include subtaskRole.");
+  assert(completedEvent.data.workPassCompleted === true, "Completion event should mark work pass completed.");
+  assert(completedEvent.data.actorType === "character", "Completion event should include character actor type.");
+  assert(completedEvent.data.actorId === backend.id, "Completion event should include actor id.");
 
   return {
     name: "character-event-payload",
     characterId: completedEvent.data.characterId,
+    actorType: completedEvent.data.actorType,
     taskId: completedEvent.data.taskId,
     subtaskRole: completedEvent.data.subtaskRole,
   };
