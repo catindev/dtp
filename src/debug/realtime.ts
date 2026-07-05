@@ -60,6 +60,7 @@ const RU_PLAYER_COPY_BANLIST = [
   { label: "agreement-prone verb закрывал", pattern: /\bзакрывал\b/iu },
   { label: "awkward generated phrase породить", pattern: /\bпородить\b/iu },
   { label: "translationese зона", pattern: /\bзон[аеуы]\b/iu },
+  { label: "vague feature filler", pattern: /новый ежедневный сценарий/iu },
 ];
 
 const EN_PLAYER_COPY_BANLIST = [
@@ -515,7 +516,14 @@ function createNarrativeCopySmokeTask(
   domain: RtTask["domain"],
 ): RtTask {
   const variableValueIds: Record<string, string> = {};
-  for (const key of ["area", "areaAcc", "areaGen", "areaPrep"]) {
+  for (const key of [
+    "area",
+    "areaAcc",
+    "areaGen",
+    "areaPrep",
+    "featureWorkflowHeadline",
+    "featureWorkflowProblem",
+  ]) {
     if (archetype.variables[key]) variableValueIds[key] = domain;
   }
   if (archetype.variables.cause) variableValueIds.cause = "no_qa";
@@ -546,6 +554,10 @@ function assertNarrativeCopySafe(
   fields: Record<string, string | undefined>,
 ): void {
   const text = Object.values(fields).filter(Boolean).join(" ");
+  assert(
+    !/\{[a-zA-Z0-9_]+\}/u.test(text),
+    `Narrative catalog smoke found unresolved template placeholder in ${locale} player copy for ${archetypeId}: ${text}`,
+  );
   const banlist = locale === "ru" ? RU_PLAYER_COPY_BANLIST : EN_PLAYER_COPY_BANLIST;
   for (const rule of banlist) {
     assert(

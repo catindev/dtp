@@ -148,6 +148,60 @@ export const DOMAIN_AREA_PREPOSITIONAL_VALUES: Record<RtTaskDomain, Record<Engin
   },
 };
 
+export const FEATURE_WORKFLOW_HEADLINE_VALUES: Record<RtTaskDomain, Record<EngineLocale, string>> = {
+  payments: {
+    en: "Simplify partner payouts",
+    ru: "Упростить партнерские выплаты",
+  },
+  auth: {
+    en: "Simplify product login",
+    ru: "Упростить вход в продукт",
+  },
+  admin: {
+    en: "Simplify the admin workflow",
+    ru: "Упростить админский сценарий",
+  },
+  search: {
+    en: "Improve search",
+    ru: "Улучшить поиск",
+  },
+  reports: {
+    en: "Improve report export",
+    ru: "Улучшить экспорт отчетов",
+  },
+  notifications: {
+    en: "Improve customer notifications",
+    ru: "Улучшить уведомления клиентов",
+  },
+};
+
+export const FEATURE_WORKFLOW_PROBLEM_VALUES: Record<RtTaskDomain, Record<EngineLocale, string>> = {
+  payments: {
+    en: "The business needs a faster way to review and run regular partner payouts.",
+    ru: "Бизнесу нужно быстрее проверять и запускать регулярные партнерские выплаты.",
+  },
+  auth: {
+    en: "The business wants fewer login steps so users get into the product without getting stuck.",
+    ru: "Бизнес хочет убрать лишние шаги при входе, чтобы пользователи реже застревали.",
+  },
+  admin: {
+    en: "The operations team needs a clearer daily admin flow without manual detours.",
+    ru: "Операционной команде нужен понятный рабочий процесс без ручных обходов.",
+  },
+  search: {
+    en: "Support needs to find the right records faster without jumping between filters.",
+    ru: "Поддержке нужно быстрее находить нужные записи и не прыгать между фильтрами.",
+  },
+  reports: {
+    en: "The business needs regular reports without manual export cleanup.",
+    ru: "Бизнесу нужно быстрее собирать регулярные отчеты без ручной подготовки.",
+  },
+  notifications: {
+    en: "The business wants clearer control over customer notifications before launching changes.",
+    ru: "Бизнес хочет понятнее управлять клиентскими уведомлениями и быстрее запускать изменения.",
+  },
+};
+
 export const FALLOUT_CAUSE_VALUES: Record<string, Record<EngineLocale, string>> = {
   known_bug: {
     en: "known bugs",
@@ -207,11 +261,21 @@ const areaPrepVariable: TaskNarrativeVariable = {
   values: DOMAIN_AREA_PREPOSITIONAL_VALUES,
 };
 
+const featureWorkflowHeadlineVariable: TaskNarrativeVariable = {
+  values: FEATURE_WORKFLOW_HEADLINE_VALUES,
+};
+
+const featureWorkflowProblemVariable: TaskNarrativeVariable = {
+  values: FEATURE_WORKFLOW_PROBLEM_VALUES,
+};
+
 const domainVariables = {
   area: areaVariable,
   areaAcc: areaAccVariable,
   areaGen: areaGenVariable,
   areaPrep: areaPrepVariable,
+  featureWorkflowHeadline: featureWorkflowHeadlineVariable,
+  featureWorkflowProblem: featureWorkflowProblemVariable,
 };
 
 const causeVariable: TaskNarrativeVariable = {
@@ -235,14 +299,14 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
         layer: "core",
         core: {
           en: {
-            headline: "Improve {area} workflow",
-            problem: "Business users want the {area} to handle a new daily case.",
+            headline: "{featureWorkflowHeadline}",
+            problem: "{featureWorkflowProblem}",
             stakes: "A clean release adds product value and keeps trust stable.",
             failurePreview: "A rushed release can confuse users and create follow-up work.",
           },
           ru: {
-            headline: "Улучшить {areaAcc}",
-            problem: "Бизнес просит добавить новый ежедневный сценарий для {areaGen}.",
+            headline: "{featureWorkflowHeadline}",
+            problem: "{featureWorkflowProblem}",
             stakes: "Чистый релиз добавит ценность продукту и сохранит доверие.",
             failurePreview: "Поспешный релиз может запутать пользователей и вернуться дополнительной работой завтра.",
           },
