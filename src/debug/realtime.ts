@@ -33,6 +33,7 @@ import {
   createTaskNarrativeRef,
   renderTaskComment,
 } from "../engine/narrative";
+import { DOMAINS } from "../engine/catalog";
 import { generateTask } from "../engine/taskFactory";
 import { loadTutorialCompleted } from "../tutorial/tutorialProgress";
 import {
@@ -52,6 +53,17 @@ import {
   tutorialFocusCharacterId,
   tutorialFocusTaskId,
 } from "../tutorial/tutorialDirector";
+
+const RU_PLAYER_COPY_BANLIST = [
+  { label: "internal slang хвост", pattern: /\bхвост\w*/iu },
+  { label: "internal slang фоллаут", pattern: /\bфоллаут\w*/iu },
+  { label: "agreement-prone verb закрывал", pattern: /\bзакрывал\b/iu },
+  { label: "awkward generated phrase породить", pattern: /\bпородить\b/iu },
+];
+
+const EN_PLAYER_COPY_BANLIST = [
+  { label: "internal slang fallout", pattern: /\bfallout\b/iu },
+];
 
 const seedArg = Number(process.argv[2]);
 const seed = Number.isFinite(seedArg) ? seedArg : 184;
@@ -449,6 +461,7 @@ function runNarrativeCatalogSmoke() {
   const coreArchetypes = Object.values(TASK_NARRATIVE_ARCHETYPES).filter(
     (archetype) => archetype.id.startsWith("core."),
   );
+  let renderedCopySamples = 0;
   assert(coreArchetypes.length >= 14, "Narrative catalog smoke expected at least 14 core archetypes.");
   for (const [kind, ids] of Object.entries(TASK_NARRATIVE_ARCHETYPE_IDS_BY_KIND)) {
     assert(ids.length >= 2, `Narrative catalog smoke expected at least 2 archetypes for ${kind}.`);
@@ -471,14 +484,72 @@ function runNarrativeCatalogSmoke() {
       }
     }
   }
+  for (const archetype of Object.values(TASK_NARRATIVE_ARCHETYPES)) {
+    const domains = archetype.domains ?? DOMAINS;
+    for (const domain of domains) {
+      const task = createNarrativeCopySmokeTask(archetype, domain);
+      for (const locale of ["en", "ru"] as const) {
+        const rendered = renderTaskNarrative(task, locale);
+        assertNarrativeCopySafe(archetype.id, locale, {
+          ...rendered.core,
+          ...(rendered.flavor ?? {}),
+        });
+        renderedCopySamples += 1;
+      }
+    }
+  }
 
   return {
     name: "narrative-catalog",
     coreArchetypes: coreArchetypes.length,
+    renderedCopySamples,
     kinds: Object.fromEntries(
       Object.entries(TASK_NARRATIVE_ARCHETYPE_IDS_BY_KIND).map(([kind, ids]) => [kind, ids.length]),
     ),
   };
+}
+
+function createNarrativeCopySmokeTask(
+  archetype: (typeof TASK_NARRATIVE_ARCHETYPES)[string],
+  domain: RtTask["domain"],
+): RtTask {
+  const variableValueIds: Record<string, string> = {};
+  if (archetype.variables.area) variableValueIds.area = domain;
+  if (archetype.variables.cause) variableValueIds.cause = "no_qa";
+  if (archetype.id.startsWith("fallout.")) variableValueIds.sourceTaskId = "PAY-001";
+
+  return {
+    id: "SMOKE-001",
+    title: "SMOKE-001",
+    kind: archetype.kind,
+    domain,
+    narrativeRef: {
+      archetypeId: archetype.id,
+      branchId: "default",
+      variantSeed: 1,
+      variableValueIds,
+      tags: [...archetype.tags],
+      tone: archetype.tags.includes("fallout") ? "tense" : "neutral",
+      density: "flavor",
+    },
+    comments: [],
+    lastCommentId: null,
+  } as unknown as RtTask;
+}
+
+function assertNarrativeCopySafe(
+  archetypeId: string,
+  locale: "en" | "ru",
+  fields: Record<string, string | undefined>,
+): void {
+  const text = Object.values(fields).filter(Boolean).join(" ");
+  const banlist = locale === "ru" ? RU_PLAYER_COPY_BANLIST : EN_PLAYER_COPY_BANLIST;
+  for (const rule of banlist) {
+    assert(
+      !rule.pattern.test(text),
+      `Narrative catalog smoke found ${rule.label} in ${locale} player copy for ${archetypeId}: ${text}`,
+    );
+  }
 }
 
 function runNarrativeFlavorBudgetSmoke() {

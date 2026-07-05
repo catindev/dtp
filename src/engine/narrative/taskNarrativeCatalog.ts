@@ -105,8 +105,8 @@ export const FALLOUT_CAUSE_VALUES: Record<string, Record<EngineLocale, string>> 
     ru: "проигнорированной работы",
   },
   terminal_chain: {
-    en: "terminal fallout",
-    ru: "завершенного хвоста",
+    en: "terminal consequence",
+    ru: "завершенного последствия",
   },
 };
 
@@ -141,10 +141,10 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "A rushed release can confuse users and create follow-up work.",
           },
           ru: {
-            headline: "Улучшить {area}",
-            problem: "Бизнесу нужно, чтобы {area} закрывал новый ежедневный сценарий.",
+            headline: "Улучшить раздел «{area}»",
+            problem: "Бизнес просит добавить новый ежедневный сценарий в раздел «{area}».",
             stakes: "Чистый релиз добавит ценность продукту и сохранит доверие.",
-            failurePreview: "Поспешный релиз может запутать пользователей и породить хвосты.",
+            failurePreview: "Поспешный релиз может запутать пользователей и вернуться дополнительной работой завтра.",
           },
         },
         flavor: {
@@ -360,7 +360,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
     meaning: [
       "The task connects a product flow with another system.",
       "SRE and QA matter more when blast radius is high.",
-      "Poor integration work can create partner-facing fallout.",
+      "Poor integration work can create partner-facing consequences.",
     ],
     variables: { area: areaVariable },
     branches: {
@@ -398,7 +398,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
     tags: ["core", "dependency", "partner"],
     meaning: [
       "The task connects an internal flow to a partner-facing dependency.",
-      "Bad integration work can create high-impact fallout.",
+      "Bad integration work can create high-impact consequences.",
       "QA and SRE coverage are important when impact is high.",
     ],
     variables: { area: areaVariable },
@@ -430,7 +430,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
     meaning: [
       "Production is already unstable.",
       "The task is urgent and trust-sensitive.",
-      "Incomplete work can escalate into follow-up fallout.",
+      "Incomplete work can escalate into follow-up work.",
     ],
     variables: { area: areaVariable },
     branches: {
@@ -461,7 +461,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
     meaning: [
       "Something important is already failing in production.",
       "The player should treat it as urgent and trust-sensitive.",
-      "Incomplete work can create another morning fallout card.",
+      "Incomplete work can create another morning consequence card.",
     ],
     variables: { area: areaVariable },
     branches: {
@@ -478,7 +478,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
           ru: {
             headline: "Восстановить падающий путь в зоне: {area}",
             problem: "Production-путь в зоне {area} падает достаточно часто, чтобы бизнес это заметил.",
-            stakes: "Чистая стабилизация защищает доверие и снижает давление хвостов.",
+            stakes: "Чистая стабилизация защищает доверие и снижает давление последствий.",
             failurePreview: "Если фикс опоздает или останется незавершенным, завтра проблема эскалируется.",
           },
         },
@@ -523,7 +523,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
     meaning: [
       "The flow is slow and needs a technical performance fix.",
       "Clean work improves value without adding instability.",
-      "Untested optimization can create production fallout.",
+      "Untested optimization can create production consequences.",
     ],
     variables: { area: areaVariable },
     branches: {
@@ -554,7 +554,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
     meaning: [
       "The task protects sensitive or regulated behavior.",
       "Clean QA/SRE coverage matters because trust damage can be high.",
-      "Skipping work can produce compliance fallout.",
+      "Skipping work can produce compliance consequences.",
     ],
     variables: { area: areaVariable },
     branches: {
@@ -585,7 +585,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
     meaning: [
       "The task is about protecting sensitive information.",
       "The player should recognize high trust risk if shipped dirty.",
-      "QA/SRE coverage helps prevent policy fallout.",
+      "QA/SRE coverage helps prevent policy consequences.",
     ],
     variables: { area: areaVariable },
     branches: {
@@ -721,7 +721,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             headline: "Stabilize partner export",
             problem: "A partner export needs stabilization right before the release window closes.",
             stakes: "You learn how deadline pressure changes the release decision.",
-            failurePreview: "Shipping late loses value; ignoring it creates missed-work fallout.",
+            failurePreview: "Shipping late loses value; ignoring it creates missed-work consequences.",
           },
           ru: {
             headline: "Стабилизировать партнерский экспорт",
@@ -738,7 +738,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
     kind: "bug",
     tags: ["fallout", "core", "defect"],
     meaning: [
-      "This bug exists because an earlier task created fallout.",
+      "This bug exists because an earlier task created a consequence.",
       "The source task id and cause must remain structured.",
       "The player should recognize the consequence without reading a noisy title.",
     ],
@@ -752,16 +752,16 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
         layer: "core",
         core: {
           en: {
-            headline: "Fix fallout in {area}",
+            headline: "Fix follow-up in {area}",
             problem: "The {area} regressed after {sourceTaskId} because of {cause}.",
             stakes: "Closing the follow-up prevents yesterday's compromise from becoming normal work.",
-            failurePreview: "If ignored, the fallout chain can keep consuming team capacity.",
+            failurePreview: "If ignored, the follow-up work can keep consuming team capacity.",
           },
           ru: {
-            headline: "Починить хвост в зоне: {area}",
+            headline: "Починить последствие в разделе «{area}»",
             problem: "{area} сломалось после {sourceTaskId} из-за {cause}.",
-            stakes: "Закрытый хвост не дает вчерашнему компромиссу стать постоянной работой.",
-            failurePreview: "Если игнорировать, цепочка хвостов продолжит съедать capacity команды.",
+            stakes: "Закрытая проблема не дает вчерашнему компромиссу стать постоянной работой.",
+            failurePreview: "Если игнорировать, дополнительные работы продолжат съедать время команды.",
           },
         },
       },
@@ -786,7 +786,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
         layer: "core",
         core: {
           en: {
-            headline: "Handle fallout escalation in {area}",
+            headline: "Handle consequence escalation in {area}",
             problem: "A problem from {sourceTaskId} reached production because of {cause}.",
             stakes: "Stabilizing it protects trust and closes a visible consequence chain.",
             failurePreview: "If it misses again, the chain can terminate as direct business damage.",
@@ -820,15 +820,15 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
         layer: "core",
         core: {
           en: {
-            headline: "Repair partner fallout in {area}",
+            headline: "Repair partner follow-up in {area}",
             problem: "Partner work around {area} came back after {sourceTaskId} because of {cause}.",
             stakes: "A clean fix turns the follow-up back into controlled delivery.",
             failurePreview: "If ignored, the partner issue can become another escalation.",
           },
           ru: {
-            headline: "Починить партнерский хвост: {area}",
+            headline: "Починить партнерскую проблему в разделе «{area}»",
             problem: "Партнерская работа вокруг {area} вернулась после {sourceTaskId} из-за {cause}.",
-            stakes: "Чистый фикс возвращает хвост в управляемую доставку.",
+            stakes: "Чистый фикс возвращает проблему в управляемую доставку.",
             failurePreview: "Если игнорировать, партнерская проблема может стать новой эскалацией.",
           },
         },
@@ -854,16 +854,16 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
         layer: "core",
         core: {
           en: {
-            headline: "Rework fallout in {area}",
+            headline: "Rework follow-up in {area}",
             problem: "The request around {area} came back after {sourceTaskId} because of {cause}.",
             stakes: "Doing the rework cleanly stops the old compromise from leaking into new work.",
             failurePreview: "If skipped, the same confusion can return as another follow-up.",
           },
           ru: {
-            headline: "Переделать хвост в зоне: {area}",
+            headline: "Переделать последствие в разделе «{area}»",
             problem: "Запрос вокруг {area} вернулся после {sourceTaskId} из-за {cause}.",
             stakes: "Чистая переделка не дает старому компромиссу протечь в новую работу.",
-            failurePreview: "Если пропустить, та же путаница может вернуться новым хвостом.",
+            failurePreview: "Если пропустить, та же путаница может вернуться новой задачей.",
           },
         },
       },
