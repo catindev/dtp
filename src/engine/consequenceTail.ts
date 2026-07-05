@@ -94,7 +94,9 @@ export function createTailConsequence(
     originalFollowUpId.match(/\d+$/)?.[0] ?? String(state.nextTaskId - 1).padStart(3, "0");
   followUp.domain = sourceTask.domain;
   followUp.id = `${DOMAIN_PREFIXES[sourceTask.domain] ?? "INC"}-${sequence}`;
-  followUp.title = `${followUp.id}: ${symptom}`;
+  followUp.narrativeRef.variableValueIds.area = sourceTask.domain;
+  followUp.narrativeRef.tags = Array.from(new Set([...followUp.narrativeRef.tags, "fallout"]));
+  followUp.title = `${followUp.id}: ${followUp.narrativeRef.archetypeId}`;
   for (const subtask of followUp.subtasks) {
     subtask.id = subtask.id.replace(originalFollowUpId, followUp.id);
   }

@@ -1,8 +1,20 @@
-import type { RtRole, RtStage, RtSubtaskRole } from "./types";
+import type {
+  RtRole,
+  RtStage,
+  RtSubtaskRole,
+  RtTaskDomain,
+} from "./types";
 
-export const DOMAINS = ["payments", "auth", "admin", "search", "reports", "notifications"];
+export const DOMAINS: readonly RtTaskDomain[] = [
+  "payments",
+  "auth",
+  "admin",
+  "search",
+  "reports",
+  "notifications",
+];
 
-export const DOMAIN_PREFIXES: Record<string, string> = {
+export const DOMAIN_PREFIXES: Record<RtTaskDomain, string> = {
   payments: "PAY",
   auth: "AUTH",
   admin: "ADM",

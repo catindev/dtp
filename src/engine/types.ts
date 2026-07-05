@@ -12,6 +12,14 @@ export type RtTaskKind =
   | "performance"
   | "compliance";
 
+export type RtTaskDomain =
+  | "payments"
+  | "auth"
+  | "admin"
+  | "search"
+  | "reports"
+  | "notifications";
+
 export type RtRole = "analyst" | "designer" | "backend" | "frontend" | "qa" | "sre";
 export type RtStage = "analysis" | "todo" | "test";
 export type RtWorkColumn = Extract<RtColumn, "inProgress">;
@@ -69,6 +77,38 @@ export interface RtSubtask {
   progress: number;
   completedBy: string | null;
   offRole: boolean;
+}
+
+export type RtNarrativeLayer = "core" | "flavor";
+export type RtNarrativeTone = "neutral" | "tense" | "dry";
+export type RtNarrativeDensity = "core" | "flavor";
+export type RtNarrativeBranchId = string;
+
+export interface RtTaskNarrativeRef {
+  archetypeId: string;
+  variantSeed: number;
+  branchId: RtNarrativeBranchId;
+  variableValueIds: Record<string, string>;
+  tags: string[];
+  tone: RtNarrativeTone;
+  density: RtNarrativeDensity;
+}
+
+export type RtTaskCommentClass = "signal" | "flavor";
+
+export interface RtTaskComment {
+  id: string;
+  class: RtTaskCommentClass;
+  narrativeId: string;
+  createdAtDay: number;
+  createdAtMinute: number;
+  variableValueIds: Record<string, string>;
+}
+
+export interface RtNarrativeBudgetState {
+  flavorWindowTaskIds: string[];
+  flavorWindowSize: number;
+  flavorTargetRatio: number;
 }
 
 export interface RtResources {
@@ -207,9 +247,12 @@ export interface RtMorningReport {
 
 export interface RtTask {
   id: string;
+  narrativeRef: RtTaskNarrativeRef;
+  comments: RtTaskComment[];
+  lastCommentId: string | null;
   title: string;
   kind: RtTaskKind;
-  domain: string;
+  domain: RtTaskDomain;
   blastRadius: RtBlastRadius;
   column: RtColumn;
   pressure: number;
@@ -463,6 +506,7 @@ export interface RtGameState {
   quarterGoal: RtQuarterGoal;
   quarterValue: number;
   backlogDecayToday: RtBacklogDecayDayStats;
+  narrativeBudget: RtNarrativeBudgetState;
   morningReport: RtMorningReport | null;
   board: Record<RtColumn, string[]>;
   tasks: Record<string, RtTask>;

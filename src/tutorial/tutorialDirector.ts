@@ -496,6 +496,7 @@ function baseTutorialTask(state: RtGameState, kind: RtTask["kind"], title: strin
   const task = generateTask(state, kind);
   task.title = `${task.id}: ${title}`;
   task.domain = "auth";
+  task.narrativeRef.variableValueIds.area = "auth";
   task.pressure = 1;
   task.complexity = 1;
   task.blastRadius = "low";
@@ -535,6 +536,21 @@ function baseTutorialTask(state: RtGameState, kind: RtTask["kind"], title: strin
   return task;
 }
 
+function setTutorialNarrative(task: RtTask, archetypeId: string): void {
+  task.narrativeRef = {
+    archetypeId,
+    variantSeed: task.narrativeRef.variantSeed,
+    branchId: "default",
+    variableValueIds: {
+      area: task.domain,
+    },
+    tags: ["tutorial", "core"],
+    tone: "neutral",
+    density: "core",
+  };
+  task.title = `${task.id}: ${archetypeId}`;
+}
+
 function createTutorialSubtask(
   task: RtTask,
   suffix: string,
@@ -557,6 +573,7 @@ function createTutorialSubtask(
 
 function createStageTwoTask(state: RtGameState): RtTask {
   const task = baseTutorialTask(state, "feature", "Add a small customer note");
+  setTutorialNarrative(task, "tutorial.multi-work.note");
   task.subtasks = [
     {
       ...createTutorialSubtask(task, "B1", "Implement backend change", "backend", "critical"),
@@ -569,6 +586,7 @@ function createStageTwoTask(state: RtGameState): RtTask {
 
 function createCompromiseTask(state: RtGameState): RtTask {
   const task = baseTutorialTask(state, "bug", "Patch urgent login error");
+  setTutorialNarrative(task, "tutorial.compromise.login");
   task.quality = 65;
   task.subtasks = [
     createTutorialSubtask(task, "B1", "Patch backend behavior", "backend", "critical"),
@@ -579,6 +597,7 @@ function createCompromiseTask(state: RtGameState): RtTask {
 
 function createDeadlineTask(state: RtGameState): RtTask {
   const task = baseTutorialTask(state, "incident", "Stabilize partner export");
+  setTutorialNarrative(task, "tutorial.deadline.export");
   task.subtasks = [
     createTutorialSubtask(task, "S1", "Stabilize production path", "sre", "critical"),
   ];
@@ -633,6 +652,8 @@ function createStageOneTask(state: RtGameState): RtTask {
   const task = generateTask(state, "bug");
   task.title = `${task.id}: Test yesterday's changes`;
   task.domain = "auth";
+  task.narrativeRef.variableValueIds.area = "auth";
+  setTutorialNarrative(task, "tutorial.stage-one.qa");
   task.pressure = 1;
   task.complexity = 1;
   task.blastRadius = "low";

@@ -4,7 +4,7 @@ import {
 } from "./bugs";
 import { ensureBacklogOpportunityFields } from "./backlogOpportunity";
 import { RELEASE_QA_COVERAGE_THRESHOLD } from "./balance";
-import { normalizeConsequenceTaskTitle } from "./consequences";
+import { assertTaskNarrative } from "./narrative";
 import { inferBlastRadius } from "./taskFactory";
 import type {
   RtBlastRadius,
@@ -32,6 +32,23 @@ export function normalizeTaskForCurrentSchema(
     resolution?: RtTaskResolution | null;
     resolutionDay?: number | null;
   };
+  const taskWithNarrative = task as RtTask & {
+    narrativeRef?: RtTask["narrativeRef"];
+    comments?: RtTask["comments"];
+    lastCommentId?: string | null;
+  };
+  if (!taskWithNarrative.narrativeRef) {
+    throw new Error(`Task ${task.id} is missing narrativeRef for the current schema.`);
+  }
+  assertTaskNarrative(task);
+  if (!Array.isArray(taskWithNarrative.comments)) {
+    task.comments = [];
+    changed = true;
+  }
+  if (!Object.prototype.hasOwnProperty.call(taskWithNarrative, "lastCommentId")) {
+    task.lastCommentId = null;
+    changed = true;
+  }
   if (ensureBacklogOpportunityFields(task)) {
     changed = true;
   }
@@ -66,13 +83,6 @@ export function normalizeTaskForCurrentSchema(
   if (!("sourceTaskId" in taskWithChain)) {
     task.sourceTaskId = null;
     changed = true;
-  }
-  if (task.sourceTaskId) {
-    const normalizedTitle = normalizeConsequenceTaskTitle(task.title, task.sourceTaskId);
-    if (normalizedTitle !== task.title) {
-      task.title = normalizedTitle;
-      changed = true;
-    }
   }
   if (typeof taskWithChain.chainDepth !== "number") {
     task.chainDepth = 0;

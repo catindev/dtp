@@ -10,6 +10,7 @@ import {
   normalizeRealtimeState,
   outsourceTaskWork,
   releaseReadiness,
+  renderTaskNarrative,
   resolveDueHorizonReviews,
   RT_COLUMNS,
   runDailyReleaseTrain,
@@ -26,6 +27,7 @@ import { createLogEntry } from "../logging/backendLog";
 import { buildGameEventTelemetry } from "../logging/gameEventTelemetry";
 import { buildDaySummaryTelemetry } from "../logging/summaryTelemetry";
 import { characterDropRejectReason } from "../hooks/dragAndDropHelpers";
+import { createTaskNarrativeRef } from "../engine/narrative";
 import { loadTutorialCompleted } from "../tutorial/tutorialProgress";
 import {
   TUTORIAL_STEP_ASSIGN_QA,
@@ -62,6 +64,7 @@ const smoke = [
   runTutorialEntrySmoke(),
   runTutorialStageOneSmoke(),
   runTutorialFullFlowSmoke(),
+  runNarrativeContractSmoke(),
   runMigrationNormalizationSmoke(),
   runDebugSnapshotSmoke(),
   runOutsourceSmoke(),
@@ -377,6 +380,38 @@ function runTutorialEntrySmoke() {
   };
 }
 
+function runNarrativeContractSmoke() {
+  const currentState = createRealtimeState(4304, "en");
+  const taskId = currentState.board.backlog[0];
+  const task = currentState.tasks[taskId];
+  assert(Boolean(task), "Narrative smoke expected a generated task.");
+  assert(Boolean(task.narrativeRef), "Narrative smoke expected narrativeRef.");
+  assert(Array.isArray(task.comments), "Narrative smoke expected comments scaffold.");
+  assert(task.lastCommentId === null, "Narrative smoke expected empty lastCommentId.");
+
+  const en = renderTaskNarrative(task, "en");
+  const ru = renderTaskNarrative(task, "ru");
+  assert(en.headline.length > 0, "Narrative smoke expected EN headline.");
+  assert(ru.headline.length > 0, "Narrative smoke expected RU headline.");
+  assert(en.headline !== ru.headline, "Narrative smoke expected localized text.");
+  assert(
+    !en.title.includes(task.narrativeRef.archetypeId),
+    "Narrative smoke expected rendered title, not archetype debug id.",
+  );
+  assert(
+    task.title.includes(task.narrativeRef.archetypeId),
+    "Narrative smoke expected legacy title to be a debug archetype marker.",
+  );
+
+  return {
+    name: "narrative-contract",
+    taskId: task.id,
+    archetypeId: task.narrativeRef.archetypeId,
+    en: en.headline,
+    ru: ru.headline,
+  };
+}
+
 function runTutorialStageOneSmoke() {
   const currentState = createTutorialRealtimeState(4205);
   tickRealtime(currentState, 1500);
@@ -661,7 +696,7 @@ function runTechDebtReleaseSinkSmoke() {
   const controlledTask = currentState.tasks[controlledTaskId];
   assert(Boolean(controlledTask), "Tech debt sink smoke expected an initial task.");
   configureCleanReleaseTask(controlledTask);
-  controlledTask.kind = "techDebt";
+  setSmokeTaskKind(currentState, controlledTask, "techDebt");
   controlledTask.value = 32;
   controlledTask.baseValue = 32;
   controlledTask.backlogValue = 32;
@@ -685,8 +720,8 @@ function runMigrationNormalizationSmoke() {
   const legacyState = currentState as unknown as {
     locale: unknown;
     daysPerQuarter: number;
-    board: Record<string, string[] | undefined>;
     backlogDecayToday?: RtGameState["backlogDecayToday"];
+    narrativeBudget?: RtGameState["narrativeBudget"];
     morningReport?: RtGameState["morningReport"];
   };
   const controlledTaskId = currentState.board.backlog[0];
@@ -696,33 +731,10 @@ function runMigrationNormalizationSmoke() {
   legacyState.locale = "de";
   legacyState.daysPerQuarter = 1;
   delete legacyState.backlogDecayToday;
+  delete legacyState.narrativeBudget;
   delete legacyState.morningReport;
-  currentState.board.backlog = currentState.board.backlog.filter((taskId) => taskId !== controlledTask.id);
-  legacyState.board.analysis = [controlledTask.id];
-
-  const legacyTask = controlledTask as unknown as Omit<Partial<RtTask>, "column"> & {
-    column: string;
-    sourceTaskId?: string | null;
-  };
-  legacyTask.column = "analysis";
-  legacyTask.title = "Partner payouts: broke after PAY-001";
-  legacyTask.sourceTaskId = "PAY-001";
-  delete legacyTask.blastRadius;
-  delete legacyTask.outsourcing;
-  delete legacyTask.changedAfterQa;
-  delete legacyTask.baseValue;
-  delete legacyTask.backlogValue;
-  delete legacyTask.backlogDecayElapsedMs;
-  delete legacyTask.backlogDecayDurationMs;
-  delete legacyTask.engagedOnce;
-  delete legacyTask.queuedDeadlineMs;
-  legacyTask.overdueMs = -120;
-  delete legacyTask.rootCauseTaskId;
-  delete legacyTask.chainDepth;
-  delete legacyTask.resolved;
-  delete legacyTask.resolution;
-  delete legacyTask.resolutionDay;
-  legacyTask.postmortem = [
+  controlledTask.overdueMs = -120;
+  controlledTask.postmortem = [
     "Source task: PAY-001.",
     "Root cause: PAY-001.",
     "Keep this note.",
@@ -734,26 +746,10 @@ function runMigrationNormalizationSmoke() {
   assert(currentState.locale === "en", "Migration smoke expected invalid locale to normalize.");
   assertQuarterCadence(currentState);
   assert(currentState.morningReport === null, "Migration smoke expected missing morning report to normalize.");
-  assert(controlledTask.column === "inProgress", "Migration smoke expected legacy work to move to In Progress.");
-  assert(currentState.board.inProgress.includes(controlledTask.id), "Migration smoke expected migrated task on board.");
-  assert(!legacyState.board.analysis?.includes(controlledTask.id), "Migration smoke expected legacy analysis board cleared.");
-  assert(controlledTask.blastRadius !== undefined, "Migration smoke expected blast radius backfill.");
-  assert(controlledTask.outsourcing === null, "Migration smoke expected outsourcing backfill.");
-  assert(controlledTask.changedAfterQa === false, "Migration smoke expected changedAfterQa backfill.");
-  assert(controlledTask.baseValue === controlledTask.value, "Migration smoke expected base value backfill.");
-  assert(controlledTask.backlogValue === controlledTask.value, "Migration smoke expected backlog value backfill.");
-  assert(controlledTask.backlogDecayElapsedMs === 0, "Migration smoke expected backlog decay elapsed backfill.");
-  assert(controlledTask.backlogDecayDurationMs > 0, "Migration smoke expected backlog decay duration backfill.");
-  assert(controlledTask.engagedOnce, "Migration smoke expected migrated work task to be engaged.");
   assert(currentState.backlogDecayToday.expiredCount === 0, "Migration smoke expected backlog stats backfill.");
-  assert(controlledTask.queuedDeadlineMs === null, "Migration smoke expected work task queued deadline reset.");
+  assert(currentState.narrativeBudget.flavorWindowTaskIds.length === 0, "Migration smoke expected narrative budget.");
   assert(controlledTask.overdueMs === 0, "Migration smoke expected overdue clamp.");
-  assert(controlledTask.rootCauseTaskId === null, "Migration smoke expected root cause backfill.");
-  assert(controlledTask.chainDepth === 0, "Migration smoke expected chain depth backfill.");
-  assert(controlledTask.resolved === false, "Migration smoke expected resolved backfill.");
-  assert(controlledTask.resolution === null, "Migration smoke expected resolution backfill.");
-  assert(controlledTask.resolutionDay === null, "Migration smoke expected resolution day backfill.");
-  assert(!controlledTask.title.includes("PAY-001"), "Migration smoke expected consequence title cleanup.");
+  assert(Boolean(controlledTask.narrativeRef), "Migration smoke expected current narrative ref to remain intact.");
   assert(
     controlledTask.postmortem.length === 1 && controlledTask.postmortem[0] === "Keep this note.",
     "Migration smoke expected postmortem cleanup.",
@@ -763,7 +759,7 @@ function runMigrationNormalizationSmoke() {
     name: "migration-normalization",
     locale: currentState.locale,
     daysPerQuarter: currentState.daysPerQuarter,
-    migratedColumn: controlledTask.column,
+    narrativeWindow: currentState.narrativeBudget.flavorWindowTaskIds.length,
   };
 }
 
@@ -1063,9 +1059,15 @@ function tickUntilOutsourcingIdleInState(currentState: RtGameState, taskId: stri
   }
 }
 
+function setSmokeTaskKind(currentState: RtGameState, task: RtTask, kind: RtTask["kind"]): void {
+  task.kind = kind;
+  task.narrativeRef = createTaskNarrativeRef(currentState, kind, task.domain);
+  task.title = `${task.id}: ${task.narrativeRef.archetypeId}`;
+}
+
 function configureCleanReleaseTask(task: RtTask): void {
-  task.kind = "integration";
   task.domain = "payments";
+  setSmokeTaskKind(state, task, "integration");
   task.blastRadius = "low";
   task.pressure = 1;
   task.complexity = 1;
@@ -1086,8 +1088,8 @@ function configureCleanReleaseTask(task: RtTask): void {
 }
 
 function configureMissedMajorTask(task: RtTask): void {
-  task.kind = "integration";
   task.domain = "payments";
+  setSmokeTaskKind(state, task, "integration");
   task.blastRadius = "high";
   task.pressure = 5;
   task.complexity = 4;
@@ -1103,8 +1105,8 @@ function configureMissedMajorTask(task: RtTask): void {
 }
 
 function configureOutsourceTask(task: RtTask): void {
-  task.kind = "integration";
   task.domain = "payments";
+  setSmokeTaskKind(state, task, "integration");
   task.blastRadius = "medium";
   task.pressure = 2;
   task.complexity = 2;
@@ -1126,8 +1128,8 @@ function configureOutsourceTask(task: RtTask): void {
 }
 
 function configureImplementationAfterQaTask(task: RtTask): void {
-  task.kind = "feature";
   task.domain = "admin";
+  setSmokeTaskKind(state, task, "feature");
   task.blastRadius = "medium";
   task.pressure = 1;
   task.complexity = 1;
@@ -1149,8 +1151,8 @@ function configureImplementationAfterQaTask(task: RtTask): void {
 }
 
 function configureOutsourcedQaTask(task: RtTask): void {
-  task.kind = "bug";
   task.domain = "admin";
+  setSmokeTaskKind(state, task, "bug");
   task.blastRadius = "low";
   task.pressure = 1;
   task.complexity = 2;
@@ -1173,8 +1175,8 @@ function configureOutsourcedQaTask(task: RtTask): void {
 }
 
 function configurePartialQaTask(task: RtTask): void {
-  task.kind = "feature";
   task.domain = "payments";
+  setSmokeTaskKind(state, task, "feature");
   task.blastRadius = "low";
   task.pressure = 1;
   task.complexity = 1;

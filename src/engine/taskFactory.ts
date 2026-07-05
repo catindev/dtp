@@ -1,8 +1,7 @@
 import { BACKLOG_VALUE_DECAY_MS } from "./balance";
 import { DOMAINS, DOMAIN_PREFIXES } from "./catalog";
-import { TASK_TITLES } from "./content";
-import { normalizeEngineLocale } from "./locale";
 import { clamp } from "./math";
+import { createTaskNarrativeRef } from "./narrative";
 import {
   pickOne,
   randomBetween,
@@ -40,7 +39,6 @@ export function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTas
     randomBetween(state, 520000, 780000) + complexity * 45000 - pressure * 15000,
   );
   const value = Math.round((8 + complexity * 4 + pressure * 3) * kindValueMultiplier(kind));
-  const locale = normalizeEngineLocale(state.locale);
   const subtasks = generateSubtasks(
     state,
     id,
@@ -51,10 +49,14 @@ export function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTas
     forcedKind ? false : shouldBiasFrontendWork(state),
   );
   revealInitialSubtasks(state, subtasks, Math.round(clarity));
+  const narrativeRef = createTaskNarrativeRef(state, kind, domain);
 
   return {
     id,
-    title: `${id}: ${pickOne(state, TASK_TITLES[locale][kind])}`,
+    narrativeRef,
+    comments: [],
+    lastCommentId: null,
+    title: `${id}: ${narrativeRef.archetypeId}`,
     kind,
     domain,
     blastRadius,

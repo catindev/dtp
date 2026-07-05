@@ -26,6 +26,10 @@ import {
   normalizeRealtimeState as normalizeRealtimeStateInternal,
 } from "../engine/migration";
 import {
+  createNarrativeBudgetState,
+  resetNarrativeBudget,
+} from "../engine/narrative";
+import {
   openMorningReport as openMorningReportInternal,
 } from "../engine/morning";
 import {
@@ -114,6 +118,9 @@ export {
   releaseScore,
   taskDeadlineRatio,
 } from "../engine/readiness";
+export {
+  renderTaskNarrative,
+} from "../engine/narrative";
 export type {
   RtBlastRadius,
   RtCampaignCalendar,
@@ -152,6 +159,7 @@ export type {
   RtSubtaskImportance,
   RtSubtaskRole,
   RtTask,
+  RtTaskDomain,
   RtTaskKind,
   RtTaskResolution,
   RtVictoryGrade,
@@ -198,6 +206,7 @@ export function createRealtimeState(seed = Date.now(), locale: Locale = DEFAULT_
     },
     quarterValue: 0,
     backlogDecayToday: createBacklogDecayDayStats(),
+    narrativeBudget: createNarrativeBudgetState(),
     morningReport: null,
     board: createBoard(),
     tasks: {},
@@ -305,6 +314,7 @@ export function startDayAfterMorningReport(state: RtGameState): boolean {
 
   state.morningReport = null;
   resetBacklogDecayDayStats(state);
+  resetNarrativeBudget(state.narrativeBudget);
   state.paused = false;
   checkRunStateInternal(state, (event) => pushEvent(state, event));
   return true;

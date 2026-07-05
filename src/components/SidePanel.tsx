@@ -1,5 +1,10 @@
-import { localizeTaskTitle, t, type Locale } from "../i18n";
-import { type RtCharacter, type RtGameState, type RtTask } from "../realtime/simulation";
+import { t, type Locale } from "../i18n";
+import {
+  renderTaskNarrative,
+  type RtCharacter,
+  type RtGameState,
+  type RtTask,
+} from "../realtime/simulation";
 import { LossReport } from "./LossReport";
 import { TaskInspector } from "./TaskInspector";
 import { TinyBar } from "./TinyBar";
@@ -158,7 +163,7 @@ function CharacterInspector({
         <div className="current-work">
           <span>{t(locale, "characterInspector.currentTask")}</span>
           <button className="task-link-chip" onClick={() => onOpenLinkedTask(assignedTask.id)} type="button">
-            {assignedTask.id}: {localizeTaskTitle(assignedTask.title, locale)}
+            {renderTaskNarrative(assignedTask, locale).title}
           </button>
           <TinyBar label={t(locale, "work.progress")} ratio={assignedTask.stageProgress / 100} tone="progress" />
         </div>

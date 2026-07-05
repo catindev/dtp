@@ -5,6 +5,7 @@ import {
   isUntouchedBacklogTask,
   lateReleaseReport,
   releaseReadiness,
+  renderTaskNarrative,
   taskDeadlineRatio,
   type RtCharacter,
   type RtColumn,
@@ -17,7 +18,6 @@ import {
   labelImportance,
   labelRole,
   localizeSubtaskTitle,
-  localizeTaskTitle,
   localizeText,
   t,
   type Locale,
@@ -60,9 +60,10 @@ export function TaskInspector({
     (note) => !/^Source task:/.test(note) && !/^Root cause:/.test(note),
   );
   const visibleLastNote = shouldShowLastNote(task) ? task.lastNote : null;
+  const narrative = renderTaskNarrative(task, locale);
   return (
     <div className="task-inspector">
-      <strong>{localizeTaskTitle(task.title, locale)}</strong>
+      <strong>{narrative.title}</strong>
       <div className="inspector-grid">
         <span>{t(locale, "inspector.column", { column: columnLabel(locale, task.column) })}</span>
         <span>{t(locale, "inspector.pressure", { value: task.pressure })}</span>
@@ -81,6 +82,16 @@ export function TaskInspector({
             })}
           </span>
         ) : null}
+      </div>
+      <div className="task-story">
+        <p>{narrative.core.problem}</p>
+        <p>
+          <b>{t(locale, "taskStory.stakes")}:</b> {narrative.core.stakes}
+        </p>
+        <p>
+          <b>{t(locale, "taskStory.failurePreview")}:</b> {narrative.core.failurePreview}
+        </p>
+        {narrative.flavor?.aside ? <p className="task-story-flavor">{narrative.flavor.aside}</p> : null}
       </div>
       <ReadinessBadge locale={locale} report={readiness} />
       <SubtaskList locale={locale} task={task} />
@@ -124,7 +135,7 @@ export function TaskInspector({
               onClick={() => onOpenLinkedTask(sourceTask.id)}
               type="button"
             >
-              {localizeTaskTitle(sourceTask.title, locale)}
+              {taskLinkLabel(sourceTask, locale)}
             </button>
           ) : (
             <span className="task-link-chip disabled">
@@ -144,7 +155,7 @@ export function TaskInspector({
                 onClick={() => onOpenLinkedTask(consequenceTask.id)}
                 type="button"
               >
-                {localizeTaskTitle(consequenceTask.title, locale)}
+                {taskLinkLabel(consequenceTask, locale)}
               </button>
             ))}
           </div>
@@ -160,6 +171,10 @@ export function TaskInspector({
       ) : null}
     </div>
   );
+}
+
+function taskLinkLabel(task: RtTask, locale: Locale): string {
+  return renderTaskNarrative(task, locale).title;
 }
 
 function SubtaskList({ locale, task }: { locale: Locale; task: RtTask }) {

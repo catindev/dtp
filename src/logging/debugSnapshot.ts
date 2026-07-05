@@ -143,6 +143,8 @@ function summarizeTask(task: RtTask | undefined) {
   return {
     id: task.id,
     title: task.title,
+    narrative: task.narrativeRef,
+    comments: task.comments,
     kind: task.kind,
     column: task.column,
     blastRadius: task.blastRadius,

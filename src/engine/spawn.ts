@@ -14,6 +14,7 @@ import {
   BASE_SPECIALTIES,
   CHARACTER_NAMES,
 } from "./catalog";
+import { renderTaskNarrative } from "./narrative";
 import { randomBetween } from "./rng";
 import { generateTask } from "./taskFactory";
 import type {
@@ -71,10 +72,11 @@ export function addTaskToBacklog(
   if (state.board.backlog.length >= backlogLimit) return false;
   state.tasks[task.id] = task;
   state.board.backlog.unshift(task.id);
+  const narrative = renderTaskNarrative(task, state.locale);
   emit({
     type: "task_spawned",
     title: `${task.id} arrived`,
-    body: task.title,
+    body: narrative.title,
     effects: [
       `clarity ${task.clarity}`,
       `value ${Math.round(task.baseValue)}`,

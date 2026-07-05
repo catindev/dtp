@@ -1752,6 +1752,13 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.task-problem {
+  color: var(--color-muted-strong);
+  font-size: 12px;
+  line-height: 1.28;
+  margin: -1px 0 0;
+}
+
 .impact-dot {
   border: 1px solid var(--border-neutral);
   border-radius: 2px;
@@ -2162,6 +2169,7 @@ button:disabled {
 
 .subtask-list,
 .source-link-panel,
+.task-story,
 .postmortem {
   border: 1px solid var(--border-soft);
   display: grid;
@@ -2175,6 +2183,25 @@ button:disabled {
   font-size: 12px;
   margin: 0;
   text-transform: uppercase;
+}
+
+.task-story {
+  background: var(--surface-soft);
+}
+
+.task-story p {
+  color: var(--color-muted-strong);
+  line-height: 1.35;
+  margin: 0;
+}
+
+.task-story b {
+  color: var(--color-ink);
+}
+
+.task-story-flavor {
+  border-top: 1px solid var(--border-faint);
+  padding-top: 5px;
 }
 
 .task-link-chip {

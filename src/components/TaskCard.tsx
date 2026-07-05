@@ -4,6 +4,7 @@ import {
   isUntouchedBacklogTask,
   lateReleaseReport,
   releaseReadiness,
+  renderTaskNarrative,
   taskDeadlineRatio,
   type RtGameState,
   type RtReadinessReport,
@@ -14,7 +15,6 @@ import {
   labelBlastRadius,
   labelRole,
   labelTaskKind,
-  localizeTaskName,
   t,
   type Locale,
 } from "../i18n";
@@ -127,7 +127,7 @@ export function TaskCardFace({
   const neededRoles = taskNeededRoleChips(task, locale);
   const showImpactDot = shouldShowImpactDot(task, readiness);
   const showCompactReadiness = readiness.readiness !== "clean";
-  const title = localizeTaskName(task.title, locale);
+  const narrative = renderTaskNarrative(task, locale);
 
   return (
     <div className="task-card-face">
@@ -144,7 +144,8 @@ export function TaskCardFace({
           />
         ) : null}
       </header>
-      <strong className="task-title">{title}</strong>
+      <strong className="task-title">{narrative.headline}</strong>
+      <p className="task-problem">{narrative.core.problem}</p>
       {showCompactReadiness || late.valuePenaltyPercent > 0 ? (
         <div className="task-scan-row">
           {showCompactReadiness ? <ReadinessBadge locale={locale} report={readiness} compact /> : null}

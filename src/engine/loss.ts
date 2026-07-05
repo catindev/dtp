@@ -7,6 +7,7 @@ import type {
   RtVictoryReport,
 } from "./types";
 import { releaseReadiness } from "./readiness";
+import { renderTaskNarrative } from "./narrative";
 
 type LossEventSink = (event: Omit<RtEvent, "at">) => void;
 
@@ -190,7 +191,7 @@ function buildLossReport(
     .slice(0, 6)
     .map((task) => ({
       id: task.id,
-      title: task.title,
+      title: renderTaskNarrative(task, state.locale).title,
       column: task.column,
       deadlineMs: Math.round(task.deadlineMs),
       assignedCharacterId: task.assignedCharacterId,

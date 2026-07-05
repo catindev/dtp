@@ -17,6 +17,7 @@ import {
 import { clamp } from "./math";
 import { normalizeMorningReportState } from "./migrationReports";
 import { normalizeTaskForCurrentSchema } from "./migrationTasks";
+import { normalizeNarrativeBudgetState } from "./narrative";
 import {
   RT_COLUMNS,
   type RtCharacter,
@@ -32,6 +33,7 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
     morningReport?: RtMorningReport | null;
     locale?: EngineLocale;
     backlogDecayToday?: RtGameState["backlogDecayToday"];
+    narrativeBudget?: RtGameState["narrativeBudget"];
     calendar?: RtGameState["calendar"];
     horizonGoals?: RtGameState["horizonGoals"];
     victoryReport?: RtGameState["victoryReport"];
@@ -136,6 +138,11 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
       stats.expiredTaskIds = [];
       changed = true;
     }
+  }
+  const normalizedNarrativeBudget = normalizeNarrativeBudgetState(legacyState.narrativeBudget);
+  if (state.narrativeBudget !== normalizedNarrativeBudget) {
+    state.narrativeBudget = normalizedNarrativeBudget;
+    changed = true;
   }
 
   if (!("victoryReport" in legacyState)) {
