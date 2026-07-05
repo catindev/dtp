@@ -1,4 +1,5 @@
 import {
+  renderTaskNarrative,
   releaseReadiness,
   type RtGameState,
   type RtTask,
@@ -6,7 +7,6 @@ import {
 import {
   labelTaskKind,
   localizeEffect,
-  localizeTaskName,
   localizeText,
   t,
   type Locale,
@@ -39,12 +39,13 @@ export function MorningShipmentList({
             );
             const readiness = releaseReadiness(task);
             const releaseEffects = releaseEffectsForTask(task, releaseEvent, readiness);
+            const narrative = renderTaskNarrative(task, locale);
             return (
               <article className="release-task-row" key={task.id}>
                 <header>
                   <div>
                     <span>{task.id}</span>
-                    <strong>{localizeTaskName(task.title, locale)}</strong>
+                    <strong>{narrative.headline}</strong>
                   </div>
                   <b>{labelTaskKind(locale, task.kind)}</b>
                 </header>

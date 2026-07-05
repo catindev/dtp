@@ -6,14 +6,55 @@ export const GAME_MINUTES_PER_TICK = 0.5;
 export const GAME_DAY_START_MINUTE = 8 * 60;
 export const RELEASE_TRAIN_GAME_MINUTE = 18 * 60;
 export const GAME_DAY_MINUTES = RELEASE_TRAIN_GAME_MINUTE - GAME_DAY_START_MINUTE;
-export const DAYS_PER_QUARTER = 5;
+export const DAYS_PER_WEEK = 5;
+export const WEEKS_PER_MONTH = 2;
+export const MONTHS_PER_QUARTER = 2;
+export const QUARTERS_PER_YEAR = 4;
+export const DAYS_PER_MONTH = DAYS_PER_WEEK * WEEKS_PER_MONTH;
+export const DAYS_PER_QUARTER = DAYS_PER_MONTH * MONTHS_PER_QUARTER;
+export const DAYS_PER_YEAR = DAYS_PER_QUARTER * QUARTERS_PER_YEAR;
+export const LEGACY_REVIEW_DAYS = DAYS_PER_WEEK;
 export const DONE_REWORK_TRUST_COST = 4;
+
+export const HORIZON_GOAL_CONFIG = {
+  week: {
+    expectedValue: 75,
+    trust: 45,
+    rewardBudget: 0,
+    rewardProcessBoost: 0,
+    missedTrustPenalty: 4,
+  },
+  month: {
+    expectedValue: 150,
+    trust: 48,
+    rewardBudget: 1,
+    rewardProcessBoost: 1,
+    missedTrustPenalty: 6,
+  },
+  quarter: {
+    expectedValue: 320,
+    trust: 52,
+    rewardBudget: 3,
+    rewardProcessBoost: 5,
+    missedTrustPenalty: 8,
+  },
+  year: {
+    expectedValue: 1200,
+    trust: 55,
+    rewardBudget: 4,
+    rewardProcessBoost: 0,
+    missedTrustPenalty: 10,
+  },
+} as const;
+export const MAX_HORIZON_TRUST_DAMAGE_PER_DAY = 10;
 
 export const OUTSOURCE_COST_BY_IMPORTANCE = {
   optional: 3,
   important: 4,
   critical: 6,
 } as const;
+export const OUTSOURCE_QA_TEST_SKILL = 3;
+export const OUTSOURCE_QA_ROLE_FIT = 3;
 
 export const NIGHT_STAMINA_MIN_RECOVERY = 55;
 export const NIGHT_STAMINA_RECOVERY_RATIO = 0.8;
@@ -113,6 +154,12 @@ export const WORK_ANALYSIS_REVEAL_MEDIUM_COUNT = 2;
 export const WORK_ANALYSIS_REVEAL_LOW_COUNT = 1;
 
 export const BACKLOG_LIMIT = 5;
+export const BACKLOG_VALUE_DECAY_GAME_MINUTES = 900;
+export const BACKLOG_VALUE_DECAY_MS = BACKLOG_VALUE_DECAY_GAME_MINUTES * 1000;
+export const BACKLOG_EXPIRED_DEBT_VALUE_DIVISOR = 30;
+export const BACKLOG_EXPIRED_DEBT_MIN = 1;
+export const BACKLOG_EXPIRED_DEBT_MAX = 4;
+export const MAX_BACKLOG_DECAY_DEBT_PER_DAY = 6;
 export const FALLOUT_BACKLOG_EXTRA_SLOTS = 2;
 export const MAX_FALLOUT_CHAIN_DEPTH = 2;
 export const LATE_RELEASE_GRACE_MS = 30000;
@@ -165,6 +212,13 @@ export const RELEASE_SCORE_WORK_NOT_DONE_PENALTY = 18;
 export const RELEASE_SCORE_OPEN_CRITICAL_PENALTY = 22;
 export const RELEASE_SCORE_OPEN_IMPORTANT_PENALTY = 9;
 export const RELEASE_SCORE_HIDDEN_OPEN_PENALTY = 10;
+export const RELEASE_CLEAN_DEBT_REDUCTION = 1;
+export const RELEASE_TECH_DEBT_CLEANUP_VALUE_DIVISOR = 4;
+export const RELEASE_TECH_DEBT_CLEANUP_MIN = 4;
+export const RELEASE_TECH_DEBT_CLEANUP_MAX = 12;
+export const RELEASE_TECH_DEBT_RISKY_CLEANUP_VALUE_DIVISOR = 8;
+export const RELEASE_TECH_DEBT_RISKY_CLEANUP_MIN = 2;
+export const RELEASE_TECH_DEBT_RISKY_CLEANUP_MAX = 6;
 
 export const FRONTEND_GUARDRAIL_WINDOW = 7;
 export const FRONTEND_GUARDRAIL_MIN_MAJOR_WORK = 1;

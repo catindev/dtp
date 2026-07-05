@@ -4,6 +4,263 @@
 
 ---
 
+## 2026-07-04 - v0.1.48 Log size guardrails
+
+Добавлены guardrails против повторного раздувания логов:
+
+- realtime smoke теперь проверяет размер типового telemetry event;
+- проверяет размер day summary;
+- проверяет, что snapshot остается отдельным и тяжелым diagnostic-классом;
+- текущие контрольные размеры: event ~599B, summary ~1175B, snapshot ~7486B.
+
+Это tooling-only refactor. Gameplay save schema не менялась: `SAVE_SCHEMA_VERSION` остается `rt-campaign-v6`.
+
+---
+
+## 2026-07-04 - v0.1.47 JSONL log inspection CLI
+
+Добавлены инструменты чтения новых JSONL-логов:
+
+- `npm run logs:session -- <sessionId>`;
+- `npm run logs:summary -- <sessionId>`;
+- `npm run logs:events -- <sessionId> [--type task_spawned]`;
+- `npm run logs:timeline -- <sessionId>`;
+- по умолчанию читается `/Users/vladimirtitskiy/Dev/dtp-backend/logs`;
+- путь можно переопределить через `DTP_BACKEND_LOG_DIR`.
+
+Это tooling-only refactor. Gameplay save schema не менялась: `SAVE_SCHEMA_VERSION` остается `rt-campaign-v6`.
+
+---
+
+## 2026-07-04 - v0.1.46 Runtime error telemetry
+
+Продолжен рефакторинг логгера:
+
+- добавлен root hook `useRuntimeErrorLogging`;
+- `window.error` и `window.unhandledrejection` пишутся как `kind: error`, `type: runtime_error`;
+- error payload содержит источник, экран, message, stack и компактное состояние игры;
+- при runtime error отдельно сохраняется debug snapshot с `trigger: runtime_error`;
+- handler защищен от рекурсивных ошибок.
+
+Это schema-compatible logging refactor. Gameplay save schema не менялась: `SAVE_SCHEMA_VERSION` остается `rt-campaign-v6`.
+
+---
+
+## 2026-07-04 - v0.1.45 Persistent log seq
+
+Продолжен рефакторинг логгера:
+
+- frontend `seq` теперь сохраняется в `localStorage` по session id;
+- после reload новые события продолжают sequence, а не начинают с 1;
+- backend JSONL repository хранит `lastSeq` в `meta.json`;
+- повторные retry batches с `seq <= lastSeq` игнорируются;
+- проверен live smoke: первый POST `appended=1`, повторный POST `appended=0`.
+
+Это schema-compatible logging refactor. Gameplay save schema не менялась: `SAVE_SCHEMA_VERSION` остается `rt-campaign-v6`.
+
+---
+
+## 2026-07-04 - v0.1.44 Day summary telemetry
+
+Продолжен рефакторинг логгера:
+
+- Morning Briefing теперь пишет отдельное `kind: summary`, `type: day_summary`;
+- summary логируется один раз на `morningReport.id`;
+- payload содержит агрегаты дня, resource deltas, compact horizon reviews и ids задач;
+- большие списки последствий не копируются целиком в action/snapshot поток.
+
+Это schema-compatible logging refactor. Gameplay save schema не менялась: `SAVE_SCHEMA_VERSION` остается `rt-campaign-v6`.
+
+---
+
+## 2026-07-04 - v0.1.43 Compact game event telemetry
+
+Продолжен рефакторинг логгера:
+
+- игровые события теперь проходят через `buildGameEventTelemetry`;
+- telemetry payload больше не тащит `title/body` игровых событий;
+- payload хранит структурные поля: `eventType`, время, день, `taskId`, `characterId`, роли, `effects`, `data`, компактный snapshot ресурсов;
+- action logs очищены от части шумных текстовых полей (`taskTitle`, `characterName`);
+- лог старта дня больше не отправляет полный массив consequences/effects, только ids/counts.
+
+Это schema-compatible logging refactor. Gameplay save schema не менялась: `SAVE_SCHEMA_VERSION` остается `rt-campaign-v6`.
+
+---
+
+## 2026-07-04 - v0.1.42 Snapshot logging opt-in
+
+Продолжен рефакторинг логгера:
+
+- периодическая отправка debug snapshot больше не включена по умолчанию;
+- старый цикл `snapshot every 1000ms` заменен на opt-in режим `VITE_DTP_DEBUG_SNAPSHOTS=1`;
+- opt-in интервал увеличен до `60s`;
+- snapshot-события получили `trigger`;
+- status/loss/win snapshot остается, чтобы не потерять диагностику критических состояний;
+- ручной copy snapshot не менялся.
+
+Это schema-compatible logging refactor. Gameplay save schema не менялась: `SAVE_SCHEMA_VERSION` остается `rt-campaign-v6`.
+
+---
+
+## 2026-07-04 - v0.1.41 Logger contract v1
+
+Начат рефакторинг логгера под серверную модель хранения:
+
+- введен `LOG_SCHEMA_VERSION = log-v1`;
+- frontend log entry получил `schema`, `seq`, `kind`, `type`;
+- новые категории логов: `event`, `snapshot`, `summary`, `error`;
+- `logAction` теперь пишет обычное telemetry event с `channel: action`;
+- игровые события пишутся как `event` с `channel: game_event`;
+- legacy-поле `name` убрано; новым машинным названием события является только `type`;
+- очередь backend-логов теперь валидирует только новый `log-v1` контракт.
+
+Это schema-compatible logging refactor. Gameplay save schema не менялась: `SAVE_SCHEMA_VERSION` остается `rt-campaign-v6`.
+
+---
+
+## 2026-07-04 - v0.1.40 Partial QA coverage
+
+Исправлена неоднозначность QA-риска:
+
+- частичный QA-проход больше не закрывает QA-подзадачу, если итоговое покрытие ниже порога релиза;
+- карточка продолжает показывать риск `no_qa`, пока `testCoverage` ниже `RELEASE_QA_COVERAGE_THRESHOLD`;
+- QA-подзадача остается доступной для повторного назначения;
+- события `qa_done` получили поля `coverageComplete`, `testCoverage`, `coverageThreshold`;
+- в логах и UI появилось отдельное событие `QA coverage partial`;
+- добавлен smoke `partial-qa-coverage`.
+
+Формат gameplay state изменился: `SAVE_SCHEMA_VERSION` поднят до `rt-campaign-v6`, старые несовместимые autosave-забеги в 0.x не мигрируются.
+
+---
+
+## 2026-07-02 - v0.1.8 Music toggle
+
+Добавлена настройка фоновой музыки:
+
+- в главном меню / pause-menu появился переключатель `Music` / `Музыка`;
+- музыка включена по умолчанию;
+- выбор сохраняется в `localStorage` по ключу `dtp.musicEnabled.v1`;
+- выключение настройки сразу ставит `main-theme.mp3` на паузу;
+- ручные запуски main theme из action handlers убраны, управление музыкой идет через единый `useMainThemePlayback`.
+
+Версия приложения поднята до `0.1.8` как patch UI/audio-preference правка. Формат сохранения не менялся, `SAVE_SCHEMA_VERSION` остается `rt-board-v4`.
+
+---
+
+## 2026-07-02 - v0.1.7 Stable main theme playback
+
+Пофикшен нестабильный фоновой саундтрек:
+
+- состояние `main-theme.mp3` хранится на `globalThis`, чтобы в dev/HMR не создавать независимые фоновые экземпляры;
+- `startMainTheme` стал идемпотентным: повторный старт не запускает второй `play()` поверх текущего;
+- pending `audio.play()` больше не может включить музыку обратно после паузы, меню или morning briefing;
+- `pauseMainTheme` останавливает все известные экземпляры main theme.
+
+Версия приложения поднята до `0.1.7` как patch audio-fix. Формат сохранения не менялся, `SAVE_SCHEMA_VERSION` остается `rt-board-v4`.
+
+---
+
+## 2026-07-02 - v0.1.6 Character event payload
+
+Добавлены структурные идентификаторы персонажей в игровые события:
+
+- `RtEvent` получил опциональное поле `data`;
+- события `assigned`, `cancelled`, `character_exhausted`, `analysis_done`, `subtask_done`, `bugfix_done`, `qa_done` теперь пишут `characterId`, `characterName`, `characterRole`;
+- события завершения работы дополнительно пишут `taskId`, `subtaskId`, `subtaskRole`, quality/bugs/QA-метрики, где они есть;
+- логи и debug snapshots больше не должны опираться на парсинг имени персонажа из `title/body`.
+
+Версия приложения поднята до `0.1.6` как patch logging/diagnostics правка. Формат сохранения не менялся, `SAVE_SCHEMA_VERSION` остается `rt-board-v4`.
+
+---
+
+## 2026-07-02 - v0.1.5 Work completion sound
+
+Добавлен звук завершения работы персонажем:
+
+- `sounds/on-subtask-completed.ogg` подключен как sound effect `subtaskCompleted`;
+- звук проигрывается на `analysis_done`, `subtask_done`, `bugfix_done`, `qa_done`;
+- сохраненные события не переигрывают звук при восстановлении autosave, потому что уже учтены в `soundEventKeysRef`.
+
+Версия приложения поднята до `0.1.5` как patch audio/UI feedback правка. Формат сохранения не менялся, `SAVE_SCHEMA_VERSION` остается `rt-board-v4`.
+
+---
+
+## 2026-07-02 - v0.1.4 Backlog expiration sound
+
+Добавлен звук для исчезновения карточки из `Backlog`:
+
+- `sounds/on-backlog-end.ogg` подключен как sound effect `backlogEnd`;
+- звук проигрывается на событии `backlog_opportunity_expired`;
+- это срабатывает в момент, когда untouched backlog-карточка теряет всю ценность и исчезает с активной доски.
+
+Версия приложения поднята до `0.1.4` как patch audio/UI feedback правка. Формат сохранения не менялся, `SAVE_SCHEMA_VERSION` остается `rt-board-v4`.
+
+---
+
+## 2026-07-02 - v0.1.3 Save 0.x policy и UI-полировка карточек
+
+Доработано правило сохранений и визуальная читаемость карточек:
+
+- несовместимый autosave больше не запускается как игра;
+- при `SAVE_SCHEMA_VERSION` mismatch меню показывает карточку с объяснением и debug `save old -> current`;
+- `normalizeRealtimeState` зафиксирован в документации как санитарная нормализация только внутри той же schema;
+- selected clean-карточки получают зеленую рамку, selected risky - желтую;
+- impact-dot скрывается у clean low/medium карточек в `Done` и `Prod`;
+- в inspector убран дубль текста про очередь релиза.
+
+Версия приложения поднята до `0.1.3` как patch UI/save-policy правка. Формат сохранения не менялся, `SAVE_SCHEMA_VERSION` остается `rt-board-v4`.
+
+---
+
+## 2026-07-02 - v0.1.2 Версия UI из package.json
+
+Исправлен источник версии в игровом footer:
+
+- UI больше не получает `APP_VERSION` через Vite `define`, который обновляется только при старте dev-сервера;
+- версия импортируется из `package.json` как watched-модуль;
+- следующие semver bump должны доходить до dev UI без ручной синхронизации кода;
+- формат сохранения не менялся, `SAVE_SCHEMA_VERSION` остается `rt-board-v4`.
+
+---
+
+## 2026-07-02 - v0.1.1 Deadline pressure вне readiness
+
+Уточнена player-facing модель готовности:
+
+- `deadline_pressure` больше не делает карточку `Risky`;
+- `Clean / Risky / Dirty` теперь описывает только рабочие и качественные причины, которые игрок может исправить задачей, QA, SRE, анализом или bugfix;
+- дедлайн остается отдельным визуальным слоем: deadline bar, urgent pulse, late/overdue-плашка после фактической просрочки;
+- `releaseScore` продолжает учитывать deadline penalty отдельно от readiness;
+- если задача полностью готова и срок еще не истек, она остается `Clean`, даже если дедлайн почти кончился.
+
+Версия приложения поднята до `0.1.1` по semver как patch-исправление player-facing логики. Формат сохранения не менялся, `SAVE_SCHEMA_VERSION` остается `rt-board-v4`.
+
+---
+
+## 2026-07-02 - Backlog value decay
+
+Переработан смысл `Backlog`:
+
+- untouched-задачи в `Backlog` больше не тратят delivery deadline;
+- вместо этого у них уменьшается `backlogValue`;
+- первый перенос `Backlog -> In Progress` фиксирует текущую value и стартует настоящий delivery deadline;
+- engaged-задачу нельзя вернуть в бесплатный backlog-state;
+- если `backlogValue` дошел до нуля, задача тихо исчезает как упущенная возможность;
+- такая упущенная возможность добавляет capped `Debt`, но не создает named fallout;
+- Morning Briefing показывает `backlogExpiredCount`, `backlogValueLost`, `backlogDebtAdded`;
+- `Prod -> Невыполненные` больше не показывает такие тихо истекшие backlog-задачи;
+- autosave schema поднята до `rt-board-v4`, старые сейвы сбрасываются.
+
+Добавлены проверки:
+
+- untouched backlog не тикает `deadlineMs`;
+- backlog value убывает;
+- перенос в работу фиксирует value;
+- истечение backlog value применяет дневной cap по debt;
+- expired backlog не создает fallout consequences.
+
+---
+
 ## 2026-07-01 - Survival-мета, late release и визуальная читаемость
 
 P0-фикс квартального ритма:

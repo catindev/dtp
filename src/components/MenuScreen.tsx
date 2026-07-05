@@ -1,27 +1,56 @@
+import { useState } from "react";
 import { t, type Locale } from "../i18n";
-import type { RtGameState } from "../realtime/simulation";
+import type {
+  RtGameState,
+  RtHorizonGoal,
+  RtHorizonKind,
+} from "../realtime/simulation";
 import { formatReleaseCountdown, formatSessionId } from "../formatting";
+import { SAVE_SCHEMA_VERSION, type AutosaveLoadResult } from "../save";
 import { LanguageSwitch } from "./LanguageSwitch";
 
 export function MenuScreen({
   game,
   hasResumeCard,
   locale,
+  musicEnabled,
   onContinueRun,
   onLocaleChange,
+  onMusicEnabledChange,
   onOpenDocs,
   onStartRun,
+  onStartTutorial,
+  onSkipTutorial,
+  saveReset,
   sessionId,
+  tutorialCompleted,
 }: {
   game: RtGameState;
   hasResumeCard: boolean;
   locale: Locale;
+  musicEnabled: boolean;
   onContinueRun: () => void;
   onLocaleChange: (locale: Locale) => void;
+  onMusicEnabledChange: (enabled: boolean) => void;
   onOpenDocs: () => void;
   onStartRun: (actionName?: string) => void;
+  onStartTutorial: () => void;
+  onSkipTutorial: () => void;
+  saveReset: Extract<AutosaveLoadResult, { status: "reset" }> | null;
   sessionId: string;
+  tutorialCompleted: boolean;
 }) {
+  const [showTutorialPrompt, setShowTutorialPrompt] = useState(false);
+  const shouldRecommendTutorial = !hasResumeCard && !tutorialCompleted;
+
+  function handleStartClick(): void {
+    if (shouldRecommendTutorial) {
+      setShowTutorialPrompt(true);
+      return;
+    }
+    onStartRun();
+  }
+
   return (
     <main className="shell menu-shell">
       <section className="main-menu">
@@ -33,6 +62,14 @@ export function MenuScreen({
           <span>{t(locale, "menu.language")}</span>
           <LanguageSwitch locale={locale} onChange={onLocaleChange} />
         </div>
+        <label className="menu-toggle">
+          <span>{t(locale, "menu.music")}</span>
+          <input
+            checked={musicEnabled}
+            onChange={(event) => onMusicEnabledChange(event.currentTarget.checked)}
+            type="checkbox"
+          />
+        </label>
         <button className="rtfm-button" onClick={onOpenDocs} type="button">
           <strong>{t(locale, "menu.rtfm")}</strong>
           <span>{t(locale, "menu.rtfmDescription")}</span>
@@ -40,25 +77,91 @@ export function MenuScreen({
         {hasResumeCard ? (
           <ResumeCard game={game} locale={locale} sessionId={sessionId} />
         ) : null}
-        <div className="menu-actions">
-          {hasResumeCard ? (
-            <>
-              <button className="start-button" onClick={onContinueRun} type="button">
-                {t(locale, "menu.continue")}
+        {!hasResumeCard && saveReset ? (
+          <ResetSaveCard locale={locale} reset={saveReset} />
+        ) : null}
+        {showTutorialPrompt ? (
+          <section className="resume-card tutorial-recommendation">
+            <header>
+              <span>{t(locale, "menu.tutorialRecommended")}</span>
+              <strong>{t(locale, "menu.tutorialTime")}</strong>
+            </header>
+            <p>{t(locale, "menu.tutorialDescription")}</p>
+            <div className="tutorial-actions">
+              <button className="start-button" onClick={onStartTutorial} type="button">
+                {t(locale, "menu.startTutorial")}
               </button>
-              <button className="ghost-button" onClick={() => onStartRun("menu_new_run_clicked")} type="button">
-                {t(locale, "menu.newRun")}
+              <button className="ghost-button" onClick={onSkipTutorial} type="button">
+                {t(locale, "menu.skipTutorial")}
               </button>
-            </>
-          ) : (
-            <button className="start-button" onClick={() => onStartRun()} type="button">
-              {t(locale, "menu.start")}
+            </div>
+          </section>
+        ) : null}
+        {!showTutorialPrompt ? (
+          <div className="menu-actions">
+            {hasResumeCard ? (
+              <>
+                <button className="start-button" onClick={onContinueRun} type="button">
+                  {t(locale, "menu.continue")}
+                </button>
+                <button className="ghost-button" onClick={() => onStartRun("menu_new_run_clicked")} type="button">
+                  {t(locale, "menu.newRun")}
+                </button>
+              </>
+            ) : (
+              <button className="start-button" onClick={handleStartClick} type="button">
+                {t(locale, "menu.start")}
+              </button>
+            )}
+            <button className="ghost-button" onClick={onStartTutorial} type="button">
+              {t(locale, "menu.startTutorial")}
             </button>
-          )}
-        </div>
+          </div>
+        ) : null}
       </section>
     </main>
   );
+}
+
+function ResetSaveCard({
+  locale,
+  reset,
+}: {
+  locale: Locale;
+  reset: Extract<AutosaveLoadResult, { status: "reset" }>;
+}) {
+  const previousSchema = reset.previousSchemaVersion ?? t(locale, "menu.saveSchemaUnknown");
+  return (
+    <section className="resume-card reset-save-card">
+      <header>
+        <span>{t(locale, "menu.saveUnavailable")}</span>
+        <strong>{saveResetReasonLabel(locale, reset.reason)}</strong>
+      </header>
+      <p>
+        {reset.reason === "schema_mismatch"
+          ? t(locale, "menu.saveIncompatible")
+          : t(locale, "menu.saveInvalid")}
+      </p>
+      <div className="resume-facts">
+        <span>
+          {t(locale, "menu.saveSchemaDebug", {
+            previous: previousSchema,
+            current: SAVE_SCHEMA_VERSION,
+          })}
+        </span>
+        {reset.previousCommit ? (
+          <span>{t(locale, "menu.saveCommitDebug", { value: reset.previousCommit })}</span>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function saveResetReasonLabel(
+  locale: Locale,
+  reason: Extract<AutosaveLoadResult, { status: "reset" }>["reason"],
+): string {
+  return t(locale, `menu.saveReset.${reason}`);
 }
 
 function ResumeCard({
@@ -71,8 +174,8 @@ function ResumeCard({
   sessionId: string;
 }) {
   const report = game.morningReport;
-  const quarter = report?.quarter ?? game.quarter;
-  const day = report?.day ?? game.day;
+  const activeGoal = pickResumeGoal(game);
+  const horizonLabel = activeGoal ? t(locale, `horizon.${activeGoal.kind}`) : "";
   const releaseLine = report
     ? t(locale, "header.morningLine", { count: report.consequences.length })
     : t(locale, "header.releaseLine", {
@@ -92,15 +195,36 @@ function ResumeCard({
     <section className="resume-card">
       <header>
         <span>{t(locale, "menu.savedRun")}</span>
-        <strong>{t(locale, "header.day", { quarter, day, daysPerQuarter: game.daysPerQuarter })}</strong>
+        <strong>{t(locale, "header.calendar", {
+          week: game.calendar.week,
+          dayInWeek: game.calendar.dayInWeek,
+          daysPerWeek: game.calendar.daysPerWeek,
+          month: game.calendar.month,
+          quarter: game.calendar.quarter,
+        })}</strong>
       </header>
       <div className="resume-facts">
         <span>{statusLabel}</span>
-        <span>{t(locale, "header.goal", {
-          value: game.quarterValue,
-          goal: game.quarterGoal.value,
-          trust: game.resources.trust,
-          trustGoal: game.quarterGoal.trust,
+        <span>
+          {activeGoal
+            ? t(locale, "header.horizonGoal", {
+                horizon: horizonLabel,
+                id: activeGoal.id,
+                value: activeGoal.currentValue,
+                goal: activeGoal.expectedValue,
+                trust: game.resources.trust,
+                trustGoal: activeGoal.targetTrust,
+              })
+            : t(locale, "header.goal", {
+                value: game.quarterValue,
+                goal: game.quarterGoal.value,
+                trust: game.resources.trust,
+                trustGoal: game.quarterGoal.trust,
+              })}
+        </span>
+        <span>{t(locale, "header.campaignProgress", {
+          day: game.calendar.campaignDay,
+          daysPerYear: game.calendar.daysPerYear,
         })}</span>
         <span>{releaseLine}</span>
         <span>{t(locale, "header.clients", { value: game.resources.clients })}</span>
@@ -110,4 +234,13 @@ function ResumeCard({
       </div>
     </section>
   );
+}
+
+function pickResumeGoal(game: RtGameState): RtHorizonGoal | null {
+  const priority: RtHorizonKind[] = ["week", "month", "quarter", "year"];
+  for (const kind of priority) {
+    const goal = game.horizonGoals[kind];
+    if (goal && game.day <= goal.endsOnDay) return goal;
+  }
+  return game.horizonGoals.year ?? game.horizonGoals.quarter ?? game.horizonGoals.month ?? game.horizonGoals.week;
 }

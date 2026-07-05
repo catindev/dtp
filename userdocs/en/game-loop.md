@@ -2,13 +2,23 @@
 
 The workday runs from 08:00 to 18:00. Time moves by itself, but you can pause the game.
 
+The clock area has time speed controls: `1x`, `1.5x`, `2x`.
+
+- `1x` is the normal speed;
+- `1.5x` and `2x` help fast-forward quiet moments;
+- when the board has many decisions, switch back to `1x` or pause.
+
 ## 1. Tasks arrive in the backlog
 
-The backlog is the list of incoming work. Tasks have deadlines. When a deadline gets close, the task becomes more dangerous for the business.
+The backlog is the list of incoming work. A task does not spend its delivery deadline while it is still untouched in the backlog. Instead, its opportunity value slowly fades.
+
+If backlog value reaches zero, the task disappears as a missed opportunity and adds a small amount of debt.
 
 ## 2. Move a task into progress
 
 A task in "In Progress" is not done yet. You need to assign team members to it.
+
+When you first move a task from the backlog into progress, the real delivery deadline starts. From that moment, the team has made a commitment.
 
 ## 3. Assign people to subtasks
 
@@ -28,4 +38,16 @@ The "Prod" column is history. You can switch between shipped tasks and unfinishe
 
 ## 6. Read the morning fallout
 
-The morning briefing shows what happened after yesterday's release. If yesterday's release carried risk, today may start with a new consequence task.
+The morning briefing shows what happened after yesterday's release. If yesterday's release carried risk, today may start with a new consequence task. If backlog opportunities faded out, the briefing shows how much value was lost and how much debt was added.
+
+## 7. Watch horizon goals
+
+The header shows the current week, day in week, month, quarter, and nearest business goal.
+
+When a week, month, quarter, or year ends, the morning briefing shows a goal review. It tells you:
+
+- whether Value was high enough;
+- whether trust stayed high enough;
+- which reward or penalty was applied.
+
+If several goals end on the same day, several reviews can appear in the morning. Trust penalties are capped per day so one bad morning does not become an unreadable cliff.

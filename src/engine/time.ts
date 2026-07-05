@@ -3,23 +3,31 @@ import {
   NIGHT_STAMINA_RECOVERY_RATIO,
   RELEASE_TRAIN_GAME_MINUTE,
 } from "./balance";
-import { clamp } from "./math";
 import {
-  copyResources,
-  diffResources,
-  morningReportEffects,
-} from "./resources";
+  isUntouchedBacklogTask,
+  updateBacklogOpportunity,
+} from "./backlogOpportunity";
+import { createCampaignCalendar } from "./calendar";
+import {
+  ensureUnlockedHorizonGoals,
+  resolveDueHorizonReviews,
+} from "./goals";
+import { clamp } from "./math";
 import type {
   RtEvent,
   RtGameState,
-  RtQuarterReviewReport,
+  RtHorizonReviewReport,
 } from "./types";
 
 type TimeEventSink = (event: Omit<RtEvent, "at">) => void;
 
-export function updateTaskTimers(state: RtGameState, tickMs: number): void {
+export function updateTaskTimers(state: RtGameState, tickMs: number, emit: TimeEventSink): void {
   for (const task of Object.values(state.tasks)) {
     if (task.released || task.column === "done") continue;
+    if (isUntouchedBacklogTask(task)) {
+      updateBacklogOpportunity(state, task, tickMs, emit);
+      continue;
+    }
     if (task.deadlineMs > 0) {
       const nextDeadlineMs = task.deadlineMs - tickMs;
       if (nextDeadlineMs < 0) {
@@ -54,10 +62,13 @@ export function formatGameTime(state: RtGameState): string {
 export function advanceDay(
   state: RtGameState,
   emit: TimeEventSink,
-): RtQuarterReviewReport | null {
+): RtHorizonReviewReport[] {
+  const horizonReviews = resolveDueHorizonReviews(state, emit);
   restTeamForNewDay(state);
   state.day += 1;
-  state.dayInQuarter += 1;
+  state.calendar = createCampaignCalendar(state.day);
+  state.dayInQuarter = state.calendar.dayInQuarter;
+  state.daysPerQuarter = state.calendar.daysPerQuarter;
   emit({
     type: "day_started",
     title: `Day ${state.day}`,
@@ -65,10 +76,8 @@ export function advanceDay(
     effects: ["stamina restored overnight", "context shock cleared", "clock reset to 08:00"],
   });
 
-  if (state.dayInQuarter > state.daysPerQuarter) {
-    return resolveQuarter(state, emit);
-  }
-  return null;
+  ensureUnlockedHorizonGoals(state, emit);
+  return horizonReviews;
 }
 
 function restTeamForNewDay(state: RtGameState): void {
@@ -82,61 +91,4 @@ function restTeamForNewDay(state: RtGameState): void {
     character.shockGameMinutes = 0;
     character.exhaustedToday = false;
   }
-}
-
-function resolveQuarter(
-  state: RtGameState,
-  emit: TimeEventSink,
-): RtQuarterReviewReport {
-  const reviewedQuarter = state.quarter;
-  const valueActual = state.quarterValue;
-  const valueTarget = state.quarterGoal.value;
-  const trustActual = state.resources.trust;
-  const trustTarget = state.quarterGoal.trust;
-  const valueMet = valueActual >= valueTarget;
-  const trustMet = trustActual >= trustTarget;
-  const resourceBefore = copyResources(state.resources);
-  const hitGoal = valueMet && trustMet;
-  if (hitGoal) {
-    state.resources.budget += state.quarterGoal.rewardBudget;
-    state.resources.processBoost = clamp(state.resources.processBoost + 5, 0, 25);
-  } else {
-    state.resources.trust = clamp(state.resources.trust - 8, 0, 100);
-  }
-  const resourceAfter = copyResources(state.resources);
-  const resourceDelta = diffResources(resourceBefore, resourceAfter);
-  const effects = morningReportEffects(resourceDelta);
-
-  emit({
-    type: "quarter_review",
-    title: `Quarter ${reviewedQuarter} review`,
-    body: hitGoal ? "Business goals were met." : "Business goals were missed.",
-    effects,
-  });
-
-  const report: RtQuarterReviewReport = {
-    quarter: reviewedQuarter,
-    hitGoal,
-    valueActual,
-    valueTarget,
-    valueMet,
-    trustActual,
-    trustTarget,
-    trustMet,
-    resourceBefore,
-    resourceAfter,
-    resourceDelta,
-    effects,
-  };
-
-  state.quarter += 1;
-  state.dayInQuarter = 1;
-  state.quarterValue = 0;
-  state.quarterGoal = {
-    value: Math.round(state.quarterGoal.value * 1.18 + 20),
-    trust: Math.min(70, state.quarterGoal.trust + 3),
-    rewardBudget: state.quarterGoal.rewardBudget,
-  };
-
-  return report;
 }

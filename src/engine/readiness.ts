@@ -29,6 +29,7 @@ import {
   RELEASE_SCORE_WORK_DONE_BONUS,
   RELEASE_SCORE_WORK_NOT_DONE_PENALTY,
 } from "./balance";
+import { isUntouchedBacklogTask } from "./backlogOpportunity";
 import { clamp } from "./math";
 import type {
   RtFalloutWarning,
@@ -61,6 +62,7 @@ export function falloutWarningForTask(task: RtTask): RtFalloutWarning | null {
     }
   }
   if (task.column === "backlog" || task.column === "inProgress") {
+    if (isUntouchedBacklogTask(task)) return null;
     if (task.deadlineMs <= 0) {
       return {
         level: "likely",
@@ -140,7 +142,6 @@ export function releaseReadiness(task: RtTask): RtReadinessReport {
   const sreCovered = task.subtasks.some(
     (subtask) => subtask.revealed && subtask.role === "sre" && subtask.done,
   );
-  const deadlineRatio = taskDeadlineRatio(task);
   const reasons = uniqueReasons([
     !task.workDone ? "not_implemented" : null,
     knownCriticalOpen > 0 ? "critical_open" : null,
@@ -148,7 +149,6 @@ export function releaseReadiness(task: RtTask): RtReadinessReport {
     task.bugs > 0 ? "known_bug" : null,
     !qaCovered ? "no_qa" : null,
     task.clarity < RELEASE_LOW_CLARITY_THRESHOLD ? "low_clarity" : null,
-    deadlineRatio <= RELEASE_DEADLINE_PRESSURE_RATIO ? "deadline_pressure" : null,
     task.blastRadius === "high" && !sreCovered ? "blast_radius_uncovered" : null,
     task.changedAfterQa ? "changed_after_qa" : null,
     task.subtasks.some((subtask) => subtask.revealed && subtask.role === "sre") && !sreCovered
@@ -231,8 +231,6 @@ export function formatRiskReason(reason: RtRiskReason): string {
       return "known critical work open";
     case "important_open":
       return "known important work open";
-    case "deadline_pressure":
-      return "deadline pressure";
     case "blast_radius_high":
       return "high blast radius";
     case "blast_radius_uncovered":

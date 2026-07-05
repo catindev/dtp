@@ -1,4 +1,3 @@
-import type { DragEvent } from "react";
 import {
   assignCharacterToTask,
   canAssignCharacterToTask,
@@ -18,11 +17,15 @@ import { playSoundEffect } from "../audio/audioManager";
 import {
   characterDropRejectReason,
   outsourceStatusText,
-  readCharacterDragId,
-  readOutsourceDrag,
-  readTaskDragId,
   type ActiveDrag,
 } from "./dragAndDropHelpers";
+import {
+  advanceTutorialForCharacterAssignment,
+  advanceTutorialForTaskMove,
+  canDropTutorialCharacter,
+  canDropTutorialOutsource,
+  canDropTutorialTask,
+} from "../tutorial/tutorialDirector";
 
 export interface GameDropContext {
   activeDragRef: { current: ActiveDrag };
@@ -31,72 +34,74 @@ export interface GameDropContext {
   locale: Locale;
   sessionId: string;
   mutate: (updater: (draft: RtGameState) => void) => void;
-  setSelectedTaskId: (taskId: string) => void;
+  clearSelection: () => void;
   flashTask: (taskId: string) => void;
   shakeTask: (taskId: string) => void;
   shakeColumn: (column: RtColumn) => void;
 }
 
-export function dropOnColumnWithContext(
+export function dropTaskOnColumnIntent(
   context: GameDropContext,
-  event: DragEvent<HTMLElement>,
+  taskId: string,
   column: RtColumn,
-): void {
-  event.preventDefault();
-  event.stopPropagation();
-  if (context.interactionBlocked) return;
-  const activeDrag = context.activeDragRef.current;
-  if (column === "released") {
-    context.shakeColumn(column);
+  rejectTargetTaskId?: string,
+  targetIndex?: number,
+): boolean {
+  if (context.interactionBlocked) {
+    playSoundEffect("error");
+    context.activeDragRef.current = null;
+    return false;
+  }
+  return moveDroppedTask(context, taskId, column, rejectTargetTaskId, targetIndex);
+}
+
+export function dropOutsourceOnTaskIntent(context: GameDropContext, taskId: string): void {
+  if (context.interactionBlocked) {
     playSoundEffect("error");
     context.activeDragRef.current = null;
     return;
   }
-  const taskId = readTaskDragId(event, activeDrag);
-  if (!taskId) {
-    if (activeDrag) context.shakeColumn(column);
-    if (activeDrag) playSoundEffect("error");
+  const task = context.game.tasks[taskId];
+  if (!task) {
+    playSoundEffect("error");
     context.activeDragRef.current = null;
     return;
   }
-  moveDroppedTask(context, taskId, column);
+  dropOutsourceOnTask(context, task);
 }
 
-export function dropOnTaskWithContext(
+export function dropCharacterOnTaskIntent(
   context: GameDropContext,
-  event: DragEvent<HTMLElement>,
-  task: RtTask,
-): void {
-  event.preventDefault();
-  event.stopPropagation();
-  if (context.interactionBlocked) return;
-  const activeDrag = context.activeDragRef.current;
-  const draggedTaskId = readTaskDragId(event, activeDrag);
-  if (draggedTaskId) {
-    moveDroppedTask(context, draggedTaskId, task.column, task.id);
-    return;
+  characterId: string,
+  taskId: string,
+): boolean {
+  if (context.interactionBlocked) {
+    playSoundEffect("error");
+    context.activeDragRef.current = null;
+    return false;
   }
-
-  const outsourcePayload = readOutsourceDrag(event, activeDrag);
-  if (outsourcePayload) {
-    dropOutsourceOnTask(context, task);
-    return;
+  const task = context.game.tasks[taskId];
+  if (!task) {
+    playSoundEffect("error");
+    context.activeDragRef.current = null;
+    return false;
   }
-
-  const characterId = readCharacterDragId(event, activeDrag);
-  if (!characterId) return;
-  dropCharacterOnTask(context, characterId, task);
+  return dropCharacterOnTask(context, characterId, task);
 }
 
 function dropOutsourceOnTask(context: GameDropContext, task: RtTask): void {
+  const tutorialGate = canDropTutorialOutsource(context.game);
+  if (!tutorialGate.allowed) {
+    rejectTutorialAction(context, "outsource_drop", task.id, tutorialGate.reason);
+    return;
+  }
   const outsourceStatus = getOutsourceTaskWorkStatus(context.game, task.id);
   const canOutsource = outsourceStatus.allowed;
   if (canOutsource) {
     context.mutate((draft) => {
-      if (outsourceTaskWork(draft, task.id)) {
-        context.setSelectedTaskId(task.id);
-      }
+      outsourceTaskWork(draft, task.id);
     });
+    context.clearSelection();
   } else {
     context.shakeTask(task.id);
     playSoundEffect("error");
@@ -106,7 +111,6 @@ function dropOutsourceOnTask(context: GameDropContext, task: RtTask): void {
     canOutsource ? "outsourcing_dropped_on_task" : "outsourcing_drop_rejected",
     {
       taskId: task.id,
-      taskTitle: task.title,
       column: task.column,
       budget: context.game.resources.budget,
       reason: outsourceStatusText(outsourceStatus, context.locale),
@@ -128,16 +132,21 @@ function dropCharacterOnTask(
   context: GameDropContext,
   characterId: string,
   task: RtTask,
-): void {
+): boolean {
+  const tutorialGate = canDropTutorialCharacter(context.game, characterId, task.id);
+  if (!tutorialGate.allowed) {
+    rejectTutorialAction(context, "character_drop", task.id, tutorialGate.reason, characterId);
+    return false;
+  }
   const character = context.game.characters[characterId];
   const canAssign = canAssignCharacterToTask(context.game, characterId, task.id);
 
   if (canAssign) {
     context.mutate((draft) => {
-      if (assignCharacterToTask(draft, characterId, task.id)) {
-        context.setSelectedTaskId(task.id);
-      }
+      assignCharacterToTask(draft, characterId, task.id);
+      advanceTutorialForCharacterAssignment(draft, characterId, task.id);
     });
+    context.clearSelection();
   } else {
     context.shakeTask(task.id);
     playSoundEffect("error");
@@ -147,10 +156,8 @@ function dropCharacterOnTask(
     canAssign ? "character_dropped_on_task" : "character_drop_rejected",
     {
       characterId,
-      characterName: character?.name,
       role: character?.role,
       taskId: task.id,
-      taskTitle: task.title,
       column: task.column,
       reason: canAssign ? "assigned" : characterDropRejectReason(context.game, characterId, task),
       gameTime: formatGameTime(context.game),
@@ -161,6 +168,7 @@ function dropCharacterOnTask(
     context.flashTask(task.id);
   }
   context.activeDragRef.current = null;
+  return canAssign;
 }
 
 function moveDroppedTask(
@@ -168,9 +176,19 @@ function moveDroppedTask(
   taskId: string,
   column: RtColumn,
   rejectTargetTaskId?: string,
-): void {
+  targetIndex?: number,
+): boolean {
   const fromColumn = context.game.tasks[taskId]?.column;
   const task = context.game.tasks[taskId];
+  const tutorialGate = canDropTutorialTask(context.game, taskId, column);
+  if (!tutorialGate.allowed) {
+    rejectTutorialAction(context, "task_drop", rejectTargetTaskId ?? taskId, tutorialGate.reason, undefined, {
+      taskId,
+      fromColumn,
+      toColumn: column,
+    });
+    return false;
+  }
   const moveCheck = canMoveRealtimeTask(context.game, taskId, column);
 
   if (!moveCheck.allowed) {
@@ -188,17 +206,19 @@ function moveDroppedTask(
       gameTime: formatGameTime(context.game),
     });
     context.activeDragRef.current = null;
-    return;
+    return false;
   }
 
   context.mutate((draft) => {
-    const moved = moveRealtimeTask(draft, taskId, column);
-    if (moved) context.setSelectedTaskId(taskId);
+    moveRealtimeTask(draft, taskId, column, targetIndex);
+    advanceTutorialForTaskMove(draft, taskId, column);
   });
+  context.clearSelection();
   logAction(context.sessionId, "task_dropped_on_column", {
     taskId,
     fromColumn,
     toColumn: column,
+    targetIndex,
     ...(task && column === "done"
       ? { releaseReadiness: releaseReadiness(task) }
       : {}),
@@ -206,5 +226,28 @@ function moveDroppedTask(
   });
   playSoundEffect("drop");
   context.flashTask(taskId);
+  context.activeDragRef.current = null;
+  return true;
+}
+
+function rejectTutorialAction(
+  context: GameDropContext,
+  action: string,
+  targetTaskId: string | undefined,
+  reason: string,
+  characterId?: string,
+  extra?: Record<string, string | number | boolean | null | undefined>,
+): void {
+  if (targetTaskId) {
+    context.shakeTask(targetTaskId);
+  }
+  playSoundEffect("error");
+  logAction(context.sessionId, "tutorial_action_rejected", {
+    action,
+    reason,
+    characterId,
+    gameTime: formatGameTime(context.game),
+    ...extra,
+  });
   context.activeDragRef.current = null;
 }

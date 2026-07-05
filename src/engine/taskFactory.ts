@@ -1,7 +1,10 @@
+import { BACKLOG_VALUE_DECAY_MS } from "./balance";
 import { DOMAINS, DOMAIN_PREFIXES } from "./catalog";
-import { TASK_TITLES } from "./content";
-import { normalizeEngineLocale } from "./locale";
 import { clamp } from "./math";
+import {
+  createTaskNarrativeRef,
+  recordTaskNarrativeBudget,
+} from "./narrative";
 import {
   pickOne,
   randomBetween,
@@ -39,7 +42,6 @@ export function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTas
     randomBetween(state, 520000, 780000) + complexity * 45000 - pressure * 15000,
   );
   const value = Math.round((8 + complexity * 4 + pressure * 3) * kindValueMultiplier(kind));
-  const locale = normalizeEngineLocale(state.locale);
   const subtasks = generateSubtasks(
     state,
     id,
@@ -50,16 +52,25 @@ export function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTas
     forcedKind ? false : shouldBiasFrontendWork(state),
   );
   revealInitialSubtasks(state, subtasks, Math.round(clarity));
+  const narrativeRef = createTaskNarrativeRef(state, kind, domain);
 
-  return {
+  const task: RtTask = {
     id,
-    title: `${id}: ${pickOne(state, TASK_TITLES[locale][kind])}`,
+    narrativeRef,
+    comments: [],
+    lastCommentId: null,
+    title: `${id}: ${narrativeRef.archetypeId}`,
     kind,
     domain,
     blastRadius,
     column: "backlog",
     pressure,
     complexity,
+    baseValue: value,
+    backlogValue: value,
+    backlogDecayElapsedMs: 0,
+    backlogDecayDurationMs: BACKLOG_VALUE_DECAY_MS,
+    engagedOnce: false,
     value,
     clarity: Math.round(clarity),
     quality: Math.max(0, Math.round(clarity * 0.25)),
@@ -89,4 +100,6 @@ export function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTas
     queuedDeadlineMs: null,
     lastNote: "Waiting in backlog.",
   };
+  recordTaskNarrativeBudget(state, task);
+  return task;
 }

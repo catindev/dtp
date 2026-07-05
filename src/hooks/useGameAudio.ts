@@ -10,12 +10,15 @@ import {
   SOUND_EFFECT_NAMES,
   type SoundEffectName,
 } from "../audio/soundCatalog";
+import { isWorkPassCompletedEvent } from "../engine/eventData";
 
 export function useMainThemePlayback(
   game: RtGameState,
   screen: string,
+  musicEnabled: boolean,
 ): void {
   const shouldPlay =
+    musicEnabled &&
     screen === "game" &&
     game.status === "running" &&
     !game.paused &&
@@ -73,9 +76,15 @@ export function useGameEventSounds({
 
       if (event.type === "task_spawned") {
         playSoundEffect("newTask");
+      } else if (event.type === "backlog_opportunity_expired") {
+        playSoundEffect("backlogEnd");
+      } else if (event.type === "tutorial_task_spawned" || event.type === "tutorial_step_completed") {
+        playSoundEffect("quest");
+      } else if (isWorkPassCompletedEvent(event)) {
+        playSoundEffect("subtaskCompleted");
       } else if (event.type === "release_train" || event.type === "release_train_empty") {
         playSoundEffect("dayEnd");
-      } else if (event.type === "quarter_review") {
+      } else if (event.type === "quarter_review" || event.type === "horizon_review") {
         playSoundEffect("quarterEnd");
       }
     }

@@ -1,12 +1,19 @@
-import { type DragEvent } from "react";
+import { useDraggable } from "@dnd-kit/core";
 import {
-  OUTSOURCE_COST_BY_IMPORTANCE,
   type RtCharacter,
   type RtGameState,
-  type RtSubtask,
   type RtTask,
 } from "../realtime/simulation";
-import { labelRole, t, type Locale } from "../i18n";
+import { t, type Locale } from "../i18n";
+import {
+  characterDndId,
+  outsourceDndId,
+} from "../dnd/ids";
+import {
+  CHARACTER_DND_TYPE,
+  OUTSOURCE_DND_TYPE,
+} from "../dnd/types";
+import { CharacterCardContent, OutsourceCardContent } from "./cards/TeamCardContent";
 
 interface TeamPanelProps {
   game: RtGameState;
@@ -14,9 +21,11 @@ interface TeamPanelProps {
   isGameScreen: boolean;
   locale: Locale;
   morningReportActive: boolean;
-  onCharacterDragStart: (event: DragEvent<HTMLElement>, character: RtCharacter) => void;
-  onDragEnd: () => void;
-  onOutsourceDragStart: (event: DragEvent<HTMLElement>) => void;
+  onCharacterSelect: (characterId: string) => void;
+  activeCharacterDragId: string | null;
+  activeOutsourceDrag: boolean;
+  selectedCharacterId: string | null;
+  tutorialFocusCharacterId: string | null;
 }
 
 export function TeamPanel({
@@ -25,9 +34,11 @@ export function TeamPanel({
   isGameScreen,
   locale,
   morningReportActive,
-  onCharacterDragStart,
-  onDragEnd,
-  onOutsourceDragStart,
+  activeCharacterDragId,
+  onCharacterSelect,
+  activeOutsourceDrag,
+  selectedCharacterId,
+  tutorialFocusCharacterId,
 }: TeamPanelProps) {
   return (
     <aside className="team-panel panel">
@@ -38,127 +49,140 @@ export function TeamPanel({
             ? game.tasks[character.assignedTaskId]
             : null;
           return (
-            <article
-              className={[
-                "character",
-                character.assignedTaskId ? "busy" : "",
-                character.exhaustedToday ? "exhausted" : "",
-              ].join(" ")}
-              draggable={
-                (game.paused || !interactionBlocked) &&
-                isGameScreen &&
-                game.status === "running" &&
-                !morningReportActive &&
-                !character.assignedTaskId &&
-                !character.exhaustedToday
-              }
+            <DraggableCharacterCard
+              assignedTask={assignedTask}
+              character={character}
+              dragging={activeCharacterDragId === character.id}
+              game={game}
+              isGameScreen={isGameScreen}
               key={character.id}
-              onDragEnd={onDragEnd}
-              onDragStart={(event) => onCharacterDragStart(event, character)}
-            >
-              <div>
-                <strong>{character.name}</strong>
-                <span>{character.role}</span>
-              </div>
-              <div className="character-state">
-                {character.exhaustedToday ? (
-                  <span>{t(locale, "team.exhausted")}</span>
-                ) : character.assignedTaskId ? (
-                  <span>{t(locale, "team.onTask", { taskId: character.assignedTaskId })}</span>
-                ) : (
-                  <span>{t(locale, "team.available")}</span>
-                )}
-                {character.shockGameMinutes > 0 ? (
-                  <span>{t(locale, "team.shock", { minutes: Math.ceil(character.shockGameMinutes) })}</span>
-                ) : null}
-              </div>
-              {assignedTask ? (
-                <div className="character-work">
-                  <div>
-                    <span>
-                      {assignedTask.id} {currentWorkLabel(assignedTask, locale)}
-                    </span>
-                    <b>{Math.round(assignedTask.stageProgress)}%</b>
-                  </div>
-                  <div className="work-track">
-                    <i style={{ width: `${assignedTask.stageProgress}%` }} />
-                  </div>
-                </div>
-              ) : null}
-              <MetricBar label={t(locale, "team.stamina")} tone="stamina" value={character.stamina} />
-              {character.burnout > 0 ? (
-                <span className="burnout-badge">
-                  {t(locale, "team.burnout", { value: Math.round(character.burnout) })}
-                </span>
-              ) : null}
-            </article>
+              locale={locale}
+              morningReportActive={morningReportActive}
+              onClick={() => onCharacterSelect(character.id)}
+              selected={selectedCharacterId === character.id}
+              tutorialFocus={tutorialFocusCharacterId === character.id}
+            />
           );
         })}
-        <article
-          className={[
-            "outsourcing-card",
-            interactionBlocked || game.resources.budget <= 0 ? "disabled" : "",
-          ].join(" ")}
-          draggable={
-            (game.paused || !interactionBlocked) &&
-            isGameScreen &&
-            game.status === "running" &&
-            !morningReportActive &&
-            game.resources.budget > 0
-          }
-          onDragEnd={onDragEnd}
-          onDragStart={onOutsourceDragStart}
-        >
-          <div>
-            <strong>{t(locale, "outsourcing.title")}</strong>
-            <span>{t(locale, "outsourcing.role")}</span>
-          </div>
-          <p>{t(locale, "outsourcing.description")}</p>
-          <div className="outsourcing-costs">
-            <span>{t(locale, "outsourcing.optional", { cost: OUTSOURCE_COST_BY_IMPORTANCE.optional })}</span>
-            <span>{t(locale, "outsourcing.important", { cost: OUTSOURCE_COST_BY_IMPORTANCE.important })}</span>
-            <span>{t(locale, "outsourcing.critical", { cost: OUTSOURCE_COST_BY_IMPORTANCE.critical })}</span>
-          </div>
-          <b>{t(locale, "outsourcing.budget", { budget: game.resources.budget })}</b>
-        </article>
+        <DraggableOutsourceCard
+          disabled={interactionBlocked || game.resources.budget <= 0}
+          dragging={activeOutsourceDrag}
+          game={game}
+          isGameScreen={isGameScreen}
+          locale={locale}
+          morningReportActive={morningReportActive}
+        />
       </div>
     </aside>
   );
 }
 
-function MetricBar({
-  label,
-  tone = "default",
-  value,
-}: {
-  label: string;
-  tone?: "default" | "stamina";
-  value: number;
-}) {
-  const safeValue = Math.max(0, Math.min(100, value));
-  const staminaLevel =
-    tone === "stamina" && safeValue <= 25
-      ? "danger"
-      : tone === "stamina" && safeValue <= 55
-        ? "warning"
-        : "";
+interface DraggableCharacterCardProps {
+  assignedTask: RtTask | null;
+  character: RtCharacter;
+  dragging: boolean;
+  game: RtGameState;
+  isGameScreen: boolean;
+  locale: Locale;
+  morningReportActive: boolean;
+  onClick: () => void;
+  selected: boolean;
+  tutorialFocus: boolean;
+}
+
+function DraggableCharacterCard({
+  assignedTask,
+  character,
+  dragging,
+  game,
+  isGameScreen,
+  locale,
+  morningReportActive,
+  onClick,
+  selected,
+  tutorialFocus,
+}: DraggableCharacterCardProps) {
+  const dragDisabled =
+    !isGameScreen ||
+    game.status !== "running" ||
+    morningReportActive ||
+    Boolean(character.assignedTaskId) ||
+    character.exhaustedToday;
+  const { attributes, listeners, setNodeRef } = useDraggable({
+    id: characterDndId(character.id),
+    data: {
+      type: CHARACTER_DND_TYPE,
+      characterId: character.id,
+    },
+    disabled: dragDisabled,
+  });
+
   return (
-    <div className={`metric ${tone} ${staminaLevel}`}>
-      <span>{label}</span>
-      <i style={{ width: `${safeValue}%` }} />
-      <b>{Math.round(value)}</b>
-    </div>
+    <article
+      className={[
+        "character",
+        character.assignedTaskId ? "busy" : "",
+        character.exhaustedToday ? "exhausted" : "",
+        selected ? "selected" : "",
+        dragging ? "team-drag-placeholder" : "",
+        tutorialFocus && !dragging ? "tutorial-focus" : "",
+      ].join(" ")}
+      onClick={onClick}
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+    >
+      <CharacterCardContent
+        assignedTask={assignedTask}
+        character={character}
+        locale={locale}
+      />
+    </article>
   );
 }
 
-function currentWorkLabel(task: RtTask, locale: Locale): string {
-  const subtask = task.currentSubtaskId
-    ? task.subtasks.find((candidate) => candidate.id === task.currentSubtaskId)
-    : null;
-  if (subtask) return `-> ${subtaskRoleLabel(subtask.role, locale)}`;
-  return task.assignedCharacterId ? (locale === "ru" ? "-> анализ" : "-> analysis") : "";
+interface DraggableOutsourceCardProps {
+  disabled: boolean;
+  dragging: boolean;
+  game: RtGameState;
+  isGameScreen: boolean;
+  locale: Locale;
+  morningReportActive: boolean;
 }
 
-function subtaskRoleLabel(role: RtSubtask["role"], locale: Locale): string {
-  return labelRole(locale, role);
+function DraggableOutsourceCard({
+  disabled,
+  dragging,
+  game,
+  isGameScreen,
+  locale,
+  morningReportActive,
+}: DraggableOutsourceCardProps) {
+  const dragDisabled =
+    !isGameScreen ||
+    game.status !== "running" ||
+    morningReportActive ||
+    game.resources.budget <= 0;
+  const { attributes, listeners, setNodeRef } = useDraggable({
+    id: outsourceDndId(),
+    data: {
+      type: OUTSOURCE_DND_TYPE,
+    },
+    disabled: dragDisabled,
+  });
+
+  return (
+    <article
+      className={[
+        "outsourcing-card",
+        disabled ? "disabled" : "",
+        dragging ? "team-drag-placeholder" : "",
+      ].join(" ")}
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+    >
+      <OutsourceCardContent game={game} locale={locale} />
+    </article>
+  );
 }

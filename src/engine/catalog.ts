@@ -1,8 +1,20 @@
-import type { RtRole, RtStage, RtSubtaskRole } from "./types";
+import type {
+  RtRole,
+  RtStage,
+  RtSubtaskRole,
+  RtTaskDomain,
+} from "./types";
 
-export const DOMAINS = ["payments", "auth", "admin", "search", "reports", "notifications"];
+export const DOMAINS: readonly RtTaskDomain[] = [
+  "payments",
+  "auth",
+  "admin",
+  "search",
+  "reports",
+  "notifications",
+];
 
-export const DOMAIN_PREFIXES: Record<string, string> = {
+export const DOMAIN_PREFIXES: Record<RtTaskDomain, string> = {
   payments: "PAY",
   auth: "AUTH",
   admin: "ADM",
@@ -10,8 +22,6 @@ export const DOMAIN_PREFIXES: Record<string, string> = {
   reports: "REP",
   notifications: "NTF",
 };
-
-export const CHARACTER_NAMES = ["Nina", "Oleg", "Mira", "Anton", "Lena", "Max"];
 
 export const BASE_SKILLS: Record<RtRole, Record<RtStage, number>> = {
   analyst: { analysis: 5, todo: 2, test: 2 },

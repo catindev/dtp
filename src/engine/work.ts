@@ -36,6 +36,7 @@ import {
   WORK_STAMINA_DRAIN_BASE,
 } from "./balance";
 import { getOpenTodoSubtasks, taskBusy } from "./board";
+import { characterEventData } from "./eventData";
 import { clamp } from "./math";
 import type {
   RtAssignmentPlan,
@@ -82,6 +83,12 @@ export function assignCharacterToTaskWork(
     type: "assigned",
     title: `${character.name} started ${task.id}`,
     body: subtask ? `${task.title}: ${subtask.title}.` : `${task.title}: analysis pass.`,
+    data: characterEventData(character, {
+      taskId: task.id,
+      workType: subtask ? "subtask" : "analysis",
+      subtaskId: subtask?.id ?? null,
+      subtaskRole: subtask?.role ?? null,
+    }),
     effects: [
       subtask ? "task work" : "clarity work",
       ...(subtask ? [`subtask ${subtask.role}`, subtask.importance] : []),
@@ -131,6 +138,11 @@ export function cancelTaskWorkInternal(
       type: "cancelled",
       title: `${task.id} interrupted`,
       body: `${character.name} was pulled off the task.`,
+      data: characterEventData(character, {
+        taskId: task.id,
+        subtaskId: subtask?.id ?? null,
+        subtaskRole: subtask?.role ?? null,
+      }),
       effects: [
         `stamina -${WORK_ASSIGNMENT_CANCEL_STAMINA_PENALTY}`,
         `context shock ${WORK_ASSIGNMENT_CANCEL_SHOCK_MINUTES}m`,
@@ -301,6 +313,10 @@ function exhaustCharacterForDay(
     type: "character_exhausted",
     title: `${character.name} exhausted`,
     body: `${character.name} hit zero stamina while working on ${task.title}.`,
+    data: characterEventData(character, {
+      taskId: task.id,
+      taskTitle: task.title,
+    }),
     effects: ["blocked until tomorrow", `task ${task.id}`],
   });
 }

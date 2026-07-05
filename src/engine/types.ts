@@ -12,14 +12,24 @@ export type RtTaskKind =
   | "performance"
   | "compliance";
 
+export type RtTaskDomain =
+  | "payments"
+  | "auth"
+  | "admin"
+  | "search"
+  | "reports"
+  | "notifications";
+
 export type RtRole = "analyst" | "designer" | "backend" | "frontend" | "qa" | "sre";
 export type RtStage = "analysis" | "todo" | "test";
 export type RtWorkColumn = Extract<RtColumn, "inProgress">;
 export type RtRunStatus = "running" | "won" | "lost";
+export type RtRunMode = "campaign" | "tutorial";
 export type RtSubtaskRole = "backend" | "frontend" | "design" | "qa" | "sre" | "bugfix";
 export type RtSubtaskImportance = "critical" | "important" | "optional";
 export type RtBlastRadius = "low" | "medium" | "high";
 export type RtReleaseReadiness = "clean" | "risky" | "dirty";
+export type RtHorizonKind = "week" | "month" | "quarter" | "year";
 export type RtRiskReason =
   | "no_qa"
   | "no_sre"
@@ -27,7 +37,6 @@ export type RtRiskReason =
   | "low_clarity"
   | "critical_open"
   | "important_open"
-  | "deadline_pressure"
   | "blast_radius_high"
   | "blast_radius_uncovered"
   | "changed_after_qa"
@@ -50,7 +59,8 @@ export type RtMoveBlockReason =
   | "released_locked"
   | "same_column"
   | "done_reopen_only_to_work"
-  | "backlog_to_done_forbidden";
+  | "backlog_to_done_forbidden"
+  | "engaged_backlog_forbidden";
 
 export interface RtMoveCheck {
   allowed: boolean;
@@ -67,6 +77,38 @@ export interface RtSubtask {
   progress: number;
   completedBy: string | null;
   offRole: boolean;
+}
+
+export type RtNarrativeLayer = "core" | "flavor";
+export type RtNarrativeTone = "neutral" | "tense" | "dry";
+export type RtNarrativeDensity = "core" | "flavor";
+export type RtNarrativeBranchId = string;
+
+export interface RtTaskNarrativeRef {
+  archetypeId: string;
+  variantSeed: number;
+  branchId: RtNarrativeBranchId;
+  variableValueIds: Record<string, string>;
+  tags: string[];
+  tone: RtNarrativeTone;
+  density: RtNarrativeDensity;
+}
+
+export type RtTaskCommentClass = "signal" | "flavor";
+
+export interface RtTaskComment {
+  id: string;
+  class: RtTaskCommentClass;
+  narrativeId: string;
+  createdAtDay: number;
+  createdAtMinute: number;
+  variableValueIds: Record<string, string>;
+}
+
+export interface RtNarrativeBudgetState {
+  flavorWindowTaskIds: string[];
+  flavorWindowSize: number;
+  flavorTargetRatio: number;
 }
 
 export interface RtResources {
@@ -100,7 +142,8 @@ export type RtConsequenceSource =
 export type RtTaskResolution =
   | "missed_minor"
   | "missed_tail"
-  | "missed_terminal";
+  | "missed_terminal"
+  | "backlog_opportunity_expired";
 
 export interface RtReleaseConsequence {
   id: string;
@@ -119,6 +162,10 @@ export interface RtReleaseConsequence {
 
 export interface RtDaySummary {
   day: number;
+  campaignDay: number;
+  weekId: number;
+  monthId: number;
+  quarterId: number;
   shipped: number;
   releasedClean: number;
   releasedRisky: number;
@@ -126,10 +173,20 @@ export interface RtDaySummary {
   missedBacklog: number;
   missedInProgress: number;
   missedMinor: number;
+  backlogValueLost: number;
+  backlogExpiredCount: number;
+  backlogDebtAdded: number;
   falloutCreated: number;
   falloutResolved: number;
   unresolvedFallout: number;
   terminalConsequences: number;
+}
+
+export interface RtBacklogDecayDayStats {
+  valueLost: number;
+  expiredCount: number;
+  debtAdded: number;
+  expiredTaskIds: string[];
 }
 
 export interface RtQuarterReviewReport {
@@ -141,6 +198,26 @@ export interface RtQuarterReviewReport {
   trustActual: number;
   trustTarget: number;
   trustMet: boolean;
+  resourceBefore: RtResources;
+  resourceAfter: RtResources;
+  resourceDelta: RtResources;
+  effects: string[];
+}
+
+export interface RtHorizonReviewReport {
+  kind: RtHorizonKind;
+  id: number;
+  hitGoal: boolean;
+  valueActual: number;
+  valueTarget: number;
+  valueMet: boolean;
+  trustActual: number;
+  trustTarget: number;
+  trustMet: boolean;
+  rawTrustDamage: number;
+  cappedTrustDamage: number;
+  todayTrustDamage: number;
+  dailyTrustDamageCap: number;
   resourceBefore: RtResources;
   resourceAfter: RtResources;
   resourceDelta: RtResources;
@@ -159,6 +236,7 @@ export interface RtMorningReport {
   resourceDelta: RtResources;
   releaseDelta: RtResources;
   consequenceDelta: RtResources;
+  horizonReviews: RtHorizonReviewReport[];
   quarterReview: RtQuarterReviewReport | null;
   empty: boolean;
   effects: string[];
@@ -169,13 +247,21 @@ export interface RtMorningReport {
 
 export interface RtTask {
   id: string;
+  narrativeRef: RtTaskNarrativeRef;
+  comments: RtTaskComment[];
+  lastCommentId: string | null;
   title: string;
   kind: RtTaskKind;
-  domain: string;
+  domain: RtTaskDomain;
   blastRadius: RtBlastRadius;
   column: RtColumn;
   pressure: number;
   complexity: number;
+  baseValue: number;
+  backlogValue: number;
+  backlogDecayElapsedMs: number;
+  backlogDecayDurationMs: number;
+  engagedOnce: boolean;
   value: number;
   clarity: number;
   quality: number;
@@ -233,12 +319,16 @@ export interface RtCharacter {
   exhaustedToday: boolean;
 }
 
+export type RtEventDataValue = string | number | boolean | null;
+export type RtEventData = Record<string, RtEventDataValue>;
+
 export interface RtEvent {
   at: string;
   type: string;
   title: string;
   body: string;
   effects: string[];
+  data?: RtEventData;
 }
 
 export interface RtFalloutWarning {
@@ -303,29 +393,120 @@ export interface RtQuarterGoal {
   rewardBudget: number;
 }
 
+export type RtVictoryGrade = "A" | "B" | "C" | "D";
+
+export interface RtVictoryReport {
+  grade: RtVictoryGrade;
+  score: number;
+  headline: string;
+  summary: string;
+  resourceSnapshot: RtResources;
+  stats: {
+    daysSurvived: number;
+    releasedClean: number;
+    releasedRisky: number;
+    releasedDirty: number;
+    falloutCreated: number;
+    falloutResolved: number;
+    unresolvedFallout: number;
+    missedTasks: number;
+    missedOpportunities: number;
+    totalBurnout: number;
+    peakDebt: number;
+  };
+  notes: string[];
+}
+
+export interface RtHorizonGoal {
+  kind: RtHorizonKind;
+  id: number;
+  openedOnDay: number;
+  endsOnDay: number;
+  startValue: number;
+  expectedValue: number;
+  targetValue: number;
+  currentValue: number;
+  targetTrust: number;
+  rewardBudget: number;
+  rewardProcessBoost: number;
+  missedTrustPenalty: number;
+}
+
+export type RtHorizonGoals = Record<RtHorizonKind, RtHorizonGoal | null>;
+
+export interface RtCampaignCalendar {
+  campaignDay: number;
+  year: number;
+  week: number;
+  dayInWeek: number;
+  month: number;
+  weekInMonth: number;
+  quarter: number;
+  dayInQuarter: number;
+  monthInQuarter: number;
+  daysPerWeek: number;
+  weeksPerMonth: number;
+  daysPerMonth: number;
+  monthsPerQuarter: number;
+  daysPerQuarter: number;
+  quartersPerYear: number;
+  daysPerYear: number;
+  unlockedHorizons: RtHorizonKind[];
+}
+
 export interface RtSpawnState {
   nextInMs: number;
   nextBurstInMs: number;
+}
+
+export type RtTutorialStepKind = "directive" | "choice" | "wait";
+
+export interface RtTutorialStepState {
+  id: string;
+  stageId: string;
+  kind: RtTutorialStepKind;
+  completed: boolean;
+  branchId: string | null;
+}
+
+export interface RtTutorialState {
+  stageId: string;
+  stepId: string;
+  completed: boolean;
+  completedStepIds: string[];
+  timers: Record<string, number>;
+  activeBranchId: string | null;
+  focusTaskId: string | null;
+  focusCharacterId: string | null;
+  steps: RtTutorialStepState[];
 }
 
 export interface RtGameState {
   seed: number;
   rngState: number;
   locale: EngineLocale;
+  runMode: RtRunMode;
+  tutorial: RtTutorialState | null;
   paused: boolean;
   status: RtRunStatus;
   lossReason: string | null;
   lossReport: RtLossReport | null;
+  victoryReport: RtVictoryReport | null;
   elapsedRealMs: number;
   elapsedGameMinutes: number;
   gameMinuteOfDay: number;
   day: number;
+  calendar: RtCampaignCalendar;
+  peakDebt: number;
   quarter: number;
   dayInQuarter: number;
   daysPerQuarter: number;
   resources: RtResources;
+  horizonGoals: RtHorizonGoals;
   quarterGoal: RtQuarterGoal;
   quarterValue: number;
+  backlogDecayToday: RtBacklogDecayDayStats;
+  narrativeBudget: RtNarrativeBudgetState;
   morningReport: RtMorningReport | null;
   board: Record<RtColumn, string[]>;
   tasks: Record<string, RtTask>;

@@ -1,4 +1,5 @@
 import { DONE_REWORK_TRUST_COST } from "./balance";
+import { commitBacklogOpportunity } from "./backlogOpportunity";
 import { clamp } from "./math";
 import {
   formatRiskReason,
@@ -31,11 +32,15 @@ export function moveTaskOnBoard(
   taskId: string,
   targetColumn: RtColumn,
   emit: BoardEventSink,
+  targetIndex?: number,
 ): boolean {
   const moveCheck = canMoveTaskOnBoard(state, taskId, targetColumn);
   if (!moveCheck.allowed && moveCheck.reason !== "same_column") return false;
   const task = state.tasks[taskId];
-  if (task.column === targetColumn) return true;
+  if (task.column === targetColumn) {
+    reorderTaskInColumn(state, taskId, targetColumn, targetIndex);
+    return true;
+  }
 
   if (task.column === "done") {
     state.resources.trust = clamp(state.resources.trust - DONE_REWORK_TRUST_COST, 0, 100);
@@ -46,7 +51,7 @@ export function moveTaskOnBoard(
     task.stageComplete = taskReadyForDone(task);
     task.queuedDeadlineMs = null;
     task.lastNote = "Pulled back from Done for rework.";
-    state.board.inProgress.push(taskId);
+    insertTaskId(state.board.inProgress, taskId, targetIndex);
     emit({
       type: "done_reopened",
       title: `${task.id} reopened`,
@@ -69,7 +74,7 @@ export function moveTaskOnBoard(
       late.valuePenaltyPercent > 0
         ? `Queued late for release. Value reduced by ${late.valuePenaltyPercent}%.`
         : "Queued for the daily release train.";
-    state.board.done.unshift(taskId);
+    insertTaskId(state.board.done, taskId, targetIndex ?? 0);
     emit({
       type: "queued_for_release",
       title: `${task.id} queued`,
@@ -85,14 +90,19 @@ export function moveTaskOnBoard(
     return true;
   }
 
+  const committedFromBacklog = task.column === "backlog" && targetColumn === "inProgress";
+  if (committedFromBacklog) {
+    commitBacklogOpportunity(task, emit);
+  }
+
   removeTaskFromBoard(state, taskId);
   task.column = targetColumn;
   task.stageProgress = 0;
   task.currentSubtaskId = null;
   task.stageComplete = false;
   task.queuedDeadlineMs = null;
-  task.lastNote = stageNote(targetColumn);
-  state.board[targetColumn].push(taskId);
+  task.lastNote = committedFromBacklog ? task.lastNote : stageNote(targetColumn);
+  insertTaskId(state.board[targetColumn], taskId, targetIndex);
   return true;
 }
 
@@ -113,6 +123,9 @@ export function canMoveTaskOnBoard(
   if (task.column === "backlog" && targetColumn === "done") {
     return { allowed: false, reason: "backlog_to_done_forbidden" };
   }
+  if (targetColumn === "backlog" && task.engagedOnce) {
+    return { allowed: false, reason: "engaged_backlog_forbidden" };
+  }
   return { allowed: true };
 }
 
@@ -124,6 +137,32 @@ export function removeTaskFromBoard(state: RtGameState, taskId: string): void {
       return;
     }
   }
+}
+
+function reorderTaskInColumn(
+  state: RtGameState,
+  taskId: string,
+  column: RtColumn,
+  targetIndex?: number,
+): void {
+  if (targetIndex === undefined) return;
+
+  const taskIds = state.board[column];
+  const fromIndex = taskIds.indexOf(taskId);
+  if (fromIndex < 0) return;
+
+  taskIds.splice(fromIndex, 1);
+  const adjustedIndex = fromIndex < targetIndex ? targetIndex - 1 : targetIndex;
+  insertTaskId(taskIds, taskId, adjustedIndex);
+}
+
+function insertTaskId(taskIds: string[], taskId: string, targetIndex?: number): void {
+  taskIds.splice(clampInsertIndex(taskIds, targetIndex), 0, taskId);
+}
+
+function clampInsertIndex(taskIds: string[], targetIndex?: number): number {
+  if (targetIndex === undefined || !Number.isFinite(targetIndex)) return taskIds.length;
+  return Math.max(0, Math.min(Math.trunc(targetIndex), taskIds.length));
 }
 
 export function taskReadyForDone(task: RtTask): boolean {

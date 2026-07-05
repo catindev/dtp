@@ -17,6 +17,7 @@ import {
   applyResourceDelta,
   resourceDeltaEffects,
 } from "./resources";
+import { setFalloutTaskNarrativeRef } from "./narrative";
 import { generateTask } from "./taskFactory";
 import type {
   RtConsequenceSource,
@@ -94,7 +95,7 @@ export function createTailConsequence(
     originalFollowUpId.match(/\d+$/)?.[0] ?? String(state.nextTaskId - 1).padStart(3, "0");
   followUp.domain = sourceTask.domain;
   followUp.id = `${DOMAIN_PREFIXES[sourceTask.domain] ?? "INC"}-${sequence}`;
-  followUp.title = `${followUp.id}: ${symptom}`;
+  setFalloutTaskNarrativeRef(followUp, sourceTask, cause);
   for (const subtask of followUp.subtasks) {
     subtask.id = subtask.id.replace(originalFollowUpId, followUp.id);
   }

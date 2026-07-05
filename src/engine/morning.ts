@@ -7,6 +7,7 @@ import {
   generateMorningConsequences,
   type ConsequenceRuntime,
 } from "./consequences";
+import { createCampaignCalendar } from "./calendar";
 import {
   copyResources,
   diffResources,
@@ -22,6 +23,8 @@ import type {
   RtDaySummary,
   RtEvent,
   RtGameState,
+  RtHorizonReviewReport,
+  RtQuarterReviewReport,
   RtReleaseConsequence,
   RtTask,
 } from "./types";
@@ -42,13 +45,13 @@ export function openMorningReport(state: RtGameState, runtime: MorningRuntime): 
   const resourceAfterRelease = copyResources(state.resources);
   const releaseDelta = diffResources(resourceBefore, resourceAfterRelease);
   const missedTaskIds = collectMissedTaskIds(state);
-  const quarterReview = advanceDay(state, runtime.emit);
-  const resourceAfterQuarter = copyResources(state.resources);
+  const horizonReviews = advanceDay(state, runtime.emit);
+  const resourceAfterHorizons = copyResources(state.resources);
   state.gameMinuteOfDay = GAME_DAY_START_MINUTE;
   const consequences = generateMorningConsequences(state, shippedTaskIds, missedTaskIds, runtime);
   const resourceAfter = copyResources(state.resources);
   const resourceDelta = diffResources(resourceBefore, resourceAfter);
-  const consequenceDelta = diffResources(resourceAfterQuarter, resourceAfter);
+  const consequenceDelta = diffResources(resourceAfterHorizons, resourceAfter);
   const effects = morningReportEffects(resourceDelta);
   const daySummary = buildDaySummary(
     state,
@@ -70,8 +73,13 @@ export function openMorningReport(state: RtGameState, runtime: MorningRuntime): 
     resourceDelta,
     releaseDelta,
     consequenceDelta,
-    quarterReview,
-    empty: shippedTaskIds.length === 0 && missedTaskIds.length === 0,
+    horizonReviews,
+    quarterReview: toLegacyQuarterReview(horizonReviews),
+    empty:
+      shippedTaskIds.length === 0 &&
+      missedTaskIds.length === 0 &&
+      daySummary.backlogExpiredCount === 0 &&
+      horizonReviews.length === 0,
     effects,
     missedTaskIds,
     consequences,
@@ -82,17 +90,21 @@ export function openMorningReport(state: RtGameState, runtime: MorningRuntime): 
   runtime.emit({
     type: "day_summary",
     title: `Day ${releaseDay} summary`,
-    body: `${daySummary.shipped} shipped, ${daySummary.missedBacklog + daySummary.missedInProgress} missed, ${daySummary.unresolvedFallout} unresolved fallout.`,
+    body: `${daySummary.shipped} shipped, ${daySummary.missedBacklog + daySummary.missedInProgress} missed, ${daySummary.backlogExpiredCount} backlog expired, ${daySummary.unresolvedFallout} unresolved fallout.`,
     effects: [
       `clean ${daySummary.releasedClean}`,
       `risky ${daySummary.releasedRisky}`,
       `dirty ${daySummary.releasedDirty}`,
       `missed backlog ${daySummary.missedBacklog}`,
       `missed progress ${daySummary.missedInProgress}`,
+      `backlog expired ${daySummary.backlogExpiredCount}`,
+      `backlog value lost ${daySummary.backlogValueLost}`,
+      `backlog debt +${daySummary.backlogDebtAdded}`,
       `fallout +${daySummary.falloutCreated}`,
       `resolved ${daySummary.falloutResolved}`,
       `unresolved ${daySummary.unresolvedFallout}`,
       `terminal ${daySummary.terminalConsequences}`,
+      ...(horizonReviews.length > 0 ? [`horizon reviews ${horizonReviews.length}`] : []),
     ],
   });
 
@@ -100,15 +112,44 @@ export function openMorningReport(state: RtGameState, runtime: MorningRuntime): 
     type: "morning_report_opened",
     title: `Morning briefing Day ${state.day}`,
     body:
-      shippedTaskIds.length > 0 || missedTaskIds.length > 0
-        ? `${shippedTaskIds.length} shipped, ${missedTaskIds.length} missed. ${consequences.length} consequence(s) shaped today's backlog.`
-        : "No tasks shipped or expired yesterday. The team starts with the existing backlog.",
+      shippedTaskIds.length > 0 || missedTaskIds.length > 0 || daySummary.backlogExpiredCount > 0
+        ? `${shippedTaskIds.length} shipped, ${missedTaskIds.length} missed, ${daySummary.backlogExpiredCount} backlog expired. ${consequences.length} consequence(s) shaped today's backlog.`
+        : horizonReviews.length > 0
+          ? `${horizonReviews.length} business horizon review(s) completed.`
+          : "No tasks shipped or expired yesterday. The team starts with the existing backlog.",
     effects: [
       ...effects,
+      ...(daySummary.backlogExpiredCount > 0
+        ? [
+            `backlog expired ${daySummary.backlogExpiredCount}`,
+            `backlog value lost ${daySummary.backlogValueLost}`,
+            `backlog debt +${daySummary.backlogDebtAdded}`,
+          ]
+        : ["no backlog decay loss"]),
       ...(consequences.length > 0 ? [`consequences ${consequences.length}`] : ["no fallout"]),
+      ...(horizonReviews.length > 0 ? [`horizon reviews ${horizonReviews.length}`] : ["no horizon review"]),
       `unresolved fallout ${daySummary.unresolvedFallout}`,
     ],
   });
+}
+
+function toLegacyQuarterReview(horizonReviews: RtHorizonReviewReport[]): RtQuarterReviewReport | null {
+  const quarterReview = horizonReviews.find((review) => review.kind === "quarter");
+  if (!quarterReview) return null;
+  return {
+    quarter: quarterReview.id,
+    hitGoal: quarterReview.hitGoal,
+    valueActual: quarterReview.valueActual,
+    valueTarget: quarterReview.valueTarget,
+    valueMet: quarterReview.valueMet,
+    trustActual: quarterReview.trustActual,
+    trustTarget: quarterReview.trustTarget,
+    trustMet: quarterReview.trustMet,
+    resourceBefore: quarterReview.resourceBefore,
+    resourceAfter: quarterReview.resourceAfter,
+    resourceDelta: quarterReview.resourceDelta,
+    effects: quarterReview.effects,
+  };
 }
 
 function buildDaySummary(
@@ -118,6 +159,7 @@ function buildDaySummary(
   missedTaskIds: string[],
   consequences: RtReleaseConsequence[],
 ): RtDaySummary {
+  const summaryCalendar = createCampaignCalendar(day);
   const shippedReports = shippedTaskIds
     .map((taskId) => state.tasks[taskId])
     .filter((task): task is RtTask => Boolean(task))
@@ -128,6 +170,10 @@ function buildDaySummary(
 
   return {
     day,
+    campaignDay: day,
+    weekId: summaryCalendar.week,
+    monthId: summaryCalendar.month,
+    quarterId: summaryCalendar.quarter,
     shipped: shippedTaskIds.length,
     releasedClean: shippedReports.filter((readiness) => readiness === "clean").length,
     releasedRisky: shippedReports.filter((readiness) => readiness === "risky").length,
@@ -135,6 +181,9 @@ function buildDaySummary(
     missedBacklog: consequences.filter((consequence) => consequence.source === "missed_backlog").length,
     missedInProgress: consequences.filter((consequence) => consequence.source === "missed_in_progress").length,
     missedMinor: missedTasks.filter((task) => task.resolution === "missed_minor").length,
+    backlogValueLost: state.backlogDecayToday.valueLost,
+    backlogExpiredCount: state.backlogDecayToday.expiredCount,
+    backlogDebtAdded: state.backlogDecayToday.debtAdded,
     falloutCreated: consequences.filter((consequence) => consequence.generatedTaskId).length,
     falloutResolved:
       shippedTaskIds.filter((taskId) => Boolean(state.tasks[taskId]?.rootCauseTaskId)).length +

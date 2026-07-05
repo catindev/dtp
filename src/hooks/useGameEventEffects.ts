@@ -1,6 +1,6 @@
-import { useEffect, type MutableRefObject } from "react";
+import { useEffect, useRef, type MutableRefObject } from "react";
 import { APP_COMMIT, type AutosaveLoadResult } from "../save";
-import { formatGameTime, type RtEvent, type RtGameState } from "../realtime/simulation";
+import { type RtGameState } from "../realtime/simulation";
 import {
   createLogEntry,
   gameEventKey,
@@ -8,6 +8,12 @@ import {
   postBackendLog,
   type FrontendLogEntry,
 } from "../frontendLogging";
+import { buildGameEventTelemetry } from "../logging/gameEventTelemetry";
+import { buildDaySummaryTelemetry } from "../logging/summaryTelemetry";
+import {
+  isWorkPassCompletedEvent,
+  workPassCompletedTaskId,
+} from "../engine/eventData";
 
 interface UseGameEventEffectsArgs {
   game: RtGameState;
@@ -28,6 +34,8 @@ export function useGameEventEffects({
   animatedWorkEventKeysRef,
   bounceTask,
 }: UseGameEventEffectsArgs): void {
+  const loggedSummaryIdsRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     if (screen !== "game" || initialAutosaveRef.current?.status !== "loaded") return;
     logAction(sessionIdRef.current, "autosave_restored", {
@@ -46,13 +54,7 @@ export function useGameEventEffects({
       if (loggedEventKeysRef.current.has(key)) continue;
       loggedEventKeysRef.current.add(key);
       newEntries.push(
-        createLogEntry(sessionIdRef.current, "game_event", event.type, {
-          ...event,
-          gameTime: formatGameTime(game),
-          resources: game.resources,
-          status: game.status,
-          lossReason: game.lossReason,
-        }),
+        createLogEntry(sessionIdRef.current, "event", event.type, buildGameEventTelemetry(game, event)),
       );
     }
     if (newEntries.length > 0) {
@@ -61,23 +63,30 @@ export function useGameEventEffects({
   }, [game, loggedEventKeysRef, screen, sessionIdRef]);
 
   useEffect(() => {
+    if (screen !== "game" || !game.morningReport) return;
+    const reportId = game.morningReport.id;
+    if (loggedSummaryIdsRef.current.has(reportId)) return;
+    loggedSummaryIdsRef.current.add(reportId);
+    postBackendLog([
+      createLogEntry(
+        sessionIdRef.current,
+        "summary",
+        "day_summary",
+        buildDaySummaryTelemetry(game, game.morningReport),
+      ),
+    ]);
+  }, [game, screen, sessionIdRef]);
+
+  useEffect(() => {
     if (screen !== "game") return;
     for (const event of game.log.slice().reverse()) {
-      if (!isWorkPassDoneEvent(event)) continue;
+      if (!isWorkPassCompletedEvent(event)) continue;
       const key = gameEventKey(event);
       if (animatedWorkEventKeysRef.current.has(key)) continue;
       animatedWorkEventKeysRef.current.add(key);
-      const taskId = event.title.split(" ")[0];
+      const taskId = workPassCompletedTaskId(event);
+      if (!taskId) continue;
       if (game.tasks[taskId]) bounceTask(taskId);
     }
   }, [animatedWorkEventKeysRef, bounceTask, game.log, game.tasks, screen]);
-}
-
-function isWorkPassDoneEvent(event: RtEvent): boolean {
-  return (
-    event.type === "analysis_done" ||
-    event.type === "subtask_done" ||
-    event.type === "bugfix_done" ||
-    event.type === "qa_done"
-  );
 }

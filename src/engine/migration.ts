@@ -2,7 +2,14 @@ import {
   DAYS_PER_QUARTER,
   GAME_DAY_START_MINUTE,
 } from "./balance";
+import { createBacklogDecayDayStats } from "./backlogOpportunity";
 import { removeTaskFromBoard } from "./board";
+import { createCampaignCalendar } from "./calendar";
+import {
+  createInitialHorizonGoals,
+  ensureUnlockedHorizonGoals,
+  syncLegacyQuarterGoalFromHorizon,
+} from "./goals";
 import {
   type EngineLocale,
   normalizeEngineLocale,
@@ -10,6 +17,7 @@ import {
 import { clamp } from "./math";
 import { normalizeMorningReportState } from "./migrationReports";
 import { normalizeTaskForCurrentSchema } from "./migrationTasks";
+import { normalizeNarrativeBudgetState } from "./narrative";
 import {
   RT_COLUMNS,
   type RtCharacter,
@@ -24,12 +32,58 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
     releaseReview?: RtMorningReport | null;
     morningReport?: RtMorningReport | null;
     locale?: EngineLocale;
+    backlogDecayToday?: RtGameState["backlogDecayToday"];
+    narrativeBudget?: RtGameState["narrativeBudget"];
+    calendar?: RtGameState["calendar"];
+    horizonGoals?: RtGameState["horizonGoals"];
+    victoryReport?: RtGameState["victoryReport"];
+    peakDebt?: number;
+    runMode?: RtGameState["runMode"];
+    tutorial?: RtGameState["tutorial"];
   };
 
   const normalizedLocale = normalizeEngineLocale(legacyState.locale);
   if (state.locale !== normalizedLocale) {
     state.locale = normalizedLocale;
     changed = true;
+  }
+  if (legacyState.runMode !== "campaign" && legacyState.runMode !== "tutorial") {
+    state.runMode = "campaign";
+    changed = true;
+  }
+  if (state.runMode === "campaign" && legacyState.tutorial !== null) {
+    state.tutorial = null;
+    changed = true;
+  }
+  if (state.runMode === "tutorial") {
+    if (!legacyState.tutorial) {
+      state.tutorial = {
+        stageId: "boot",
+        stepId: "boot",
+        completed: false,
+        completedStepIds: [],
+        timers: {},
+        activeBranchId: null,
+        focusTaskId: null,
+        focusCharacterId: null,
+        steps: [],
+      };
+      changed = true;
+    }
+    const tutorial = (state as RtGameState & {
+      tutorial: NonNullable<RtGameState["tutorial"]>;
+    }).tutorial as NonNullable<RtGameState["tutorial"]> & {
+      focusTaskId?: string | null;
+      focusCharacterId?: string | null;
+    };
+    if (!Object.prototype.hasOwnProperty.call(tutorial, "focusTaskId")) {
+      tutorial.focusTaskId = null;
+      changed = true;
+    }
+    if (!Object.prototype.hasOwnProperty.call(tutorial, "focusCharacterId")) {
+      tutorial.focusCharacterId = null;
+      changed = true;
+    }
   }
 
   changed = normalizeMorningReportState(state, legacyState) || changed;
@@ -51,6 +105,65 @@ export function normalizeRealtimeState(state: RtGameState): boolean {
     state.daysPerQuarter = DAYS_PER_QUARTER;
     changed = true;
   }
+  const expectedCalendar = createCampaignCalendar(state.day);
+  if (
+    !legacyState.calendar ||
+    legacyState.calendar.campaignDay !== expectedCalendar.campaignDay ||
+    legacyState.calendar.daysPerYear !== expectedCalendar.daysPerYear
+  ) {
+    state.calendar = expectedCalendar;
+    state.quarter = expectedCalendar.quarter;
+    state.dayInQuarter = expectedCalendar.dayInQuarter;
+    state.daysPerQuarter = expectedCalendar.daysPerQuarter;
+    changed = true;
+  }
+  if (!legacyState.backlogDecayToday) {
+    state.backlogDecayToday = createBacklogDecayDayStats();
+    changed = true;
+  } else {
+    const stats = state.backlogDecayToday;
+    if (typeof stats.valueLost !== "number" || !Number.isFinite(stats.valueLost)) {
+      stats.valueLost = 0;
+      changed = true;
+    }
+    if (typeof stats.expiredCount !== "number" || !Number.isFinite(stats.expiredCount)) {
+      stats.expiredCount = 0;
+      changed = true;
+    }
+    if (typeof stats.debtAdded !== "number" || !Number.isFinite(stats.debtAdded)) {
+      stats.debtAdded = 0;
+      changed = true;
+    }
+    if (!Array.isArray(stats.expiredTaskIds)) {
+      stats.expiredTaskIds = [];
+      changed = true;
+    }
+  }
+  const normalizedNarrativeBudget = normalizeNarrativeBudgetState(legacyState.narrativeBudget);
+  if (state.narrativeBudget !== normalizedNarrativeBudget) {
+    state.narrativeBudget = normalizedNarrativeBudget;
+    changed = true;
+  }
+
+  if (!("victoryReport" in legacyState)) {
+    state.victoryReport = null;
+    changed = true;
+  }
+  if (typeof legacyState.peakDebt !== "number" || !Number.isFinite(legacyState.peakDebt)) {
+    state.peakDebt = state.resources.debt;
+    changed = true;
+  } else if (state.resources.debt > state.peakDebt) {
+    state.peakDebt = state.resources.debt;
+    changed = true;
+  }
+
+  if (!legacyState.horizonGoals) {
+    state.horizonGoals = createInitialHorizonGoals(state);
+    changed = true;
+  } else {
+    changed = ensureUnlockedHorizonGoals(state) || changed;
+  }
+  syncLegacyQuarterGoalFromHorizon(state);
 
   for (const column of RT_COLUMNS) {
     if (!board[column]) {

@@ -23,7 +23,9 @@ import {
   introduceImplementationBugs,
   isBugfixWork,
 } from "./bugs";
+import { characterWorkPassCompletedData } from "./eventData";
 import { clamp } from "./math";
+import { addTaskComment } from "./narrative";
 import {
   chance,
   randomInt,
@@ -60,6 +62,7 @@ export function completeImplementationSubtaskStage(
       task,
       "Implementation changed after QA, so prior test coverage became stale.",
     );
+    addTaskComment(state, task, "signal", "signal.changed-after-qa");
   }
   const rawQuality =
     task.clarity * WORK_RAW_QUALITY_CLARITY_FACTOR +
@@ -108,6 +111,17 @@ export function completeImplementationSubtaskStage(
     type: bugfixWork ? "bugfix_done" : "subtask_done",
     title: `${task.id} ${subtask.role} done`,
     body: `${character.name} completed ${subtask.title}.`,
+    data: characterWorkPassCompletedData(character, {
+      taskId: task.id,
+      workType: bugfixWork ? "bugfix" : "subtask",
+      subtaskId: subtask.id,
+      subtaskRole: subtask.role,
+      subtaskImportance: subtask.importance,
+      offRole,
+      quality: task.quality,
+      bugs: task.bugs,
+      introducedBugs,
+    }),
     effects: [
       subtask.importance,
       offRole ? "off-role" : "on-role",

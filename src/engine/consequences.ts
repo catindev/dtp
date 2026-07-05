@@ -3,6 +3,7 @@ import {
   missedConsequenceSymptom,
   releaseConsequenceSymptom,
 } from "./consequenceText";
+import { isUntouchedBacklogTask } from "./backlogOpportunity";
 import {
   markTaskResolved,
   missedMinorResourceDelta,
@@ -42,6 +43,7 @@ export function collectMissedTaskIds(state: RtGameState): string[] {
         !task.released &&
         !task.resolved &&
         task.column !== "done" &&
+        !isUntouchedBacklogTask(task) &&
         task.deadlineMs <= 0,
     );
   });
@@ -160,6 +162,5 @@ function primaryConsequenceCause(reasons: RtRiskReason[]): RtReleaseConsequenceC
   if (reasons.includes("critical_open")) return "critical_open";
   if (reasons.includes("important_open")) return "important_open";
   if (reasons.includes("low_clarity")) return "low_clarity";
-  if (reasons.includes("deadline_pressure")) return "deadline_pressure";
   return "no_qa";
 }

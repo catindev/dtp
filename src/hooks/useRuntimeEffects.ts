@@ -8,9 +8,12 @@ import {
 import { saveRun } from "../save";
 import {
   BACKEND_LOG_FLUSH_INTERVAL_MS,
+  DEBUG_SNAPSHOT_INTERVAL_MS,
+  DEBUG_SNAPSHOT_POSTER_ENABLED,
   flushBackendLogQueue,
   postDebugSnapshot,
 } from "../frontendLogging";
+import type { TimeScale } from "../timeScale";
 
 export function useBackendLogPump(): void {
   useEffect(() => {
@@ -48,6 +51,7 @@ export function useNormalizeRealtimeStateOnMount(
 export function useRealtimeTicker(
   screen: string,
   setGame: Dispatch<SetStateAction<RtGameState>>,
+  timeScale: TimeScale,
 ): void {
   useEffect(() => {
     if (screen !== "game") return;
@@ -56,13 +60,13 @@ export function useRealtimeTicker(
         const draft = structuredClone(current) as RtGameState;
         const normalized = normalizeRealtimeState(draft);
         if (draft.paused || draft.status !== "running") return normalized ? draft : current;
-        tickRealtime(draft, TICK_MS);
+        tickRealtime(draft, TICK_MS * timeScale);
         return draft;
       });
     }, TICK_MS);
 
     return () => window.clearInterval(id);
-  }, [screen, setGame]);
+  }, [screen, setGame, timeScale]);
 }
 
 export function useDebugSnapshotPoster(
@@ -72,9 +76,10 @@ export function useDebugSnapshotPoster(
 ): void {
   useEffect(() => {
     if (screen !== "game") return;
+    if (!DEBUG_SNAPSHOT_POSTER_ENABLED) return;
     const id = window.setInterval(() => {
-      postDebugSnapshot(latestGameRef.current, sessionIdRef.current);
-    }, 1000);
+      postDebugSnapshot(latestGameRef.current, sessionIdRef.current, "debug_interval");
+    }, DEBUG_SNAPSHOT_INTERVAL_MS);
 
     return () => window.clearInterval(id);
   }, [latestGameRef, screen, sessionIdRef]);
@@ -118,6 +123,6 @@ export function useStatusDebugSnapshot(
 ): void {
   useEffect(() => {
     if (screen !== "game") return;
-    postDebugSnapshot(game, sessionIdRef.current);
+    postDebugSnapshot(game, sessionIdRef.current, "status_change");
   }, [game.status, game.lossReason, screen, sessionIdRef]);
 }

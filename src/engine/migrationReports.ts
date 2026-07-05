@@ -1,3 +1,4 @@
+import { createCampaignCalendar } from "./calendar";
 import { emptyResourceDelta } from "./resources";
 import type {
   RtConsequenceSource,
@@ -39,6 +40,10 @@ export function normalizeMorningReportState(
         (legacyState.releaseReview as RtMorningReport & {
           quarterReview?: RtQuarterReviewReport | null;
         }).quarterReview ?? null,
+      horizonReviews:
+        (legacyState.releaseReview as RtMorningReport & {
+          horizonReviews?: RtMorningReport["horizonReviews"];
+        }).horizonReviews ?? [],
       missedTaskIds: legacyState.releaseReview.missedTaskIds ?? [],
       consequences: legacyState.releaseReview.consequences ?? [],
       daySummary:
@@ -51,6 +56,7 @@ export function normalizeMorningReportState(
     const legacyMorningReport = state.morningReport as RtMorningReport & {
       releaseDelta?: RtResources;
       consequenceDelta?: RtResources;
+      horizonReviews?: RtMorningReport["horizonReviews"];
       quarterReview?: RtQuarterReviewReport | null;
     };
     if (!Array.isArray(state.morningReport.missedTaskIds)) {
@@ -59,6 +65,8 @@ export function normalizeMorningReportState(
     }
     if (!state.morningReport.daySummary) {
       state.morningReport.daySummary = emptyDaySummary(state.morningReport.previousDay);
+      changed = true;
+    } else if (normalizeDaySummary(state.morningReport.daySummary)) {
       changed = true;
     }
     if (!legacyMorningReport.releaseDelta) {
@@ -73,6 +81,10 @@ export function normalizeMorningReportState(
       legacyMorningReport.quarterReview = null;
       changed = true;
     }
+    if (!Array.isArray(legacyMorningReport.horizonReviews)) {
+      legacyMorningReport.horizonReviews = [];
+      changed = true;
+    }
     for (const consequence of state.morningReport.consequences) {
       if (normalizeMorningConsequence(consequence)) {
         changed = true;
@@ -84,8 +96,13 @@ export function normalizeMorningReportState(
 }
 
 export function emptyDaySummary(day: number): RtDaySummary {
+  const calendar = createCampaignCalendar(day);
   return {
     day,
+    campaignDay: day,
+    weekId: calendar.week,
+    monthId: calendar.month,
+    quarterId: calendar.quarter,
     shipped: 0,
     releasedClean: 0,
     releasedRisky: 0,
@@ -93,11 +110,48 @@ export function emptyDaySummary(day: number): RtDaySummary {
     missedBacklog: 0,
     missedInProgress: 0,
     missedMinor: 0,
+    backlogValueLost: 0,
+    backlogExpiredCount: 0,
+    backlogDebtAdded: 0,
     falloutCreated: 0,
     falloutResolved: 0,
     unresolvedFallout: 0,
     terminalConsequences: 0,
   };
+}
+
+function normalizeDaySummary(summary: RtDaySummary): boolean {
+  let changed = false;
+  const legacySummary = summary as RtDaySummary & {
+    campaignDay?: number;
+    weekId?: number;
+    monthId?: number;
+    quarterId?: number;
+  };
+  const calendar = createCampaignCalendar(summary.day);
+  if (typeof legacySummary.campaignDay !== "number") {
+    summary.campaignDay = summary.day;
+    changed = true;
+  }
+  if (typeof legacySummary.weekId !== "number") {
+    summary.weekId = calendar.week;
+    changed = true;
+  }
+  if (typeof legacySummary.monthId !== "number") {
+    summary.monthId = calendar.month;
+    changed = true;
+  }
+  if (typeof legacySummary.quarterId !== "number") {
+    summary.quarterId = calendar.quarter;
+    changed = true;
+  }
+  for (const key of ["backlogValueLost", "backlogExpiredCount", "backlogDebtAdded"] as const) {
+    if (typeof summary[key] !== "number" || !Number.isFinite(summary[key])) {
+      summary[key] = 0;
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 function normalizeMorningConsequence(consequence: RtReleaseConsequence): boolean {

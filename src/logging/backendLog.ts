@@ -1,6 +1,7 @@
 import {
   BACKEND_LOG_BATCH_SIZE,
   BACKEND_LOG_FLUSH_INTERVAL_MS,
+  BACKEND_LOG_SEQ_KEY_PREFIX,
   BACKEND_LOG_URL,
   BACKEND_RESET_URL,
 } from "./backendLogConfig";
@@ -11,17 +12,22 @@ import {
 } from "./backendLogQueue";
 import type {
   BackendLogStatus,
+  FrontendLogKind,
   FrontendLogEntry,
 } from "./backendLogTypes";
+import { LOG_SCHEMA_VERSION } from "./backendLogTypes";
 
 export { BACKEND_LOG_FLUSH_INTERVAL_MS } from "./backendLogConfig";
+export { LOG_SCHEMA_VERSION } from "./backendLogTypes";
 export type {
   BackendLogStatus,
+  FrontendLogKind,
   FrontendLogEntry,
 } from "./backendLogTypes";
 
 let backendFlushInFlight = false;
 let backendFlushAgain = false;
+const sessionSeq = new Map<string, number>();
 
 export function createSessionId(): string {
   return `dtp-${Date.now()}-${crypto.randomUUID?.() ?? Math.random().toString(16).slice(2)}`;
@@ -29,23 +35,29 @@ export function createSessionId(): string {
 
 export function createLogEntry(
   sessionId: string,
-  kind: FrontendLogEntry["kind"],
-  name: string,
+  kind: FrontendLogKind,
+  type: string,
   payload: unknown,
 ): FrontendLogEntry {
+  const seq = nextLogSeq(sessionId);
   return {
+    schema: LOG_SCHEMA_VERSION,
     id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+    seq,
     clientCreatedAt: new Date().toISOString(),
     sessionId,
     source: "dtp2-frontend",
     kind,
-    name,
+    type,
     payload,
   };
 }
 
 export function logAction(sessionId: string, name: string, payload: unknown): void {
-  postBackendLog([createLogEntry(sessionId, "action", name, payload)]);
+  postBackendLog([createLogEntry(sessionId, "event", name, {
+    channel: "action",
+    ...objectPayload(payload),
+  })]);
 }
 
 export function postBackendLog(entries: FrontendLogEntry[]): void {
@@ -106,4 +118,48 @@ export function getBackendLogStatus(): BackendLogStatus {
     compactedEntries: queue.compactedEntries,
     droppedEntries: queue.droppedEntries,
   };
+}
+
+function nextLogSeq(sessionId: string): number {
+  const current = sessionSeq.get(sessionId) ?? readStoredLogSeq(sessionId);
+  const next = current + 1;
+  sessionSeq.set(sessionId, next);
+  writeStoredLogSeq(sessionId, next);
+  return next;
+}
+
+function objectPayload(payload: unknown): Record<string, unknown> {
+  return typeof payload === "object" && payload !== null && !Array.isArray(payload)
+    ? payload as Record<string, unknown>
+    : { value: payload };
+}
+
+function readStoredLogSeq(sessionId: string): number {
+  const storage = getBrowserStorage();
+  if (!storage) return 0;
+  const raw = storage.getItem(seqStorageKey(sessionId));
+  const parsed = raw ? Number(raw) : 0;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+}
+
+function writeStoredLogSeq(sessionId: string, seq: number): void {
+  const storage = getBrowserStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(seqStorageKey(sessionId), String(seq));
+  } catch {
+    // Sequence persistence is a telemetry convenience. Logging still works in memory.
+  }
+}
+
+function seqStorageKey(sessionId: string): string {
+  return `${BACKEND_LOG_SEQ_KEY_PREFIX}.${sessionId}`;
+}
+
+function getBrowserStorage(): Storage | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
 }

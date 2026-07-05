@@ -17,6 +17,12 @@ export function MorningFlowStrip({
       <span>{t(locale, "morning.risky", { value: summary.releasedRisky })}</span>
       <span>{t(locale, "morning.dirty", { value: summary.releasedDirty })}</span>
       <span>{t(locale, "morning.missed", { value: summary.missedBacklog + summary.missedInProgress })}</span>
+      <span>
+        {t(locale, "morning.opportunities", {
+          debt: summary.backlogDebtAdded,
+          value: summary.backlogValueLost,
+        })}
+      </span>
       <span>{t(locale, "morning.fallout", { value: summary.falloutCreated })}</span>
       <span>{t(locale, "morning.unresolved", { value: summary.unresolvedFallout })}</span>
     </div>

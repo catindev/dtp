@@ -1,8 +1,12 @@
 import {
+  backlogValueRatio,
   DONE_REWORK_TRUST_COST,
   formatOverdueGameTime,
+  isUntouchedBacklogTask,
   lateReleaseReport,
   releaseReadiness,
+  renderTaskComment,
+  renderTaskNarrative,
   taskDeadlineRatio,
   type RtCharacter,
   type RtColumn,
@@ -15,7 +19,6 @@ import {
   labelImportance,
   labelRole,
   localizeSubtaskTitle,
-  localizeTaskTitle,
   localizeText,
   t,
   type Locale,
@@ -45,7 +48,11 @@ export function TaskInspector({
   task,
 }: TaskInspectorProps) {
   const readiness = releaseReadiness(task);
+  const untouchedBacklog = isUntouchedBacklogTask(task);
   const late = lateReleaseReport(task);
+  const visibleValue = untouchedBacklog
+    ? `${Math.round(task.backlogValue)}/${Math.round(task.baseValue)}`
+    : task.value;
   const sourceTask = task.sourceTaskId ? game.tasks[task.sourceTaskId] : null;
   const consequenceTasks = Object.values(game.tasks)
     .filter((candidate) => candidate.sourceTaskId === task.id)
@@ -53,14 +60,16 @@ export function TaskInspector({
   const visiblePostmortem = task.postmortem.filter(
     (note) => !/^Source task:/.test(note) && !/^Root cause:/.test(note),
   );
+  const visibleLastNote = shouldShowLastNote(task) ? task.lastNote : null;
+  const narrative = renderTaskNarrative(task, locale);
   return (
     <div className="task-inspector">
-      <strong>{localizeTaskTitle(task.title, locale)}</strong>
+      <strong>{narrative.title}</strong>
       <div className="inspector-grid">
         <span>{t(locale, "inspector.column", { column: columnLabel(locale, task.column) })}</span>
         <span>{t(locale, "inspector.pressure", { value: task.pressure })}</span>
         <span>{t(locale, "inspector.complexity", { value: task.complexity })}</span>
-        <span>{t(locale, "inspector.value", { value: task.value })}</span>
+        <span>{t(locale, "inspector.value", { value: visibleValue })}</span>
         <span>{t(locale, "inspector.clarity", { value: task.clarity })}</span>
         <span>{t(locale, "inspector.quality", { value: task.quality })}</span>
         <span>{t(locale, "inspector.qa", { value: task.testCoverage })}</span>
@@ -75,10 +84,23 @@ export function TaskInspector({
           </span>
         ) : null}
       </div>
+      <div className="task-story">
+        <p>{narrative.core.problem}</p>
+        <p>
+          <b>{t(locale, "taskStory.stakes")}:</b> {narrative.core.stakes}
+        </p>
+        <p>
+          <b>{t(locale, "taskStory.failurePreview")}:</b> {narrative.core.failurePreview}
+        </p>
+        {narrative.flavor?.aside ? <p className="task-story-flavor">{narrative.flavor.aside}</p> : null}
+      </div>
       <ReadinessBadge locale={locale} report={readiness} />
+      {task.comments.length > 0 ? <TaskCommentList locale={locale} task={task} /> : null}
       <SubtaskList locale={locale} task={task} />
       {task.column === "done" && !task.released ? (
         <p>{t(locale, "inspector.queued", { cost: DONE_REWORK_TRUST_COST })}</p>
+      ) : untouchedBacklog ? (
+        <TinyBar label={t(locale, "task.opportunity")} ratio={backlogValueRatio(task)} tone="deadline-safe" />
       ) : (
         <TinyBar label={t(locale, "task.deadline")} ratio={taskDeadlineRatio(task)} tone="deadline" />
       )}
@@ -105,7 +127,7 @@ export function TaskInspector({
           {t(locale, "inspector.cancel")}
         </button>
       ) : null}
-      <p>{localizeText(task.lastNote, locale)}</p>
+      {visibleLastNote ? <p>{localizeText(visibleLastNote, locale)}</p> : null}
       {task.sourceTaskId ? (
         <div className="source-link-panel">
           <h3>{t(locale, "inspector.causedBy")}</h3>
@@ -115,7 +137,7 @@ export function TaskInspector({
               onClick={() => onOpenLinkedTask(sourceTask.id)}
               type="button"
             >
-              {localizeTaskTitle(sourceTask.title, locale)}
+              {taskLinkLabel(sourceTask, locale)}
             </button>
           ) : (
             <span className="task-link-chip disabled">
@@ -135,7 +157,7 @@ export function TaskInspector({
                 onClick={() => onOpenLinkedTask(consequenceTask.id)}
                 type="button"
               >
-                {localizeTaskTitle(consequenceTask.title, locale)}
+                {taskLinkLabel(consequenceTask, locale)}
               </button>
             ))}
           </div>
@@ -149,6 +171,23 @@ export function TaskInspector({
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function taskLinkLabel(task: RtTask, locale: Locale): string {
+  return renderTaskNarrative(task, locale).title;
+}
+
+function TaskCommentList({ locale, task }: { locale: Locale; task: RtTask }) {
+  return (
+    <div className="task-comments">
+      <h3>{t(locale, "comments.title")}</h3>
+      {task.comments.map((comment) => (
+        <p className={`task-comment ${comment.class}`} key={comment.id}>
+          {renderTaskComment(comment, locale)}
+        </p>
+      ))}
     </div>
   );
 }
@@ -184,6 +223,11 @@ function SubtaskList({ locale, task }: { locale: Locale; task: RtTask }) {
       ) : null}
     </div>
   );
+}
+
+function shouldShowLastNote(task: RtTask): boolean {
+  if (task.column !== "done" || task.released) return true;
+  return task.lastNote !== "Queued for the daily release train.";
 }
 
 function columnLabel(locale: Locale, column: RtColumn): string {

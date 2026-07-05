@@ -12,11 +12,12 @@ import {
   MorningFlowStrip,
   MorningResourceGrid,
   MorningShipmentList,
-  QuarterReviewPanel,
+  HorizonReviewPanel,
 } from "./MorningReportSections";
 
 interface MorningReportPageProps {
   game: RtGameState;
+  continueLabel?: string;
   locale: Locale;
   onContinue: () => void;
   report: RtMorningReport;
@@ -24,6 +25,7 @@ interface MorningReportPageProps {
 
 export function MorningReportPage({
   game,
+  continueLabel,
   locale,
   onContinue,
   report,
@@ -39,10 +41,12 @@ export function MorningReportPage({
       <div className="morning-report-hero">
         <div>
           <span>
-            {t(locale, "header.day", {
-              quarter: report.quarter,
-              day: report.day,
-              daysPerQuarter: game.daysPerQuarter,
+            {t(locale, "header.calendar", {
+              week: game.calendar.week,
+              dayInWeek: game.calendar.dayInWeek,
+              daysPerWeek: game.calendar.daysPerWeek,
+              month: game.calendar.month,
+              quarter: game.calendar.quarter,
             })}{" "}
             / {report.at}
           </span>
@@ -53,6 +57,7 @@ export function MorningReportPage({
               : t(locale, "morning.summary", {
                   shipped: report.shippedTaskIds.length,
                   missed: report.missedTaskIds.length,
+                  expired: summary.backlogExpiredCount,
                 })}
           </p>
         </div>
@@ -62,7 +67,7 @@ export function MorningReportPage({
           onClick={onContinue}
           type="button"
         >
-          {t(locale, "morning.startDay")}
+          {continueLabel ?? t(locale, "morning.startDay")}
         </button>
       </div>
 
@@ -70,9 +75,9 @@ export function MorningReportPage({
 
       <MorningFlowStrip locale={locale} summary={summary} />
 
-      {report.quarterReview ? (
-        <QuarterReviewPanel locale={locale} review={report.quarterReview} />
-      ) : null}
+      {report.horizonReviews.map((review) => (
+        <HorizonReviewPanel key={`${review.kind}-${review.id}`} locale={locale} review={review} />
+      ))}
 
       <MorningConsequenceList locale={locale} report={report} />
 

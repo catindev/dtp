@@ -8,6 +8,12 @@ import {
   GAME_MINUTES_PER_REAL_SECOND,
   TICK_MS,
 } from "../engine/balance";
+import { createCampaignCalendar } from "../engine/calendar";
+import { createInitialHorizonGoals } from "../engine/goals";
+import {
+  createBacklogDecayDayStats,
+  resetBacklogDecayDayStats,
+} from "../engine/backlogOpportunity";
 import {
   canMoveTaskOnBoard,
   createBoard,
@@ -19,6 +25,10 @@ import {
 import {
   normalizeRealtimeState as normalizeRealtimeStateInternal,
 } from "../engine/migration";
+import {
+  createNarrativeBudgetState,
+  resetNarrativeBudget,
+} from "../engine/narrative";
 import {
   openMorningReport as openMorningReportInternal,
 } from "../engine/morning";
@@ -58,8 +68,17 @@ import {
   type RtStage,
   type RtWorkColumn,
 } from "../engine/types";
+import { createInitialTutorialState } from "../tutorial/tutorialState";
+import {
+  completeTutorialAfterMorningReport,
+  tutorialAllowsReleaseTrain,
+  updateTutorialDirector,
+} from "../tutorial/tutorialDirector";
 export {
   DAYS_PER_QUARTER,
+  DAYS_PER_MONTH,
+  DAYS_PER_WEEK,
+  DAYS_PER_YEAR,
   DONE_REWORK_TRUST_COST,
   GAME_DAY_MINUTES,
   GAME_DAY_START_MINUTE,
@@ -68,8 +87,25 @@ export {
   OUTSOURCE_COST_BY_IMPORTANCE,
   RELEASE_TRAIN_GAME_MINUTE,
   TICK_MS,
+  WEEKS_PER_MONTH,
 } from "../engine/balance";
+export {
+  createCampaignCalendar,
+  daysLeftInHorizon,
+  isHorizonEndDay,
+  isHorizonStart,
+} from "../engine/calendar";
+export {
+  applyValueGainToHorizonGoals,
+  createInitialHorizonGoals,
+  ensureUnlockedHorizonGoals,
+  resolveDueHorizonReviews,
+} from "../engine/goals";
 export { RT_COLUMNS } from "../engine/types";
+export {
+  backlogValueRatio,
+  isUntouchedBacklogTask,
+} from "../engine/backlogOpportunity";
 export {
   getOutsourceTaskWorkStatus,
 } from "../engine/outsourcing";
@@ -82,15 +118,26 @@ export {
   releaseScore,
   taskDeadlineRatio,
 } from "../engine/readiness";
+export {
+  renderTaskComment,
+  renderTaskNarrative,
+} from "../engine/narrative";
 export type {
   RtBlastRadius,
+  RtCampaignCalendar,
   RtCharacter,
   RtColumn,
   RtConsequenceSource,
   RtDaySummary,
   RtEvent,
+  RtEventData,
+  RtEventDataValue,
   RtFalloutWarning,
   RtGameState,
+  RtHorizonGoal,
+  RtHorizonGoals,
+  RtHorizonKind,
+  RtHorizonReviewReport,
   RtLateReleaseReport,
   RtLossReport,
   RtMorningReport,
@@ -113,41 +160,54 @@ export type {
   RtSubtaskImportance,
   RtSubtaskRole,
   RtTask,
+  RtTaskDomain,
   RtTaskKind,
   RtTaskResolution,
+  RtVictoryGrade,
+  RtVictoryReport,
   RtWorkColumn,
 } from "../engine/types";
 
 export function createRealtimeState(seed = Date.now(), locale: Locale = DEFAULT_LOCALE): RtGameState {
+  const calendar = createCampaignCalendar(1);
+  const resources = {
+    trust: 70,
+    debt: 20,
+    value: 0,
+    clients: 100,
+    budget: 4,
+    processBoost: 0,
+  };
   const state: RtGameState = {
     seed: seed >>> 0 || 1,
     rngState: seed >>> 0 || 1,
     locale,
+    runMode: "campaign",
+    tutorial: null,
     paused: false,
     status: "running",
     lossReason: null,
     lossReport: null,
+    victoryReport: null,
     elapsedRealMs: 0,
     elapsedGameMinutes: GAME_DAY_START_MINUTE,
     gameMinuteOfDay: GAME_DAY_START_MINUTE,
     day: 1,
+    calendar,
+    peakDebt: resources.debt,
     quarter: 1,
     dayInQuarter: 1,
     daysPerQuarter: DAYS_PER_QUARTER,
-    resources: {
-      trust: 70,
-      debt: 20,
-      value: 0,
-      clients: 100,
-      budget: 4,
-      processBoost: 0,
-    },
+    resources,
+    horizonGoals: createInitialHorizonGoals({ calendar, resources }),
     quarterGoal: {
       value: 75,
       trust: 45,
       rewardBudget: 2,
     },
     quarterValue: 0,
+    backlogDecayToday: createBacklogDecayDayStats(),
+    narrativeBudget: createNarrativeBudgetState(),
     morningReport: null,
     board: createBoard(),
     tasks: {},
@@ -171,6 +231,29 @@ export function createRealtimeState(seed = Date.now(), locale: Locale = DEFAULT_
   return state;
 }
 
+export function createTutorialRealtimeState(seed = Date.now(), locale: Locale = DEFAULT_LOCALE): RtGameState {
+  const state = createRealtimeState(seed, locale);
+  state.runMode = "tutorial";
+  state.tutorial = createInitialTutorialState();
+  state.board = createBoard();
+  state.tasks = {};
+  state.nextTaskId = 1;
+  state.spawn.nextInMs = Number.MAX_SAFE_INTEGER;
+  state.spawn.nextBurstInMs = Number.MAX_SAFE_INTEGER;
+  state.log = [];
+  pushEvent(state, {
+    type: "tutorial_started",
+    title: "Tutorial started",
+    body: "The guided first run is live.",
+    effects: ["mode tutorial"],
+    data: {
+      stageId: state.tutorial.stageId,
+      stepId: state.tutorial.stepId,
+    },
+  });
+  return state;
+}
+
 export function normalizeRealtimeState(state: RtGameState): boolean {
   return normalizeRealtimeStateInternal(state);
 }
@@ -185,6 +268,29 @@ export function tickRealtime(state: RtGameState, tickMs = TICK_MS): void {
   const previousGameMinuteOfDay = state.gameMinuteOfDay;
   state.gameMinuteOfDay += gameMinutes;
 
+  if (state.runMode === "tutorial") {
+    if (
+      tutorialAllowsReleaseTrain(state) &&
+      crossedReleaseTrain(previousGameMinuteOfDay, state.gameMinuteOfDay)
+    ) {
+      openMorningReportInternal(state, {
+        addTask: (task, backlogLimit) =>
+          addTaskToBacklog(state, task, (event) => pushEvent(state, event), backlogLimit),
+        emit: (event) => pushEvent(state, event),
+      });
+      completeTutorialAfterMorningReport(state);
+      checkRunStateInternal(state, (event) => pushEvent(state, event));
+      return;
+    }
+    updateShock(state, gameMinutes);
+    updateTaskTimers(state, tickMs, (event) => pushEvent(state, event));
+    updateOutsourcing(state, tickMs, (event) => pushEvent(state, event));
+    updateAssignments(state, tickMs, (event) => pushEvent(state, event));
+    updateTutorialDirector(state, tickMs, (event) => pushEvent(state, event));
+    checkRunStateInternal(state, (event) => pushEvent(state, event));
+    return;
+  }
+
   if (crossedReleaseTrain(previousGameMinuteOfDay, state.gameMinuteOfDay)) {
     openMorningReportInternal(state, {
       addTask: (task, backlogLimit) =>
@@ -196,7 +302,7 @@ export function tickRealtime(state: RtGameState, tickMs = TICK_MS): void {
   }
 
   updateShock(state, gameMinutes);
-  updateTaskTimers(state, tickMs);
+  updateTaskTimers(state, tickMs, (event) => pushEvent(state, event));
   updateOutsourcing(state, tickMs, (event) => pushEvent(state, event));
   updateAssignments(state, tickMs, (event) => pushEvent(state, event));
   updateSpawner(state, tickMs, (event) => pushEvent(state, event));
@@ -208,6 +314,8 @@ export function startDayAfterMorningReport(state: RtGameState): boolean {
   if (!state.morningReport || state.status !== "running") return false;
 
   state.morningReport = null;
+  resetBacklogDecayDayStats(state);
+  resetNarrativeBudget(state.narrativeBudget);
   state.paused = false;
   checkRunStateInternal(state, (event) => pushEvent(state, event));
   return true;
@@ -217,8 +325,9 @@ export function moveRealtimeTask(
   state: RtGameState,
   taskId: string,
   targetColumn: RtColumn,
+  targetIndex?: number,
 ): boolean {
-  return moveTaskOnBoard(state, taskId, targetColumn, (event) => pushEvent(state, event));
+  return moveTaskOnBoard(state, taskId, targetColumn, (event) => pushEvent(state, event), targetIndex);
 }
 
 export function canMoveRealtimeTask(

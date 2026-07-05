@@ -9,17 +9,17 @@ import {
 import {
   cancelTaskWork,
   createRealtimeState,
+  createTutorialRealtimeState,
   formatGameTime,
   normalizeRealtimeState,
   startDayAfterMorningReport,
+  type RtCharacter,
   type RtGameState,
   type RtTask,
 } from "../realtime/simulation";
 import { createSessionId, gameEventKey, logAction } from "../frontendLogging";
-import {
-  restartMainThemeOnNextPlay,
-  startMainTheme,
-} from "../audio/audioManager";
+import { restartMainThemeOnNextPlay } from "../audio/audioManager";
+import type { TimeScale } from "../timeScale";
 
 type AppScreen = "menu" | "game" | "docs";
 type ProdView = "released" | "unfinished";
@@ -32,6 +32,7 @@ interface UseGameActionsArgs {
   hasResumeCard: boolean;
   selectedTaskId: string | null;
   selectedTask: RtTask | null;
+  selectedCharacter: RtCharacter | null;
   latestGameRef: MutableRefObject<RtGameState>;
   sessionIdRef: MutableRefObject<string>;
   loggedEventKeysRef: MutableRefObject<Set<string>>;
@@ -42,7 +43,9 @@ interface UseGameActionsArgs {
   setScreen: Dispatch<SetStateAction<AppScreen>>;
   setHasResumeCard: Dispatch<SetStateAction<boolean>>;
   setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
+  setSelectedCharacterId: Dispatch<SetStateAction<string | null>>;
   setProdView: Dispatch<SetStateAction<ProdView>>;
+  setTimeScale: Dispatch<SetStateAction<TimeScale>>;
   resetDrag: () => void;
   resetFeedback: () => void;
   flashTask: (taskId: string) => void;
@@ -56,6 +59,7 @@ export function useGameActions({
   hasResumeCard,
   selectedTaskId,
   selectedTask,
+  selectedCharacter,
   latestGameRef,
   sessionIdRef,
   loggedEventKeysRef,
@@ -66,7 +70,9 @@ export function useGameActions({
   setScreen,
   setHasResumeCard,
   setSelectedTaskId,
+  setSelectedCharacterId,
   setProdView,
+  setTimeScale,
   resetDrag,
   resetFeedback,
   flashTask,
@@ -83,17 +89,52 @@ export function useGameActions({
     resetDrag();
     resetFeedback();
     setGame(next);
-    setSelectedTaskId(next.board.backlog[0] ?? null);
+    setSelectedTaskId(null);
+    setSelectedCharacterId(null);
+    setTimeScale(1);
     setHasResumeCard(true);
     setScreen("game");
     saveRun(next, sessionId);
-    startMainTheme({ restart: true });
     logAction(sessionId, actionName, {
       seed: next.seed,
+      runMode: next.runMode,
       startedAt: new Date().toISOString(),
       appCommit: APP_COMMIT,
       saveSchemaVersion: SAVE_SCHEMA_VERSION,
     });
+  }
+
+  function startTutorialRun() {
+    clearSavedRun();
+    const next = createTutorialRealtimeState(Date.now(), locale);
+    const sessionId = createSessionId();
+    sessionIdRef.current = sessionId;
+    loggedEventKeysRef.current = new Set();
+    animatedWorkEventKeysRef.current = new Set();
+    soundEventKeysRef.current = new Set(next.log.map(gameEventKey));
+    restartMainThemeOnNextPlay();
+    resetDrag();
+    resetFeedback();
+    setGame(next);
+    setSelectedTaskId(null);
+    setSelectedCharacterId(null);
+    setTimeScale(1);
+    setHasResumeCard(true);
+    setScreen("game");
+    saveRun(next, sessionId);
+    logAction(sessionId, "tutorial_started", {
+      seed: next.seed,
+      runMode: next.runMode,
+      stageId: next.tutorial?.stageId ?? null,
+      stepId: next.tutorial?.stepId ?? null,
+      startedAt: new Date().toISOString(),
+      appCommit: APP_COMMIT,
+      saveSchemaVersion: SAVE_SCHEMA_VERSION,
+    });
+  }
+
+  function skipTutorialAndStartRun() {
+    startRun("tutorial_skipped");
   }
 
   function togglePause() {
@@ -106,7 +147,6 @@ export function useGameActions({
       gameTime: formatGameTime(game),
       status: game.status,
     });
-    if (game.paused && next.status === "running") startMainTheme();
   }
 
   function openMenu() {
@@ -126,10 +166,10 @@ export function useGameActions({
     const next = game.status === "running" ? { ...game, paused: false } : game;
     latestGameRef.current = next;
     setGame(next);
-    setSelectedTaskId((current) => (current && next.tasks[current] ? current : initialSelectedTaskId(next)));
+    setSelectedTaskId((current) => (current && next.tasks[current] ? current : null));
+    setSelectedCharacterId((current) => (current && next.characters[current] ? current : null));
     setScreen("game");
     saveRun(next, sessionIdRef.current);
-    if (next.status === "running" && !next.paused) startMainTheme();
     logAction(sessionIdRef.current, "continue_run_clicked", {
       gameTime: formatGameTime(next),
       status: next.status,
@@ -161,8 +201,10 @@ export function useGameActions({
       day: currentReport.day,
       previousDay: currentReport.previousDay,
       shippedTaskIds: currentReport.shippedTaskIds,
-      effects: currentReport.effects,
-      consequences: currentReport.consequences,
+      shippedCount: currentReport.shippedTaskIds.length,
+      missedCount: currentReport.missedTaskIds.length,
+      consequenceCount: currentReport.consequences.length,
+      effectCount: currentReport.effects.length,
     });
   }
 
@@ -174,9 +216,7 @@ export function useGameActions({
     });
     logAction(sessionIdRef.current, "cancel_task_clicked", {
       taskId: selectedTask.id,
-      taskTitle: selectedTask.title,
       characterId: character?.id,
-      characterName: character?.name,
       stageProgress: selectedTask.stageProgress,
       gameTime: formatGameTime(game),
     });
@@ -192,6 +232,7 @@ export function useGameActions({
       setProdView("unfinished");
     }
     setSelectedTaskId(taskId);
+    setSelectedCharacterId(null);
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         const card = document.querySelector<HTMLElement>(`[data-task-card-id="${taskId}"]`);
@@ -204,6 +245,7 @@ export function useGameActions({
     logAction(sessionIdRef.current, "linked_task_opened", {
       taskId,
       fromTaskId: selectedTaskId,
+      fromCharacterId: selectedCharacter?.id,
       gameTime: formatGameTime(game),
     });
   }
@@ -216,16 +258,8 @@ export function useGameActions({
     openMenu,
     startBriefedDay,
     startRun,
+    startTutorialRun,
+    skipTutorialAndStartRun,
     togglePause,
   };
-}
-
-export function initialSelectedTaskId(game: RtGameState): string | null {
-  return (
-    game.board.inProgress[0] ??
-    game.board.backlog[0] ??
-    game.board.done[0] ??
-    game.board.released[0] ??
-    null
-  );
 }

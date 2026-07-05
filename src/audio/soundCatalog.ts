@@ -1,5 +1,6 @@
 export const SOUND_CATALOG = {
   mainTheme: new URL("../../sounds/main-theme.mp3", import.meta.url).href,
+  backlogEnd: [new URL("../../sounds/on-backlog-end.ogg", import.meta.url).href],
   buttonClick: [
     new URL("../../sounds/on-button-click-1.ogg", import.meta.url).href,
     new URL("../../sounds/on-button-click-2.ogg", import.meta.url).href,
@@ -26,6 +27,8 @@ export const SOUND_CATALOG = {
     new URL("../../sounds/on-new-task-4.ogg", import.meta.url).href,
   ],
   quarterEnd: [new URL("../../sounds/on-quarter-end.ogg", import.meta.url).href],
+  quest: [new URL("../../sounds/on-quest.ogg", import.meta.url).href],
+  subtaskCompleted: [new URL("../../sounds/on-subtask-completed.ogg", import.meta.url).href],
   taskCancel: [new URL("../../sounds/on-task-cancel.ogg", import.meta.url).href],
 } as const;
 
@@ -33,6 +36,7 @@ export type SoundEffectName = Exclude<keyof typeof SOUND_CATALOG, "mainTheme">;
 
 export const SOUND_EFFECT_NAMES: readonly SoundEffectName[] = [
   "buttonClick",
+  "backlogEnd",
   "click",
   "dayEnd",
   "drag",
@@ -40,5 +44,7 @@ export const SOUND_EFFECT_NAMES: readonly SoundEffectName[] = [
   "error",
   "newTask",
   "quarterEnd",
+  "quest",
+  "subtaskCompleted",
   "taskCancel",
 ];
