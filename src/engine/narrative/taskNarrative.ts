@@ -111,7 +111,10 @@ function domainNarrativeVariableIds(domain: RtTaskDomain): Record<string, string
     areaAcc: domain,
     areaGen: domain,
     areaPrep: domain,
+    areaDat: domain,
     featureWorkflowHeadline: domain,
     featureWorkflowProblem: domain,
+    savedViewHeadline: domain,
+    savedViewProblem: domain,
   };
 }

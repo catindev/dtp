@@ -22,6 +22,14 @@ const fixture = Object.values(TASK_NARRATIVE_ARCHETYPES)
         branchId: "default",
         variableValueIds: {
           area: SAMPLE_DOMAIN,
+          areaAcc: SAMPLE_DOMAIN,
+          areaGen: SAMPLE_DOMAIN,
+          areaPrep: SAMPLE_DOMAIN,
+          areaDat: SAMPLE_DOMAIN,
+          featureWorkflowHeadline: SAMPLE_DOMAIN,
+          featureWorkflowProblem: SAMPLE_DOMAIN,
+          savedViewHeadline: SAMPLE_DOMAIN,
+          savedViewProblem: SAMPLE_DOMAIN,
         },
         tags: archetype.tags,
         tone: "neutral",
@@ -35,6 +43,8 @@ const fixture = Object.values(TASK_NARRATIVE_ARCHETYPES)
     assert(archetype.meaning.length >= 3, `${archetype.id} missing meaning checklist.`);
     assert(en.core.headline.length > 0, `${archetype.id} missing EN headline.`);
     assert(ru.core.headline.length > 0, `${archetype.id} missing RU headline.`);
+    assert(!hasUnresolvedPlaceholder(en.core), `${archetype.id} has unresolved EN placeholder.`);
+    assert(!hasUnresolvedPlaceholder(ru.core), `${archetype.id} has unresolved RU placeholder.`);
     return {
       archetypeId: archetype.id,
       kind: archetype.kind,
@@ -66,4 +76,13 @@ console.log(JSON.stringify(output, null, 2));
 
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
+}
+
+function hasUnresolvedPlaceholder(fields: {
+  headline: string;
+  problem: string;
+  stakes: string;
+  failurePreview: string;
+}): boolean {
+  return Object.values(fields).some((text) => /\{[a-zA-Z0-9_]+\}/u.test(text));
 }

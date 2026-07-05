@@ -34,6 +34,7 @@ import {
   renderTaskComment,
 } from "../engine/narrative";
 import { DOMAINS } from "../engine/catalog";
+import { SIM_TEXT, TASK_TITLES } from "../engine/content";
 import { generateTask } from "../engine/taskFactory";
 import { loadTutorialCompleted } from "../tutorial/tutorialProgress";
 import {
@@ -61,6 +62,28 @@ const RU_PLAYER_COPY_BANLIST = [
   { label: "awkward generated phrase породить", pattern: /\bпородить\b/iu },
   { label: "translationese зона", pattern: /\bзон[аеуы]\b/iu },
   { label: "vague feature filler", pattern: /новый ежедневный сценарий/iu },
+  { label: "raw English production", pattern: /\bproduction\b/iu },
+  { label: "raw English performance", pattern: /\bperformance\b/iu },
+  { label: "raw English compliance", pattern: /\bcompliance\b/iu },
+];
+
+const RU_GENERATOR_COPY_BANLIST = [
+  ...RU_PLAYER_COPY_BANLIST,
+  { label: "raw English auth flow", pattern: /auth flow/iu },
+  { label: "raw English webhook receiver", pattern: /webhook receiver/iu },
+  { label: "raw English audit log", pattern: /audit log/iu },
+  { label: "raw English retention policy", pattern: /retention policy/iu },
+  { label: "raw English happy path", pattern: /happy path/iu },
+  { label: "raw English edge cases", pattern: /edge cases/iu },
+  { label: "raw English rollout", pattern: /\brollout\b/iu },
+  { label: "raw English fix", pattern: /\bfix\b/iu },
+  { label: "raw English alert", pattern: /\balert\b/iu },
+  { label: "raw English retries", pattern: /\bretries\b/iu },
+  { label: "raw English failure modes", pattern: /failure modes/iu },
+  { label: "raw English operational config", pattern: /operational config/iu },
+  { label: "raw English hot path", pattern: /hot path/iu },
+  { label: "raw English policy enforcement", pattern: /policy enforcement/iu },
+  { label: "raw English compliant UI copy", pattern: /compliant UI copy/iu },
 ];
 
 const EN_PLAYER_COPY_BANLIST = [
@@ -86,6 +109,7 @@ const smoke = [
   runTutorialFullFlowSmoke(),
   runNarrativeContractSmoke(),
   runNarrativeCatalogSmoke(),
+  runTaskGeneratorCopySmoke(),
   runNarrativeFlavorBudgetSmoke(),
   runMigrationNormalizationSmoke(),
   runDebugSnapshotSmoke(),
@@ -521,8 +545,11 @@ function createNarrativeCopySmokeTask(
     "areaAcc",
     "areaGen",
     "areaPrep",
+    "areaDat",
     "featureWorkflowHeadline",
     "featureWorkflowProblem",
+    "savedViewHeadline",
+    "savedViewProblem",
   ]) {
     if (archetype.variables[key]) variableValueIds[key] = domain;
   }
@@ -596,6 +623,34 @@ function runNarrativeFlavorBudgetSmoke() {
     flavor: flavorTasks.length,
     ratio: Number((flavorTasks.length / generated.length).toFixed(2)),
   };
+}
+
+function runTaskGeneratorCopySmoke() {
+  const checked: Array<{ scope: string; text: string }> = [];
+  for (const [kind, titles] of Object.entries(TASK_TITLES.ru)) {
+    for (const title of titles) checked.push({ scope: `title:${kind}`, text: title });
+  }
+  for (const [key, label] of Object.entries(SIM_TEXT.ru.subtasks)) {
+    checked.push({ scope: `subtask:${key}`, text: label });
+  }
+
+  for (const sample of checked) {
+    assertGeneratorCopySafe(sample.scope, sample.text);
+  }
+
+  return {
+    name: "task-generator-copy",
+    checked: checked.length,
+  };
+}
+
+function assertGeneratorCopySafe(scope: string, text: string): void {
+  for (const rule of RU_GENERATOR_COPY_BANLIST) {
+    assert(
+      !rule.pattern.test(text),
+      `Task generator copy smoke found ${rule.label} in ${scope}: ${text}`,
+    );
+  }
 }
 
 function runTutorialStageOneSmoke() {

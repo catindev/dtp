@@ -148,6 +148,33 @@ export const DOMAIN_AREA_PREPOSITIONAL_VALUES: Record<RtTaskDomain, Record<Engin
   },
 };
 
+export const DOMAIN_AREA_DATIVE_VALUES: Record<RtTaskDomain, Record<EngineLocale, string>> = {
+  payments: {
+    en: "partner payouts",
+    ru: "партнерским выплатам",
+  },
+  auth: {
+    en: "login flow",
+    ru: "логину",
+  },
+  admin: {
+    en: "admin workflow",
+    ru: "админскому сценарию",
+  },
+  search: {
+    en: "search results",
+    ru: "поиску",
+  },
+  reports: {
+    en: "report export",
+    ru: "экспорту отчетов",
+  },
+  notifications: {
+    en: "customer notifications",
+    ru: "уведомлениям клиентов",
+  },
+};
+
 export const FEATURE_WORKFLOW_HEADLINE_VALUES: Record<RtTaskDomain, Record<EngineLocale, string>> = {
   payments: {
     en: "Simplify partner payouts",
@@ -199,6 +226,60 @@ export const FEATURE_WORKFLOW_PROBLEM_VALUES: Record<RtTaskDomain, Record<Engine
   notifications: {
     en: "The business wants clearer control over customer notifications before launching changes.",
     ru: "Бизнес хочет понятнее управлять клиентскими уведомлениями и быстрее запускать изменения.",
+  },
+};
+
+export const SAVED_VIEW_HEADLINE_VALUES: Record<RtTaskDomain, Record<EngineLocale, string>> = {
+  payments: {
+    en: "Save a payout review setup",
+    ru: "Сохранить шаблон проверки выплат",
+  },
+  auth: {
+    en: "Save a login diagnostics view",
+    ru: "Сохранить проверку ошибок входа",
+  },
+  admin: {
+    en: "Save an admin filter",
+    ru: "Сохранить админский фильтр",
+  },
+  search: {
+    en: "Save a frequent search filter",
+    ru: "Сохранить частый поисковый фильтр",
+  },
+  reports: {
+    en: "Save a report template",
+    ru: "Сохранить шаблон отчета",
+  },
+  notifications: {
+    en: "Save a notification setup",
+    ru: "Сохранить шаблон уведомлений",
+  },
+};
+
+export const SAVED_VIEW_PROBLEM_VALUES: Record<RtTaskDomain, Record<EngineLocale, string>> = {
+  payments: {
+    en: "Finance repeats the same payout checks every day and wants the setup stored.",
+    ru: "Финансовая команда каждый день повторяет одни и те же проверки выплат.",
+  },
+  auth: {
+    en: "Support keeps opening the same login error slice and wants it saved.",
+    ru: "Поддержка каждый день открывает один и тот же срез ошибок входа.",
+  },
+  admin: {
+    en: "Operations rebuilds the same admin list view by hand every morning.",
+    ru: "Операционная команда каждое утро вручную собирает один и тот же список.",
+  },
+  search: {
+    en: "Support repeats the same search and loses time rebuilding filters.",
+    ru: "Поддержка повторяет один и тот же поиск и теряет время на настройку фильтров.",
+  },
+  reports: {
+    en: "The reporting team rebuilds the same field set before every export.",
+    ru: "Команда отчетности вручную собирает один и тот же набор полей перед экспортом.",
+  },
+  notifications: {
+    en: "The communications team repeats the same notification setup before every launch.",
+    ru: "Команда коммуникаций повторяет одну и ту же настройку перед запуском уведомлений.",
   },
 };
 
@@ -261,6 +342,10 @@ const areaPrepVariable: TaskNarrativeVariable = {
   values: DOMAIN_AREA_PREPOSITIONAL_VALUES,
 };
 
+const areaDatVariable: TaskNarrativeVariable = {
+  values: DOMAIN_AREA_DATIVE_VALUES,
+};
+
 const featureWorkflowHeadlineVariable: TaskNarrativeVariable = {
   values: FEATURE_WORKFLOW_HEADLINE_VALUES,
 };
@@ -269,13 +354,24 @@ const featureWorkflowProblemVariable: TaskNarrativeVariable = {
   values: FEATURE_WORKFLOW_PROBLEM_VALUES,
 };
 
+const savedViewHeadlineVariable: TaskNarrativeVariable = {
+  values: SAVED_VIEW_HEADLINE_VALUES,
+};
+
+const savedViewProblemVariable: TaskNarrativeVariable = {
+  values: SAVED_VIEW_PROBLEM_VALUES,
+};
+
 const domainVariables = {
   area: areaVariable,
   areaAcc: areaAccVariable,
   areaGen: areaGenVariable,
   areaPrep: areaPrepVariable,
+  areaDat: areaDatVariable,
   featureWorkflowHeadline: featureWorkflowHeadlineVariable,
   featureWorkflowProblem: featureWorkflowProblemVariable,
+  savedViewHeadline: savedViewHeadlineVariable,
+  savedViewProblem: savedViewProblemVariable,
 };
 
 const causeVariable: TaskNarrativeVariable = {
@@ -338,16 +434,16 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
         layer: "core",
         core: {
           en: {
-            headline: "Add a saved view for {area}",
-            problem: "A team keeps repeating the same setup in the {area} and wants it saved.",
+            headline: "{savedViewHeadline}",
+            problem: "{savedViewProblem}",
             stakes: "Clean delivery saves time for real users and adds product value.",
             failurePreview: "If the flow is unclear, users get another confusing switch instead of relief.",
           },
           ru: {
-            headline: "Сохранять частый сценарий для {areaGen}",
-            problem: "Команда каждый день повторяет одну настройку в {areaPrep} и просит ее сохранять.",
-            stakes: "Чистая поставка экономит время реальным пользователям и добавляет ценность.",
-            failurePreview: "Если сценарий непонятен, пользователи получат не облегчение, а еще один мутный переключатель.",
+            headline: "{savedViewHeadline}",
+            problem: "{savedViewProblem}",
+            stakes: "Чистая реализация экономит время реальным пользователям и добавляет ценность.",
+            failurePreview: "Если сценарий непонятен, пользователи получат не облегчение, а еще один непонятный переключатель.",
           },
         },
         flavor: {
@@ -377,15 +473,15 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
         layer: "core",
         core: {
           en: {
-            headline: "Fix broken {area}",
-            problem: "Users hit a broken path in the {area}.",
+            headline: "Fix failing {area}",
+            problem: "Users cannot complete the normal path through {area}.",
             stakes: "A verified fix prevents repeated support noise.",
-            failurePreview: "If it goes out half-fixed, QA can find more rework or customers can notice again.",
+            failurePreview: "If it ships half-fixed, QA can find more work or customers can hit the bug again.",
           },
           ru: {
-            headline: "Починить {areaAcc}",
-            problem: "Пользователи упираются в сломанный сценарий в {areaPrep}.",
-            stakes: "Проверенный фикс снижает шум поддержки и повторные обращения.",
+            headline: "Починить сбой в {areaPrep}",
+            problem: "Пользователи не могут пройти обычный путь в {areaPrep}.",
+            stakes: "Проверенное исправление снижает шум поддержки и повторные обращения.",
             failurePreview: "Если выпустить наполовину, QA найдет доработки или клиенты снова заметят баг.",
           },
         },
@@ -417,14 +513,14 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
         core: {
           en: {
             headline: "Stop duplicate action in {area}",
-            problem: "The {area} sometimes applies the same user action twice.",
+            problem: "A user action in {area} sometimes runs twice.",
             stakes: "A verified fix prevents visible mistakes and support churn.",
             failurePreview: "If released dirty, the duplicate action can come back as a customer-facing bug.",
           },
           ru: {
             headline: "Убрать двойное действие в {areaPrep}",
             problem: "В {areaPrep} одно действие пользователя иногда применяется дважды.",
-            stakes: "Проверенный фикс убирает заметные ошибки и шум поддержки.",
+            stakes: "Проверенное исправление убирает заметные ошибки и шум поддержки.",
             failurePreview: "Если выпустить грязно, двойное действие вернется клиентским багом.",
           },
         },
@@ -455,8 +551,8 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
         layer: "core",
         core: {
           en: {
-            headline: "Reduce fragile {area} implementation",
-            problem: "The {area} is held together by brittle code paths.",
+            headline: "Harden fragile {area} code",
+            problem: "Brittle code paths make changes in {area} risky.",
             stakes: "Clean work should lower technical debt and make later tasks safer.",
             failurePreview: "If skipped, future changes in this area stay slower and noisier.",
           },
@@ -502,7 +598,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
           ru: {
             headline: "Разобрать путаницу в {areaPrep}",
             problem: "В реализации {areaGen} смешаны несколько несвязанных поведений.",
-            stakes: "Чистая работа по техдолгу снижает долг и удешевляет будущие фиксы.",
+            stakes: "Чистая работа по техдолгу снижает долг и удешевляет будущие исправления.",
             failurePreview: "Если игнорировать, обычные изменения продолжат тащить за собой лишний риск.",
           },
         },
@@ -533,14 +629,14 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
         layer: "core",
         core: {
           en: {
-            headline: "Connect {area} data flow",
-            problem: "Another system needs reliable data from the {area}.",
+            headline: "Connect {area} data handoff",
+            problem: "A neighboring service needs stable {area} data.",
             stakes: "A clean integration keeps partner workflows moving.",
             failurePreview: "A weak release can break handoffs and return as an incident.",
           },
           ru: {
-            headline: "Подключить поток данных для {areaGen}",
-            problem: "Другой системе нужны надежные данные из {areaGen}.",
+            headline: "Наладить передачу данных для {areaGen}",
+            problem: "Соседнему сервису нужны стабильные данные по {areaDat}.",
             stakes: "Чистая интеграция поддержит партнерский процесс без ручных обходов.",
             failurePreview: "Слабый релиз может сломать передачу данных и вернуться инцидентом.",
           },
@@ -604,13 +700,13 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
         core: {
           en: {
             headline: "Stabilize {area} incident",
-            problem: "The {area} is already causing visible production trouble.",
+            problem: "Production trouble is already visible in {area}.",
             stakes: "A clean response protects trust before the damage spreads.",
             failurePreview: "If the team misses it, the problem can escalate tomorrow.",
           },
           ru: {
             headline: "Стабилизировать инцидент в {areaPrep}",
-            problem: "В {areaPrep} уже есть заметная production-проблема.",
+            problem: "В {areaPrep} уже есть заметная проблема на проде.",
             stakes: "Чистая реакция защищает доверие до того, как ущерб расползется.",
             failurePreview: "Если команда не успеет, завтра проблема может стать эскалацией.",
           },
@@ -635,15 +731,15 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
         core: {
           en: {
             headline: "Restore failing {area} path",
-            problem: "A production path in the {area} is failing often enough for business to notice.",
+            problem: "A live path for {area} fails often enough for business to notice.",
             stakes: "Clean stabilization protects trust and reduces follow-up pressure.",
             failurePreview: "If the fix is late or unfinished, the failure can escalate tomorrow.",
           },
           ru: {
             headline: "Восстановить падающий путь в {areaPrep}",
-            problem: "Production-путь в {areaPrep} падает достаточно часто, чтобы бизнес это заметил.",
+            problem: "В {areaPrep} важный рабочий путь падает достаточно часто, чтобы бизнес это заметил.",
             stakes: "Чистая стабилизация защищает доверие и снижает давление последствий.",
-            failurePreview: "Если фикс опоздает или останется незавершенным, завтра проблема эскалируется.",
+            failurePreview: "Если исправление опоздает или останется незавершенным, завтра проблема эскалируется.",
           },
         },
       },
@@ -666,14 +762,14 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
         core: {
           en: {
             headline: "Speed up {area}",
-            problem: "The {area} is slow enough that users are changing their behavior.",
+            problem: "Users are changing their behavior because {area} feels too slow.",
             stakes: "A clean fix improves value without destabilizing the flow.",
             failurePreview: "Untested optimizations can create new failures under load.",
           },
           ru: {
             headline: "Ускорить {areaAcc}",
-            problem: "{area} работает настолько медленно, что пользователи меняют поведение.",
-            stakes: "Чистый фикс добавит ценность и не раскачает стабильность.",
+            problem: "Пользователи уже меняют поведение из-за медленной работы {areaGen}.",
+            stakes: "Чистое исправление добавит ценность и не раскачает стабильность.",
             failurePreview: "Непроверенная оптимизация может сломаться под нагрузкой.",
           },
         },
@@ -697,14 +793,14 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
         core: {
           en: {
             headline: "Cache slow {area} response",
-            problem: "The {area} waits on the same expensive response too often.",
+            problem: "The same expensive response blocks {area} too often.",
             stakes: "A clean performance fix makes the product feel faster without hiding bugs.",
             failurePreview: "A rushed cache can show stale data or fail under load.",
           },
           ru: {
             headline: "Закешировать медленный ответ для {areaGen}",
             problem: "В {areaPrep} слишком часто повторяется один и тот же дорогой запрос.",
-            stakes: "Чистый performance-фикс ускоряет продукт и не прячет баги.",
+            stakes: "Чистое ускорение делает продукт быстрее и не прячет баги.",
             failurePreview: "Поспешный кеш может показать устаревшие данные или сломаться под нагрузкой.",
           },
         },
@@ -728,15 +824,15 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
         core: {
           en: {
             headline: "Protect sensitive {area} data",
-            problem: "The {area} handles sensitive data in a way the business wants tightened.",
+            problem: "Sensitive data in {area} needs tighter handling.",
             stakes: "A clean release reduces compliance risk and preserves trust.",
             failurePreview: "If rushed, the task can return as a visible policy problem.",
           },
           ru: {
             headline: "Защитить чувствительные данные в {areaPrep}",
             problem: "В {areaPrep} есть чувствительные данные, и бизнес просит усилить защиту.",
-            stakes: "Чистый релиз снижает compliance-риск и сохраняет доверие.",
-            failurePreview: "Если поспешить, задача может вернуться заметной политической проблемой.",
+            stakes: "Чистый релиз снижает регуляторный риск и сохраняет доверие.",
+            failurePreview: "Если поспешить, задача может вернуться заметной проблемой с правилами доступа.",
           },
         },
       },
@@ -759,15 +855,15 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
         core: {
           en: {
             headline: "Mask sensitive fields in {area}",
-            problem: "The {area} exposes fields that should be hidden from everyday users.",
+            problem: "Fields in {area} are visible to users who should not see them.",
             stakes: "Clean compliance work prevents trust damage before anyone escalates it.",
             failurePreview: "A dirty release can become a visible policy problem tomorrow.",
           },
           ru: {
             headline: "Скрыть чувствительные поля в {areaPrep}",
             problem: "В {areaPrep} видны поля, которые обычные пользователи видеть не должны.",
-            stakes: "Чистая compliance-работа предотвращает удар по доверию до эскалации.",
-            failurePreview: "Грязный релиз может завтра стать заметной политической проблемой.",
+            stakes: "Чистая работа по комплаенсу предотвращает удар по доверию до эскалации.",
+            failurePreview: "Грязный релиз может завтра стать заметной проблемой с правилами доступа.",
           },
         },
       },
@@ -858,7 +954,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
           },
           ru: {
             headline: "Починить срочную ошибку логина",
-            problem: "Нужен фикс логина, но QA уже выдохся.",
+            problem: "Нужно исправить ошибку логина, но QA уже выдохся.",
             stakes: "Ты учишься, что качество релиза иногда становится компромиссом.",
             failurePreview: "Релиз без QA может создать последствие утром.",
           },
@@ -891,7 +987,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             headline: "Стабилизировать партнерский экспорт",
             problem: "Партнерский экспорт нужно стабилизировать прямо перед закрытием окна релиза.",
             stakes: "Ты учишься принимать решение под давлением дедлайна.",
-            failurePreview: "Поздний релиз теряет value; игнорирование создает последствия сорванной работы.",
+            failurePreview: "Поздний релиз теряет ценность; если не брать задачу, утром появятся последствия сорванной работы.",
           },
         },
       },
@@ -957,7 +1053,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
           },
           ru: {
             headline: "Разобрать эскалацию в {areaPrep}",
-            problem: "Проблема из {sourceTaskId} дошла до production из-за {cause}.",
+            problem: "Проблема из {sourceTaskId} дошла до прода из-за {cause}.",
             stakes: "Стабилизация защищает доверие и закрывает видимую цепочку последствий.",
             failurePreview: "Если снова пропустить, цепочка может закрыться прямым бизнес-уроном.",
           },
@@ -992,7 +1088,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
           ru: {
             headline: "Починить партнерскую проблему в {areaPrep}",
             problem: "Партнерская проблема в {areaPrep} вернулась после {sourceTaskId} из-за {cause}.",
-            stakes: "Чистый фикс возвращает проблему в управляемую доставку.",
+            stakes: "Чистое исправление возвращает проблему под контроль команды.",
             failurePreview: "Если игнорировать, партнерская проблема может стать новой эскалацией.",
           },
         },
@@ -1026,7 +1122,7 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
           ru: {
             headline: "Переделать последствие в {areaPrep}",
             problem: "После {sourceTaskId} в {areaPrep} снова появился запрос из-за {cause}.",
-            stakes: "Чистая переделка не дает старому компромиссу протечь в новую работу.",
+            stakes: "Чистая переделка не дает старому компромиссу перейти в новую работу.",
             failurePreview: "Если пропустить, та же путаница может вернуться новой задачей.",
           },
         },
