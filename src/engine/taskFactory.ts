@@ -1,7 +1,10 @@
 import { BACKLOG_VALUE_DECAY_MS } from "./balance";
 import { DOMAINS, DOMAIN_PREFIXES } from "./catalog";
 import { clamp } from "./math";
-import { createTaskNarrativeRef } from "./narrative";
+import {
+  createTaskNarrativeRef,
+  recordTaskNarrativeBudget,
+} from "./narrative";
 import {
   pickOne,
   randomBetween,
@@ -51,7 +54,7 @@ export function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTas
   revealInitialSubtasks(state, subtasks, Math.round(clarity));
   const narrativeRef = createTaskNarrativeRef(state, kind, domain);
 
-  return {
+  const task: RtTask = {
     id,
     narrativeRef,
     comments: [],
@@ -97,4 +100,6 @@ export function generateTask(state: RtGameState, forcedKind?: RtTaskKind): RtTas
     queuedDeadlineMs: null,
     lastNote: "Waiting in backlog.",
   };
+  recordTaskNarrativeBudget(state, task);
+  return task;
 }

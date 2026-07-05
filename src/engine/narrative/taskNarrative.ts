@@ -11,6 +11,7 @@ import {
   TASK_NARRATIVE_ARCHETYPES,
   type TaskNarrativeArchetype,
 } from "./taskNarrativeCatalog";
+import { chooseNarrativeDensity } from "./taskNarrativeBudget";
 
 export function createTaskNarrativeRef(
   state: RtGameState,
@@ -18,16 +19,19 @@ export function createTaskNarrativeRef(
   domain: RtTaskDomain,
 ): RtTaskNarrativeRef {
   const archetypeId = chooseTaskNarrativeArchetypeId(state, kind, domain);
+  const archetype = getTaskNarrativeArchetype(archetypeId);
+  const branchId = "default";
+  const hasFlavorLayer = Boolean(archetype.branches[branchId]?.flavor);
   return {
     archetypeId,
     variantSeed: randomInt(state, 1, 999999),
-    branchId: "default",
+    branchId,
     variableValueIds: {
       area: domain,
     },
-    tags: [...getTaskNarrativeArchetype(archetypeId).tags],
+    tags: [...archetype.tags],
     tone: "neutral",
-    density: "core",
+    density: chooseNarrativeDensity(state, hasFlavorLayer),
   };
 }
 

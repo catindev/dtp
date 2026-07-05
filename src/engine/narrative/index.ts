@@ -1,6 +1,8 @@
 export {
+  chooseNarrativeDensity,
   createNarrativeBudgetState,
   normalizeNarrativeBudgetState,
+  recordTaskNarrativeBudget,
   resetNarrativeBudget,
 } from "./taskNarrativeBudget";
 export {

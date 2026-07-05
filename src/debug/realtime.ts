@@ -32,6 +32,7 @@ import {
   TASK_NARRATIVE_ARCHETYPES,
   createTaskNarrativeRef,
 } from "../engine/narrative";
+import { generateTask } from "../engine/taskFactory";
 import { loadTutorialCompleted } from "../tutorial/tutorialProgress";
 import {
   TUTORIAL_STEP_ASSIGN_QA,
@@ -70,6 +71,7 @@ const smoke = [
   runTutorialFullFlowSmoke(),
   runNarrativeContractSmoke(),
   runNarrativeCatalogSmoke(),
+  runNarrativeFlavorBudgetSmoke(),
   runMigrationNormalizationSmoke(),
   runDebugSnapshotSmoke(),
   runOutsourceSmoke(),
@@ -450,6 +452,37 @@ function runNarrativeCatalogSmoke() {
     kinds: Object.fromEntries(
       Object.entries(TASK_NARRATIVE_ARCHETYPE_IDS_BY_KIND).map(([kind, ids]) => [kind, ids.length]),
     ),
+  };
+}
+
+function runNarrativeFlavorBudgetSmoke() {
+  const currentState = createRealtimeState(4404, "en");
+  currentState.tasks = {};
+  currentState.board.backlog = [];
+  currentState.board.inProgress = [];
+  currentState.board.done = [];
+  currentState.board.released = [];
+  currentState.narrativeBudget.flavorWindowTaskIds = [];
+
+  const generated: RtTask[] = [];
+  for (let index = 0; index < 80; index += 1) {
+    const task = generateTask(currentState);
+    currentState.tasks[task.id] = task;
+    generated.push(task);
+  }
+  const flavorTasks = generated.filter((task) => task.narrativeRef.density === "flavor");
+  assert(flavorTasks.length >= 4, "Narrative flavor smoke expected some flavor tasks.");
+  assert(flavorTasks.length <= 22, "Narrative flavor smoke expected flavor to stay rare.");
+  for (const task of flavorTasks) {
+    const rendered = renderTaskNarrative(task, "en");
+    assert(Boolean(rendered.flavor?.aside), "Narrative flavor smoke expected rendered flavor aside.");
+  }
+
+  return {
+    name: "narrative-flavor-budget",
+    generated: generated.length,
+    flavor: flavorTasks.length,
+    ratio: Number((flavorTasks.length / generated.length).toFixed(2)),
   };
 }
 

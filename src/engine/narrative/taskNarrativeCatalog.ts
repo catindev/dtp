@@ -100,6 +100,14 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "Поспешный релиз может запутать пользователей и породить хвосты.",
           },
         },
+        flavor: {
+          en: {
+            aside: "The request came after someone asked why a spreadsheet still knew more than the product.",
+          },
+          ru: {
+            aside: "Запрос пришел после вопроса, почему таблица по-прежнему знает больше продукта.",
+          },
+        },
       },
     },
   },
@@ -129,6 +137,14 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             problem: "Команда каждый день повторяет одну настройку в зоне: {area}, и просит ее сохранять.",
             stakes: "Чистая поставка экономит время реальным пользователям и добавляет ценность.",
             failurePreview: "Если сценарий непонятен, пользователи получат не облегчение, а еще один мутный переключатель.",
+          },
+        },
+        flavor: {
+          en: {
+            aside: "Support can reproduce it with two clicks and a resigned look.",
+          },
+          ru: {
+            aside: "Поддержка воспроизводит это в два клика и с обреченным видом.",
           },
         },
       },
@@ -162,6 +178,14 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "Если выпустить наполовину, QA найдет доработки или клиенты снова заметят баг.",
           },
         },
+        flavor: {
+          en: {
+            aside: "Everyone agrees the code is temporary; the commit history disagrees.",
+          },
+          ru: {
+            aside: "Все согласны, что код временный; история коммитов не согласна.",
+          },
+        },
       },
     },
   },
@@ -191,6 +215,14 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             problem: "{area} иногда применяет одно действие пользователя дважды.",
             stakes: "Проверенный фикс убирает заметные ошибки и шум поддержки.",
             failurePreview: "Если выпустить грязно, двойное действие вернется клиентским багом.",
+          },
+        },
+        flavor: {
+          en: {
+            aside: "The partner says their side is ready, which usually means the contract changed yesterday.",
+          },
+          ru: {
+            aside: "Партнер говорит, что у них все готово, что обычно значит: контракт поменялся вчера.",
           },
         },
       },
@@ -224,6 +256,14 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "Если отложить, следующие изменения здесь останутся медленными и рискованными.",
           },
         },
+        flavor: {
+          en: {
+            aside: "The alert is technically quiet now because someone muted the wrong channel.",
+          },
+          ru: {
+            aside: "Алерт технически уже тихий, потому что кто-то замьютил не тот канал.",
+          },
+        },
       },
     },
   },
@@ -255,6 +295,14 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             failurePreview: "Если игнорировать, обычные изменения продолжат тащить за собой лишний риск.",
           },
         },
+        flavor: {
+          en: {
+            aside: "The dashboard loads slowly enough for people to start narrating it.",
+          },
+          ru: {
+            aside: "Дашборд грузится так медленно, что люди уже начали комментировать процесс вслух.",
+          },
+        },
       },
     },
   },
@@ -284,6 +332,14 @@ export const TASK_NARRATIVE_ARCHETYPES: Record<string, TaskNarrativeArchetype> =
             problem: "Другой системе нужны надежные данные из зоны: {area}.",
             stakes: "Чистая интеграция поддержит партнерский процесс без ручных обходов.",
             failurePreview: "Слабый релиз может сломать передачу данных и вернуться инцидентом.",
+          },
+        },
+        flavor: {
+          en: {
+            aside: "Legal did not write in caps, which somehow makes it feel more serious.",
+          },
+          ru: {
+            aside: "Юристы не писали капсом, и от этого почему-то стало тревожнее.",
           },
         },
       },
